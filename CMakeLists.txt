@@ -48,3 +48,10 @@ target_link_libraries(acd1100_test pico_stdlib hardware_uart)
 pico_enable_stdio_usb(acd1100_test 1)
 pico_enable_stdio_uart(acd1100_test 0)
 pico_add_extra_outputs(acd1100_test)
+
+# Analog microphone on GP26 / ADC0, with summaries over USB serial.
+add_executable(mic_test mic_test.c)
+target_link_libraries(mic_test pico_stdlib hardware_adc)
+pico_enable_stdio_usb(mic_test 1)
+pico_enable_stdio_uart(mic_test 0)
+pico_add_extra_outputs(mic_test)
