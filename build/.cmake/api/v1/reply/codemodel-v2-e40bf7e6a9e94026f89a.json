@@ -21,7 +21,8 @@
 					[
 						0,
 						5,
-						6
+						6,
+						7
 					]
 				},
 				{
@@ -789,8 +790,8 @@
 					"source" : "C:/Program Files/Raspberry Pi/Pico SDK v1.5.1/pico-sdk/src/rp2_common/tinyusb",
 					"targetIndexes" : 
 					[
-						7,
-						8
+						8,
+						9
 					]
 				},
 				{
@@ -1037,7 +1038,8 @@
 					[
 						0,
 						5,
-						6
+						6,
+						7
 					]
 				},
 				{
@@ -1132,8 +1134,8 @@
 						2,
 						3,
 						4,
-						7,
-						8
+						8,
+						9
 					]
 				}
 			],
@@ -1179,6 +1181,13 @@
 					"id" : "dht22_gp1::@6890427a1f51a3e7e1df",
 					"jsonFile" : "target-dht22_gp1-Debug-c26443ae743b0dd5828e.json",
 					"name" : "dht22_gp1",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 0,
+					"id" : "mic_test::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-mic_test-Debug-ed8c44caef77d42ee0d7.json",
+					"name" : "mic_test",
 					"projectIndex" : 0
 				},
 				{

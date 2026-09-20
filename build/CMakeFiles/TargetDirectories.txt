@@ -1,6 +1,7 @@
 C:/Users/Kendrick/Documents/Project/Embedded _Proj/INF2004_CSC21_Embedded/build/CMakeFiles/dht22_gp1.dir
 C:/Users/Kendrick/Documents/Project/Embedded _Proj/INF2004_CSC21_Embedded/build/CMakeFiles/pir_test.dir
 C:/Users/Kendrick/Documents/Project/Embedded _Proj/INF2004_CSC21_Embedded/build/CMakeFiles/acd1100_test.dir
+C:/Users/Kendrick/Documents/Project/Embedded _Proj/INF2004_CSC21_Embedded/build/CMakeFiles/mic_test.dir
 C:/Users/Kendrick/Documents/Project/Embedded _Proj/INF2004_CSC21_Embedded/build/CMakeFiles/edit_cache.dir
 C:/Users/Kendrick/Documents/Project/Embedded _Proj/INF2004_CSC21_Embedded/build/CMakeFiles/rebuild_cache.dir
 C:/Users/Kendrick/Documents/Project/Embedded _Proj/INF2004_CSC21_Embedded/build/pico-sdk/CMakeFiles/edit_cache.dir
