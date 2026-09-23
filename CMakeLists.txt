@@ -55,3 +55,16 @@ target_link_libraries(mic_test pico_stdlib hardware_adc)
 pico_enable_stdio_usb(mic_test 1)
 pico_enable_stdio_uart(mic_test 0)
 pico_add_extra_outputs(mic_test)
+
+# Combined MOSAIC sensor test; individual test targets remain available.
+add_executable(mosaic_sensor_test
+    mosaic_sensor_test.c
+)
+target_link_libraries(mosaic_sensor_test
+    pico_stdlib
+    hardware_adc
+    hardware_uart
+)
+pico_enable_stdio_usb(mosaic_sensor_test 1)
+pico_enable_stdio_uart(mosaic_sensor_test 0)
+pico_add_extra_outputs(mosaic_sensor_test)

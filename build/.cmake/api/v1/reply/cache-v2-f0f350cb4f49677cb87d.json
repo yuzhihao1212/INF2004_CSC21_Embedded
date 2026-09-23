@@ -774,10 +774,6 @@
 			"properties" : 
 			[
 				{
-					"name" : "ADVANCED",
-					"value" : "1"
-				},
-				{
 					"name" : "HELPSTRING",
 					"value" : "make program"
 				}
@@ -1655,7 +1651,7 @@
 				}
 			],
 			"type" : "INTERNAL",
-			"value" : ""
+			"value" : "C:/Program Files/Raspberry Pi/Pico SDK v1.5.1/gcc-arm-none-eabi"
 		},
 		{
 			"name" : "_Python3_Compiler_REASON_FAILURE",
