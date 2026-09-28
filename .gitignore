@@ -1,0 +1,16 @@
+# Python virtual environment
+.venv/
+
+# Downloaded/raw audio datasets
+ml/raw_datasets/
+ml/data/
+
+# Generated ML dataset
+ml/features/dataset.csv
+
+# Trained model files
+ml/models/*.pkl
+
+# Python cache
+__pycache__/
+*.pyc
