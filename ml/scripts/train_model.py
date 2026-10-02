@@ -1,4 +1,5 @@
 import os
+import joblib
 import pandas as pd
 
 from sklearn.model_selection import GroupShuffleSplit
@@ -8,7 +9,6 @@ from sklearn.metrics import (
     confusion_matrix,
     classification_report
 )
-import joblib
 
 
 # ============================================================
@@ -16,7 +16,9 @@ import joblib
 # ============================================================
 
 DATASET = "ml/features/dataset.csv"
+
 MODEL_DIR = "ml/models"
+
 MODEL_PATH = os.path.join(
     MODEL_DIR,
     "random_forest_model.pkl"
@@ -24,27 +26,65 @@ MODEL_PATH = os.path.join(
 
 
 # ============================================================
-# LOAD DATA
+# LOAD DATASET
 # ============================================================
 
-df = pd.read_csv(DATASET)
+df = pd.read_csv(
+    DATASET
+)
 
-feature_columns = [
-    column
-    for column in df.columns
-    if column.startswith("feature_")
+
+# ============================================================
+# SELECT FEATURES
+#
+# Ignore:
+# feature_0  = mean RMS
+# feature_10 = std RMS
+#
+# These depend heavily on microphone / ADC amplitude.
+# ============================================================
+
+FEATURE_COLUMNS = [
+    "feature_1",
+    "feature_2",
+    "feature_3",
+    "feature_4",
+    "feature_5",
+    "feature_6",
+    "feature_7",
+    "feature_8",
+    "feature_9",
+
+    "feature_11",
+    "feature_12",
+    "feature_13",
+    "feature_14",
+    "feature_15",
+    "feature_16",
+    "feature_17",
+    "feature_18",
+    "feature_19",
 ]
 
-X = df[feature_columns]
-y = df["label"]
 
-# Important:
-# all 500 ms windows from the same WAV stay together
-groups = df["source_file"]
+X = df[
+    FEATURE_COLUMNS
+]
+
+y = df[
+    "label"
+]
+
+groups = df[
+    "source_file"
+]
 
 
 # ============================================================
 # GROUP-BASED TRAIN / TEST SPLIT
+#
+# Windows from the same original WAV file
+# stay entirely in train OR test.
 # ============================================================
 
 splitter = GroupShuffleSplit(
@@ -61,19 +101,31 @@ train_index, test_index = next(
     )
 )
 
-X_train = X.iloc[train_index]
-X_test = X.iloc[test_index]
 
-y_train = y.iloc[train_index]
-y_test = y.iloc[test_index]
+X_train = X.iloc[
+    train_index
+]
+
+X_test = X.iloc[
+    test_index
+]
+
+y_train = y.iloc[
+    train_index
+]
+
+y_test = y.iloc[
+    test_index
+]
 
 
 # ============================================================
-# TRAIN MODEL
+# TRAIN RANDOM FOREST
 # ============================================================
 
 model = RandomForestClassifier(
     n_estimators=100,
+    class_weight="balanced",
     random_state=42
 )
 
@@ -96,39 +148,94 @@ accuracy = accuracy_score(
     predictions
 )
 
-print()
-print("Training windows:", len(X_train))
-print("Testing windows:", len(X_test))
 
 print()
-print("Training class distribution:")
-print(y_train.value_counts())
+print(
+    "Features used:",
+    len(FEATURE_COLUMNS)
+)
+
+print(
+    "Ignored features:",
+    "feature_0 and feature_10"
+)
 
 print()
-print("Testing class distribution:")
-print(y_test.value_counts())
+
+print(
+    "Training windows:",
+    len(X_train)
+)
+
+print(
+    "Testing windows:",
+    len(X_test)
+)
+
+
+print()
+print(
+    "Training class distribution:"
+)
+
+print(
+    y_train.value_counts()
+)
+
+
+print()
+print(
+    "Testing class distribution:"
+)
+
+print(
+    y_test.value_counts()
+)
+
 
 print()
 print("Accuracy:")
-print(f"{accuracy:.4f}")
+
+print(
+    f"{accuracy:.4f}"
+)
+
+
+# ============================================================
+# CONFUSION MATRIX
+# ============================================================
+
+CLASS_NAMES = [
+    "lecturer_speech",
+    "student_conversation",
+    "background_noise",
+    "transient_noise",
+]
+
 
 print()
-print("Confusion Matrix:")
+print(
+    "Confusion Matrix:"
+)
+
 print(
     confusion_matrix(
         y_test,
         predictions,
-        labels=[
-            "lecturer_speech",
-            "student_conversation",
-            "background_noise",
-            "transient_noise"
-        ]
+        labels=CLASS_NAMES
     )
 )
 
+
+# ============================================================
+# CLASSIFICATION REPORT
+# ============================================================
+
 print()
-print("Classification Report:")
+print(
+    "Classification Report:"
+)
+
 print(
     classification_report(
         y_test,
@@ -151,6 +258,12 @@ joblib.dump(
     MODEL_PATH
 )
 
+
 print()
-print("Model saved to:")
-print(MODEL_PATH)
+print(
+    "Model saved to:"
+)
+
+print(
+    MODEL_PATH
+)
