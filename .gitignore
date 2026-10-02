@@ -1,16 +1,28 @@
 # Python virtual environment
 .venv/
 
-# Downloaded/raw audio datasets
-ml/raw_datasets/
-ml/data/
+# Python cache
+__pycache__/
+*.pyc
 
-# Generated ML dataset
+# Raw downloaded datasets
+ml/raw_datasets/
+
+# Ignore large audio folders
+ml/data/lecturer_speech/
+ml/data/student_conversation/
+ml/data/background_noise/
+ml/data/transient_noise/
+
+# Generated public-audio feature dataset
 ml/features/dataset.csv
 
 # Trained model files
 ml/models/*.pkl
 
-# Python cache
-__pycache__/
-*.pyc
+# VS Code settings
+.vscode/
+
+# System files
+.DS_Store
+Thumbs.db
