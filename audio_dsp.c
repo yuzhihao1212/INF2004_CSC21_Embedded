@@ -720,7 +720,7 @@ static void extract_frame_features(
 
 
 /*
-   Aggregate 48 frames into final 20-value vector
+   aggregate 48 frames into final 20-value vector
    [0..9]   = feature means
    [10..19] = feature standard deviations
 */
