@@ -1,7 +1,8 @@
 {
     "cmake.cmakePath": "C:/Program Files/Raspberry Pi/Pico SDK v1.5.1/cmake/bin/cmake.exe",
     "cmake.generator": "Ninja",
-    "cmake.buildDirectory": "${workspaceFolder}/build",
+    "cmake.sourceDirectory": "${workspaceFolder}/firmware",
+    "cmake.buildDirectory": "${workspaceFolder}/firmware/build",
     "cmake.configureSettings": {
         "CMAKE_EXPORT_COMPILE_COMMANDS": true,
         "CMAKE_MAKE_PROGRAM": "C:/Program Files/Raspberry Pi/Pico SDK v1.5.1/ninja/ninja.exe",
