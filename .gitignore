@@ -1,0 +1,20 @@
+# Firmware build output (CMake/Ninja), anywhere in the tree
+build/
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+
+# ML: raw/large datasets and trained models are regenerated, not committed
+ml/raw_datasets/
+ml/data/lecturer_speech/
+ml/data/student_conversation/
+ml/data/background_noise/
+ml/data/transient_noise/
+ml/features/dataset.csv
+ml/models/*.pkl
+
+# OS files
+.DS_Store
+Thumbs.db
