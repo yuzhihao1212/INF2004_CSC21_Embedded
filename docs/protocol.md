@@ -1,7 +1,8 @@
-# MOSAIC Wire Protocol (v1, draft)
+# MOSAIC Wire Protocol (v1)
 
-> **Status: DRAFT for review by Arif and ZhiHao.** Open questions are listed at the end.
-> Once agreed, any change needs a PR that updates all three files together and bumps the version.
+> **Status: v1 agreed for networking** (Arif and ZhiHao, 9 Oct 2026). Two questions remain open
+> for Darius and Kendrick (§7); neither changes the packet layout unless the audio classes change.
+> Any change needs a PR that updates all three files together and bumps the version (§6).
 
 | What | Where |
 |------|-------|
@@ -39,7 +40,7 @@ sequenceDiagram
 | Node listens on | **5006**: CONFIG, PING |
 | Byte order | Little-endian (native on RP2040 and PCs) |
 | Max datagram | 128 bytes (largest is TELEMETRY, 56 bytes) |
-| Node → PC address | PC's IP, compiled into node firmware (see open question Q1) |
+| Node → PC address | PC's IP, compiled into node firmware as `MOSAIC_PC_IP` (decision D1) |
 | PC → node address | The source IP of that node's most recent datagram |
 
 **Why UDP:** telemetry is periodic and each packet supersedes the last, so retransmitting an old
@@ -61,7 +62,7 @@ Every datagram starts with this header, followed by exactly one payload.
 | 0 | `magic` | u16 | `0x534D`: bytes `4D 53` = "MS" |
 | 2 | `version` | u8 | `1` |
 | 3 | `msg_type` | u8 | 1 TELEMETRY, 2 CONFIG, 3 CONFIG_ACK, 4 PING, 5 PONG |
-| 4 | `node_id` | u8 | 1–8 when sent by a node; 0 when sent by the PC |
+| 4 | `node_id` | u8 | 1–8 when sent by a node (`MOSAIC_NODE_ID`, set per build); 0 when sent by the PC |
 | 5 | `flags` | u8 | bit 0 `FIRST_SINCE_BOOT`: first TELEMETRY after a reset |
 | 6 | `payload_len` | u16 | Must equal the payload size for `msg_type` |
 | 8 | `seq` | u32 | Per sender, +1 for every datagram sent; starts at 0 on boot |
@@ -180,13 +181,20 @@ The PC sends a PING (e.g. every 5 s), and **round-trip time** = PC time when the
 3. CI runs `pc/tests/test_protocol.py`, which compiles the C header and checks Python decodes
    its packets byte for byte. A mismatch fails the PR.
 
-## 7. Open questions for review
+## 7. Decisions and open questions
 
-| # | Question | Proposal |
-|---|----------|----------|
-| Q1 | How does a node find the PC? | Phase 1: PC IP compiled in (`#define`). Later: node broadcasts until the PC replies. |
-| Q2 | How is `node_id` assigned? | A `#define` per build, or a lookup table from the Pico's unique board ID, so one firmware fits all nodes. |
-| Q3 | Audio classes: are these 4 final? | Matches Darius's current labels. Needs Darius's confirmation before the model is deployed. |
-| Q4 | Should CO₂ trend (ppm/min) be computed on the node? | Proposed: on the PC, from the received history. Kendrick may prefer the node. |
-| Q5 | Is 1 s the right default report interval? | Two 500 ms audio windows fit in one report; the node sends the latest result and the PC smooths over time. |
-| Q6 | Is anything else needed on the dashboard (e.g. sound level in dB)? | Add it now, while the protocol is still a draft. |
+### Agreed
+
+| # | Decision | Agreed by |
+|---|----------|-----------|
+| D1 | **Finding the PC:** the PC's IP is compiled into the node firmware (`MOSAIC_PC_IP`). Discovery by broadcast may be added later if needed. | Arif, ZhiHao |
+| D2 | **Node IDs:** set per build with `MOSAIC_NODE_ID` (1–8), e.g. `-DMOSAIC_NODE_ID=3` in the node's CMake target. Each physical node is flashed with its own ID. | Arif, ZhiHao |
+| D3 | **Report interval:** 1 s default. Two 500 ms audio windows fit in one report; the node sends the latest result and the PC smooths over time. | Arif, ZhiHao |
+| D4 | **Packet contents:** the TELEMETRY fields above are sufficient for now. | Arif, ZhiHao |
+
+### Still open
+
+| # | Question | Owner | Current default |
+|---|----------|-------|-----------------|
+| Q3 | Are the 4 audio classes final? | Darius | Matches the current training labels. Changing them changes `mosaic_audio_class_t` and needs a version bump. |
+| Q4 | Should CO₂ trend (ppm/min) be computed on the node? | Kendrick | Computed on the PC from the received history; no packet change needed. |
