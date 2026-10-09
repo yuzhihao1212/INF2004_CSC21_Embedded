@@ -68,3 +68,16 @@ target_link_libraries(mosaic_sensor_test
 pico_enable_stdio_usb(mosaic_sensor_test 1)
 pico_enable_stdio_uart(mosaic_sensor_test 0)
 pico_add_extra_outputs(mosaic_sensor_test)
+
+# Audio DSP / MFCC feature extraction (Moe).
+add_executable(audio_dsp audio_dsp.c)
+target_link_libraries(audio_dsp pico_stdlib hardware_adc)
+pico_enable_stdio_usb(audio_dsp 1)
+pico_enable_stdio_uart(audio_dsp 0)
+pico_add_extra_outputs(audio_dsp)
+
+add_executable(audio_dsp_capture audio_dsp_capture.c)
+target_link_libraries(audio_dsp_capture pico_stdlib hardware_adc hardware_dma pico_multicore)
+pico_enable_stdio_usb(audio_dsp_capture 1)
+pico_enable_stdio_uart(audio_dsp_capture 0)
+pico_add_extra_outputs(audio_dsp_capture)
