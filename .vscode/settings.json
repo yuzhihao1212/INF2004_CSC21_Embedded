@@ -8,5 +8,6 @@
         "PICO_SDK_PATH": "C:/Program Files/Raspberry Pi/Pico SDK v1.5.1/pico-sdk",
         "PICO_TOOLCHAIN_PATH": "C:/Program Files/Raspberry Pi/Pico SDK v1.5.1/gcc-arm-none-eabi",
         "PICO_BOARD": "pico_w"
-    }
+    },
+    "python-envs.defaultEnvManager": "ms-python.python:venv"
 }
