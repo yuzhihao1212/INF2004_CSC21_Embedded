@@ -1,0 +1,49 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  firmware:
+    name: Build firmware (Pico SDK 1.5.1)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      # Same SDK version as the team's Windows installer.
+      - uses: actions/checkout@v4
+        with:
+          repository: raspberrypi/pico-sdk
+          ref: 1.5.1
+          path: pico-sdk
+          submodules: true
+
+      - name: Install toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            cmake ninja-build gcc-arm-none-eabi libnewlib-arm-none-eabi build-essential
+
+      - name: Configure
+        run: cmake -S firmware -B firmware/build -G Ninja -DPICO_SDK_PATH="$GITHUB_WORKSPACE/pico-sdk"
+
+      - name: Build
+        run: ninja -C firmware/build
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: firmware-uf2
+          path: firmware/build/tests/*.uf2
+
+  python:
+    name: Python syntax check
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Compile all scripts
+        run: python -m compileall -q ml pc

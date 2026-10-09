@@ -40,7 +40,7 @@ python -m venv .venv
 pip install -r requirements.txt
 ```
 
-## Working rules
+## Contributing
 
-- Branch off `main` for each piece of work (e.g. `feat/co2-slope`) and merge back via a pull request.
-- Pull `main` into your branch regularly so branches don't drift apart.
+`main` is protected: all changes go through a pull request with passing CI and one approval.
+Read **[CONTRIBUTING.md](CONTRIBUTING.md)** for the step-by-step workflow.
