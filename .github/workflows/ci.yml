@@ -20,11 +20,28 @@ jobs:
           path: pico-sdk
           submodules: true
 
-      - name: Install toolchain
+      # Arm's official GNU toolchain 10.3-2021.10: the same compiler the Pico SDK
+      # 1.5.1 Windows installer bundles. Ubuntu's packaged newlib lacks the
+      # PRIu64 family of macros that our firmware uses.
+      - name: Cache Arm toolchain
+        id: toolchain-cache
+        uses: actions/cache@v4
+        with:
+          path: arm-toolchain
+          key: arm-gnu-toolchain-10.3-2021.10-x86_64
+
+      - name: Download Arm toolchain
+        if: steps.toolchain-cache.outputs.cache-hit != 'true'
+        run: |
+          mkdir arm-toolchain
+          curl -fsSL https://developer.arm.com/-/media/Files/downloads/gnu-rm/10.3-2021.10/gcc-arm-none-eabi-10.3-2021.10-x86_64-linux.tar.bz2 \
+            | tar -xj -C arm-toolchain --strip-components=1
+
+      - name: Install build tools
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            cmake ninja-build gcc-arm-none-eabi libnewlib-arm-none-eabi libstdc++-arm-none-eabi-newlib build-essential
+          sudo apt-get install -y --no-install-recommends cmake ninja-build build-essential
+          echo "$GITHUB_WORKSPACE/arm-toolchain/bin" >> "$GITHUB_PATH"
 
       - name: Configure
         run: cmake -S firmware -B firmware/build -G Ninja -DPICO_SDK_PATH="$GITHUB_WORKSPACE/pico-sdk"
