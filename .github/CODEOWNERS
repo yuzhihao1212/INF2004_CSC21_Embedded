@@ -1,0 +1,20 @@
+# Reviewers auto-requested on PRs that touch these paths.
+# Later rules override earlier ones. Anyone can still approve.
+
+*                                   @yuzhihao1212
+
+# Firmware: environmental sensors (Kendrick), audio DSP (Moe)
+/firmware/                          @kthgoat
+/firmware/tests/audio_dsp*          @mmmmm0e
+/firmware/tests/mic_test.c          @mmmmm0e @kthgoat
+
+# ML pipeline (Darius); Moe owns the Pico feature capture script
+/ml/                                @Dkkan-dev
+/ml/scripts/capture_csv.py          @mmmmm0e @Dkkan-dev
+
+# PC side: gateway, fusion, dashboard (ZhiHao) and networking (Arif)
+/pc/                                @yuzhihao1212 @arifkareem
+/pc/prototype/                      @arifkareem @yuzhihao1212
+
+# CI and repo setup
+/.github/                           @yuzhihao1212
