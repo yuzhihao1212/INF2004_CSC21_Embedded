@@ -21,4 +21,5 @@ if (NOT TARGET tinyusb_device)
 endif()
 
 # Standalone sensor / DSP bring-up firmware, one executable per test.
+add_subdirectory(environment)
 add_subdirectory(tests)
