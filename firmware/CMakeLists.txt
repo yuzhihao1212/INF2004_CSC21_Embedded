@@ -22,3 +22,4 @@ endif()
 
 # Standalone sensor / DSP bring-up firmware, one executable per test.
 add_subdirectory(tests)
+add_subdirectory(audio)
