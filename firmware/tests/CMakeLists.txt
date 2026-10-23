@@ -6,6 +6,7 @@ add_executable(dht22_gp1
 
 target_link_libraries(dht22_gp1
     pico_stdlib
+    mosaic_environment
 )
 
 pico_enable_stdio_usb(dht22_gp1 1)
@@ -41,6 +42,7 @@ add_executable(mosaic_sensor_test
     mosaic_sensor_test.c
 )
 target_link_libraries(mosaic_sensor_test
+    mosaic_environment
     pico_stdlib
     hardware_adc
     hardware_uart
