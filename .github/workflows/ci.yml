@@ -64,3 +64,6 @@ jobs:
           python-version: "3.12"
       - name: Compile all scripts
         run: python -m compileall -q ml pc
+      - name: Unit tests (incl. C/Python protocol cross-check)
+        working-directory: pc
+        run: python -m unittest -v
