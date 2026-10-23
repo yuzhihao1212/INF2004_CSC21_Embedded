@@ -60,6 +60,23 @@ python -m mosaic.simulator --nodes 3 --loss 0.1 --reboot-every 30
 
 On Windows, allow Python through the firewall when asked so real nodes can reach port 5005.
 
+## Running a real node
+
+`firmware/node/` builds `mosaic_node.uf2`: DHT22, CO₂ and PIR readings sent as protocol v1
+TELEMETRY every second over Wi-Fi (audio not wired in yet).
+
+1. Copy `firmware/node/node_config.example.cmake` to `firmware/node/node_config.cmake` and set
+   the node ID, Wi-Fi name and password, and the PC's IP address (`ipconfig` on Windows,
+   `ipconfig getifaddr en0` on macOS). This file is git-ignored; never commit it.
+2. Reconfigure and build (VS Code: **CMake: Delete Cache and Reconfigure**, then build), and
+   flash `firmware/build/node/mosaic_node.uf2`.
+3. Start `python -m mosaic.gateway` on the PC. The Pico and PC must be on the same network,
+   and the network must allow devices to talk to each other (many campus and guest Wi-Fi
+   networks don't; a phone hotspot works).
+
+The onboard LED blinks once per packet sent. Wi-Fi status and the node's IP are printed on
+the USB serial port.
+
 ## Contributing
 
 `main` is protected: all changes go through a pull request with passing CI and one approval.

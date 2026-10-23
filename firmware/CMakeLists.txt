@@ -26,3 +26,6 @@ add_subdirectory(common)
 # Standalone sensor / DSP bring-up firmware, one executable per test.
 add_subdirectory(environment)
 add_subdirectory(tests)
+
+# The sensing node that sends telemetry to the PC gateway over Wi-Fi.
+add_subdirectory(node)
