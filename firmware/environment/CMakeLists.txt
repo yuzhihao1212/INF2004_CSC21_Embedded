@@ -1,0 +1,5 @@
+add_library(mosaic_environment STATIC environment.c dht22.c sensors.c)
+target_include_directories(mosaic_environment PUBLIC ${CMAKE_CURRENT_LIST_DIR})
+target_link_libraries(mosaic_environment PUBLIC pico_stdlib hardware_pio hardware_dma hardware_uart hardware_clocks)
+pico_generate_pio_header(mosaic_environment ${CMAKE_CURRENT_LIST_DIR}/dht22.pio)
+target_compile_options(mosaic_environment PRIVATE -Wall -Wextra -Werror)

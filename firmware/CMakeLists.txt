@@ -20,6 +20,10 @@ if (NOT TARGET tinyusb_device)
     message(FATAL_ERROR "USB stdio requires the SDK's TinyUSB submodule")
 endif()
 
+# Shared headers (wire protocol, ...), linked as the mosaic_common library.
+add_subdirectory(common)
+
 # Standalone sensor / DSP bring-up firmware, one executable per test.
+add_subdirectory(environment)
 add_subdirectory(tests)
 add_subdirectory(audio)

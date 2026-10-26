@@ -13,7 +13,9 @@ ml/                Audio dataset preparation, feature extraction and model train
   scripts/         Run from the repository root, e.g. python ml/scripts/train_pico_model.py
   data/            Feature datasets (raw audio folders are git-ignored)
 pc/                PC-side gateway, sensor fusion and dashboard
-  prototype/       UDP node simulator and receiver used to test communication
+  mosaic/          Protocol v1, gateway receiver and node simulator
+  tests/           Unit tests, run from pc/ with python -m unittest
+  prototype/       Early text-format UDP sender/receiver (superseded by mosaic/)
 docs/              Project brief and team workflow
 ```
 
@@ -40,7 +42,25 @@ python -m venv .venv
 pip install -r requirements.txt
 ```
 
-## Working rules
+## Running the PC gateway
 
-- Branch off `main` for each piece of work (e.g. `feat/co2-slope`) and merge back via a pull request.
-- Pull `main` into your branch regularly so branches don't drift apart.
+From the `pc/` folder (the gateway itself needs only the Python standard library):
+
+```
+python -m mosaic.gateway --csv telemetry.csv
+```
+
+It listens on UDP 5005, prints each node's readings, and every 10 s prints a table with
+each node's status (ONLINE/STALE/OFFLINE), packet loss, reboots and PING round-trip time.
+To test without hardware, run the simulated nodes in a second terminal:
+
+```
+python -m mosaic.simulator --nodes 3 --loss 0.1 --reboot-every 30
+```
+
+On Windows, allow Python through the firewall when asked so real nodes can reach port 5005.
+
+## Contributing
+
+`main` is protected: all changes go through a pull request with passing CI and one approval.
+Read **[CONTRIBUTING.md](CONTRIBUTING.md)** for the step-by-step workflow.
