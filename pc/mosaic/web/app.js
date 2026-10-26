@@ -1,0 +1,345 @@
+/* MOSAIC dashboard: polls /api/state every second and renders it. No libraries. */
+(() => {
+  "use strict";
+
+  const POLL_MS = 1000;
+  const SVG_NS = "http://www.w3.org/2000/svg";
+  const AUDIO = {
+    background_noise: ["Background", "i-background"],
+    lecturer_speech: ["Lecturer", "i-lecturer"],
+    student_conversation: ["Discussion", "i-discussion"],
+    transient_noise: ["Transient", "i-transient"],
+    unknown: ["Unsure", "i-unsure"],
+  };
+  const STATUS = { online: ["Online", "i-check"], stale: ["Stale", "i-clock"], offline: ["Offline", "i-offline"] };
+  const LEVEL = { good: "Good", fair: "Fair", poor: "Poor", warmup: "Warming up", none: "—" };
+  const DASHES = ["", "7 4", "2 4", "10 4 2 4"];  // Second cue besides colour
+  const LINK_LABELS = { rssi: "Wi-Fi signal", loss: "Packet loss", rtt: "Round trip", age: "Last update" };
+
+  const $ = (sel, root = document) => root.querySelector(sel);
+  const el = {
+    live: $("#live"), liveText: $("#live-text"), clock: $("#clock"), theme: $("#theme"),
+    nodes: $("#nodes"), empty: $("#empty"), trends: $("#trends"), legend: $("#legend"),
+    co2Chart: $("#chart-co2"), tempChart: $("#chart-temp"), footnote: $("#footnote"),
+    announcer: $("#announcer"), tpl: $("#node-tpl"),
+  };
+
+  let state = null;
+  let rangeS = 300;
+  let failures = 0;
+  const hidden = new Set();
+  const cards = new Map();
+  const lastStatus = new Map();
+
+  const series = (id) => `var(--series-${((id - 1) % 8) + 1})`;
+  const dash = (id) => DASHES[(id - 1) % DASHES.length];
+  const fmt = (v, digits = 0) => (v == null ? "—" : v.toFixed(digits));
+  const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+  const mean = (xs) => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : null);
+  const setIcon = (svg, id) => svg.querySelector("use").setAttribute("href", `#${id}`);
+
+  function co2Level(ppm, warmup) {
+    if (ppm == null) return warmup ? "warmup" : "none";
+    if (ppm < state.co2_bands.fair) return "good";
+    return ppm < state.co2_bands.poor ? "fair" : "poor";
+  }
+
+  /* Theme: system -> light -> dark, saved per browser. */
+  const THEMES = { system: "i-auto", light: "i-sun", dark: "i-moon" };
+  function applyTheme(mode) {
+    const root = document.documentElement;
+    if (mode === "system") delete root.dataset.theme; else root.dataset.theme = mode;
+    try {
+      if (mode === "system") localStorage.removeItem("mosaic-theme");
+      else localStorage.setItem("mosaic-theme", mode);
+    } catch (e) { /* Storage blocked: theme still applies for this visit */ }
+    setIcon(el.theme, THEMES[mode]);
+    el.theme.setAttribute("aria-label", `Theme: ${mode}. Change theme`);
+    el.theme.title = `Theme: ${mode}`;
+  }
+  el.theme.addEventListener("click", () => {
+    const order = Object.keys(THEMES);
+    const now = document.documentElement.dataset.theme || "system";
+    applyTheme(order[(order.indexOf(now) + 1) % order.length]);
+  });
+  applyTheme(document.documentElement.dataset.theme || "system");
+
+  function tickClock() {
+    const now = new Date();
+    el.clock.textContent = now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+    el.clock.dateTime = now.toISOString();
+  }
+  tickClock();
+  setInterval(tickClock, 1000);
+
+  function setLive(mode) {
+    el.live.dataset.state = mode;
+    el.liveText.textContent = { live: "Live", lost: "Disconnected", connecting: "Connecting" }[mode];
+  }
+
+  /* Range chips */
+  document.querySelectorAll("[data-range]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      rangeS = Number(btn.dataset.range);
+      document.querySelectorAll("[data-range]").forEach((b) => b.setAttribute("aria-pressed", String(b === btn)));
+      if (state) renderCharts();
+    });
+  });
+
+  /* ---- Node cards ---- */
+  function makeCard(id) {
+    const card = el.tpl.content.firstElementChild.cloneNode(true);
+    card.style.setProperty("--series", series(id));
+    $(".node-name", card).textContent = `Node ${id}`;
+    $(".series-key", card).style.borderTopStyle = dash(id) ? "dashed" : "solid";
+    card.querySelectorAll(".link-item").forEach((item) => {
+      const label = LINK_LABELS[item.dataset.k];
+      item.title = label;
+      item.insertAdjacentHTML("afterbegin", `<span class="sr-only">${label}: </span>`);
+    });
+    // Keep cards in node-ID order without re-inserting existing ones.
+    const next = [...cards.keys()].filter((k) => k > id).sort((a, b) => a - b)[0];
+    el.nodes.insertBefore(card, next === undefined ? null : cards.get(next));
+    cards.set(id, card);
+    return card;
+  }
+
+  function setMetric(card, key, value, digits) {
+    const m = $(`[data-k="${key}"]`, card);
+    $(".v", m).textContent = fmt(value, digits);
+    m.toggleAttribute("data-invalid", value == null);
+    return m;
+  }
+
+  function updateCard(n) {
+    const card = cards.get(n.id) || makeCard(n.id);
+    const t = n.telemetry || {};
+    card.dataset.status = n.status;
+
+    const status = $(".status", card);
+    status.dataset.status = n.status;
+    $(".status-text", status).textContent = STATUS[n.status][0];
+    setIcon($("svg", status), STATUS[n.status][1]);
+
+    setMetric(card, "temp", t.temperature_c, 1);
+    setMetric(card, "hum", t.humidity_pct, 0);
+
+    const co2 = setMetric(card, "co2", t.co2_ppm, 0);
+    const level = co2Level(t.co2_ppm, t.co2_warmup);
+    const chip = $(".chip", co2);
+    chip.dataset.level = level;
+    chip.textContent = LEVEL[level];
+    if (t.co2_ppm != null) {
+      $(".marker", co2).style.left = `${clamp((t.co2_ppm - 400) / 1200, 0, 1) * 100}%`;
+    }
+
+    const pir = setMetric(card, "pir", t.pir_pct, 0);
+    $(".meter span", pir).style.width = `${t.pir_pct || 0}%`;
+
+    const audio = $(".audio", card);
+    const a = t.audio;
+    audio.toggleAttribute("data-invalid", !a);
+    const [name, icon] = a ? AUDIO[a.class] : ["No audio", "i-mute"];
+    $(".audio-class", audio).textContent = name;
+    setIcon($(".audio-icon", audio), icon);
+    $(".audio-conf", audio).textContent = a && a.class !== "unknown" ? `${a.confidence}%` : "";
+    const probs = a ? a.probs : [0, 0, 0, 0];
+    const top = probs.indexOf(Math.max(...probs));
+    audio.querySelectorAll(".probs span").forEach((s, i) => {
+      s.querySelector("i").style.setProperty("--p", `${probs[i]}%`);
+      s.toggleAttribute("data-top", !!a && i === top && a.class !== "unknown");
+      s.title = `${s.title.split(" ")[0]} ${probs[i]}%`;
+    });
+
+    const link = (k, text, bad) => {
+      const item = $(`[data-k="${k}"]`, card);
+      $(".lv", item).textContent = text;
+      item.toggleAttribute("data-bad", !!bad);
+      return item;
+    };
+    const rssi = t.rssi_dbm;
+    const bars = !rssi ? 0 : rssi >= -55 ? 4 : rssi >= -65 ? 3 : rssi >= -75 ? 2 : rssi >= -85 ? 1 : 0;
+    link("rssi", rssi ? `${rssi} dBm` : "—", rssi && bars < 2)
+      .querySelectorAll(".bars i").forEach((b, i) => b.toggleAttribute("data-on", i < bars));
+    link("loss", `${fmt(n.loss_pct, 1)}%`, n.loss_pct > 5);
+    link("rtt", n.rtt_ms == null ? "—" : `${fmt(n.rtt_ms, 1)} ms`, n.rtt_ms > 100);
+    link("age", n.age_s < 1.5 ? "now" : `${Math.round(n.age_s)} s ago`, n.status !== "online");
+  }
+
+  /* ---- Summary ---- */
+  function renderSummary(nodes) {
+    const online = nodes.filter((n) => n.status === "online");
+    $("#s-online").textContent = online.length;
+    $("#s-total").textContent = nodes.length;
+    $("#s-dots").replaceChildren(...nodes.map((n) => {
+      const dot = document.createElement("i");
+      dot.dataset.status = n.status;
+      return dot;
+    }));
+
+    const live = nodes.filter((n) => n.status !== "offline" && n.telemetry).map((n) => n.telemetry);
+    const pick = (k) => live.map((t) => t[k]).filter((v) => v != null);
+    const co2s = pick("co2_ppm");
+    const worst = co2s.length ? Math.max(...co2s) : null;
+    $("#s-co2").textContent = fmt(worst);
+    const level = co2Level(worst, live.some((t) => t.co2_warmup));
+    const chip = $("#s-air");
+    chip.dataset.level = level;
+    chip.textContent = LEVEL[level];
+    $("#s-temp").textContent = fmt(mean(pick("temperature_c")), 1);
+    $("#s-hum").textContent = fmt(mean(pick("humidity_pct")));
+    const pir = mean(pick("pir_pct"));
+    $("#s-pir").textContent = fmt(pir);
+    $("#s-pir-bar").style.width = `${pir || 0}%`;
+  }
+
+  /* ---- Legend + charts ---- */
+  function renderLegend(nodes) {
+    const ids = nodes.map((n) => n.id).join(",");
+    if (el.legend.dataset.ids === ids) return;
+    el.legend.dataset.ids = ids;
+    el.legend.replaceChildren(...nodes.map((n) => {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "chip-btn";
+      b.style.setProperty("--series", series(n.id));
+      b.setAttribute("aria-pressed", String(!hidden.has(n.id)));
+      b.innerHTML = `<svg width="18" height="6" aria-hidden="true"><line x1="1" y1="3" x2="17" y2="3"
+        stroke="var(--series)" stroke-width="3" stroke-linecap="round" stroke-dasharray="${dash(n.id)}"/></svg>Node ${n.id}`;
+      b.addEventListener("click", () => {
+        if (hidden.has(n.id)) hidden.delete(n.id); else hidden.add(n.id);
+        b.setAttribute("aria-pressed", String(!hidden.has(n.id)));
+        renderCharts();
+      });
+      return b;
+    }));
+  }
+
+  function niceTicks(lo, hi, count = 4) {
+    const raw = (hi - lo) / count;
+    const mag = 10 ** Math.floor(Math.log10(raw));
+    const step = [1, 2, 2.5, 5, 10].map((m) => m * mag).find((s) => s >= raw);
+    const ticks = [];
+    for (let v = Math.ceil(lo / step) * step; v <= hi + 1e-9; v += step) ticks.push(+v.toFixed(6));
+    return ticks;
+  }
+
+  function svg(tag, attrs, parent) {
+    const node = document.createElementNS(SVG_NS, tag);
+    for (const [k, v] of Object.entries(attrs)) node.setAttribute(k, v);
+    if (parent) parent.appendChild(node);
+    return node;
+  }
+
+  function drawChart(container, field, opts) {
+    const w = Math.max(container.clientWidth, 200);
+    const h = container.clientHeight || 220;
+    const pad = { l: 42, r: 10, t: 8, b: 22 };
+    const end = state.time_ms;
+    const start = end - rangeS * 1000;
+    const lines = state.nodes.filter((n) => !hidden.has(n.id)).map((n) => ({
+      id: n.id, pts: n.history.filter((p) => p[0] >= start && p[field] != null).map((p) => [p[0], p[field]]),
+    })).filter((s) => s.pts.length);
+
+    const root = svg("svg", { viewBox: `0 0 ${w} ${h}`, "aria-hidden": "true" });
+    const values = lines.flatMap((s) => s.pts.map((p) => p[1]));
+    if (!values.length) {
+      svg("text", { x: w / 2, y: h / 2, "text-anchor": "middle", class: "no-data" }, root).textContent = "No data yet";
+      container.replaceChildren(root);
+      container.setAttribute("aria-label", `${opts.name}: no data yet`);
+      return;
+    }
+    let lo = Math.min(...values), hi = Math.max(...values);
+    [lo, hi] = opts.domain(lo, hi);
+    const x = (t) => pad.l + ((t - start) / (end - start)) * (w - pad.l - pad.r);
+    const y = (v) => pad.t + (1 - (v - lo) / (hi - lo)) * (h - pad.t - pad.b);
+
+    for (const band of opts.bands || []) {
+      const top = y(Math.min(band.to, hi)), bottom = y(Math.max(band.from, lo));
+      if (bottom > top) svg("rect", { x: pad.l, y: top, width: w - pad.l - pad.r, height: bottom - top, class: band.cls }, root);
+    }
+    for (const v of niceTicks(lo, hi)) {
+      svg("line", { x1: pad.l, x2: w - pad.r, y1: y(v), y2: y(v), class: "grid-line" }, root);
+      svg("text", { x: pad.l - 8, y: y(v) + 4, "text-anchor": "end", class: "axis-text" }, root).textContent = opts.tick(v);
+    }
+    const label = (s) => (s === 0 ? "now" : s >= 60 ? `−${s / 60} min` : `−${s} s`);
+    [rangeS, rangeS / 2, 0].forEach((s, i) => {
+      svg("text", { x: x(end - s * 1000), y: h - 4, "text-anchor": ["start", "middle", "end"][i], class: "axis-text" }, root)
+        .textContent = label(s);
+    });
+
+    for (const s of lines) {
+      let d = "", prev = null;
+      for (const [t, v] of s.pts) {
+        const gap = prev === null || t - prev > 5000;  // Missing reports break the line
+        d += `${gap ? "M" : "L"}${x(t).toFixed(1)},${y(v).toFixed(1)}`;
+        prev = t;
+      }
+      const g = svg("g", { style: `--series:${series(s.id)}` }, root);
+      svg("path", { d, class: "series-line", "stroke-dasharray": dash(s.id) }, g);
+      const [lt, lv] = s.pts[s.pts.length - 1];
+      svg("circle", { cx: x(lt), cy: y(lv), r: 4, class: "series-dot" }, g);
+    }
+    container.replaceChildren(root);
+    const latest = lines.map((s) => `node ${s.id} ${opts.tick(s.pts[s.pts.length - 1][1])}`).join(", ");
+    container.setAttribute("aria-label", `${opts.name}, last ${label(rangeS).slice(1)}: ${latest}`);
+  }
+
+  function renderCharts() {
+    const b = state.co2_bands;
+    drawChart(el.co2Chart, 3, {
+      name: "CO2 in ppm",
+      domain: (lo, hi) => [Math.min(400, Math.floor(lo / 100) * 100), Math.max(b.poor + 200, Math.ceil(hi / 100) * 100 + 100)],
+      bands: [{ from: -1e9, to: b.fair, cls: "band-good" }, { from: b.fair, to: b.poor, cls: "band-fair" },
+              { from: b.poor, to: 1e9, cls: "band-poor" }],
+      tick: (v) => String(Math.round(v)),
+    });
+    drawChart(el.tempChart, 1, {
+      name: "Temperature in °C",
+      domain: (lo, hi) => [Math.floor(lo - 0.5), Math.ceil(hi + 0.5)],
+      tick: (v) => (Number.isInteger(v) ? String(v) : v.toFixed(1)),
+    });
+  }
+
+  /* ---- Main render ---- */
+  function render() {
+    const nodes = state.nodes;
+    el.empty.hidden = nodes.length > 0;
+    el.trends.hidden = nodes.length === 0;
+    renderSummary(nodes);
+    nodes.forEach(updateCard);
+
+    const changes = nodes.filter((n) => lastStatus.has(n.id) && lastStatus.get(n.id) !== n.status);
+    if (changes.length) el.announcer.textContent = changes.map((n) => `Node ${n.id} ${STATUS[n.status][0]}`).join(". ");
+    nodes.forEach((n) => lastStatus.set(n.id, n.status));
+
+    if (nodes.length) {
+      renderLegend(nodes);
+      renderCharts();
+    }
+    el.footnote.textContent = state.dropped ? `${state.dropped} malformed packets dropped` : "";
+  }
+
+  async function poll() {
+    try {
+      const res = await fetch("/api/state", { cache: "no-store" });
+      if (!res.ok) throw new Error(res.status);
+      state = await res.json();
+      failures = 0;
+      setLive("live");
+      render();
+    } catch (e) {
+      failures += 1;
+      if (failures >= 2) setLive("lost");
+    } finally {
+      setTimeout(poll, POLL_MS);
+    }
+  }
+
+  let resizeTimer;
+  window.addEventListener("resize", () => {
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(() => state && state.nodes.length && renderCharts(), 150);
+  });
+  poll();
+})();

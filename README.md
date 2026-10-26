@@ -60,6 +60,18 @@ python -m mosaic.simulator --nodes 3 --loss 0.1 --reboot-every 30
 
 On Windows, allow Python through the firewall when asked so real nodes can reach port 5005.
 
+### Live dashboard
+
+```
+python -m mosaic.dashboard                 # then open http://localhost:8050
+python -m mosaic.dashboard --simulate 3    # rehearse with simulated nodes, no second terminal
+```
+
+The dashboard runs the gateway and serves a web page with each node's status, readings,
+audio class and link quality, plus CO₂ and temperature trends for the last 1–10 minutes.
+Add `--http-host 0.0.0.0` to open it from another device on the same network, `--csv FILE`
+to log readings, and `--verbose` to also print every packet.
+
 ## Contributing
 
 `main` is protected: all changes go through a pull request with passing CI and one approval.

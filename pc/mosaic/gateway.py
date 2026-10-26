@@ -20,11 +20,12 @@ import enum
 import select
 import socket
 import sys
+import threading
 import time
 from collections import Counter
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Optional, TextIO
+from typing import Callable, Optional, TextIO
 
 from mosaic import protocol as p
 
@@ -224,27 +225,34 @@ class GatewayServer:
         now = time.monotonic()
         self._next_ping = now + ping_interval
         self._next_summary = now + summary_interval
+        # Held while processing, so another thread (the dashboard's web
+        # server) can read self.gateway safely.
+        self.lock = threading.Lock()
+        # Called as listener(header, telemetry, now) for every TELEMETRY.
+        self.telemetry_listeners: list[Callable[[p.Header, p.Telemetry, float], None]] = []
 
     def poll(self, timeout: float = 0.2) -> None:
         readable, _, _ = select.select([self.sock], [], [], timeout)
+        data = None
         if readable:
             try:
                 data, address = self.sock.recvfrom(p.MAX_DATAGRAM + 1)
             except ConnectionResetError:
                 # Windows reports an ICMP "port unreachable" for an earlier
                 # PING here (WSAECONNRESET). Harmless: the node is offline.
-                data = None
+                pass
+        with self.lock:
             if data is not None:
                 self._received(data, address, time.monotonic())
-        now = time.monotonic()
-        for node_id, status in self.gateway.status_changes(now):
-            self._print(f"node {node_id} is now {status.value}")
-        if now >= self._next_ping:
-            self.send_pings()
-            self._next_ping = now + self.ping_interval
-        if now >= self._next_summary:
-            self._print(format_summary(self.gateway, now))
-            self._next_summary = now + self.summary_interval
+            now = time.monotonic()
+            for node_id, status in self.gateway.status_changes(now):
+                self._print(f"node {node_id} is now {status.value}")
+            if now >= self._next_ping:
+                self.send_pings()
+                self._next_ping = now + self.ping_interval
+            if now >= self._next_summary:
+                self._print(format_summary(self.gateway, now))
+                self._next_summary = now + self.summary_interval
 
     def _received(self, data: bytes, address: Address, now: float) -> None:
         result = self.gateway.handle(data, address, now)
@@ -256,6 +264,8 @@ class GatewayServer:
             if self.csv:
                 self.csv.writerow(csv_row(header, payload))
                 self._csv_file.flush()
+            for listener in self.telemetry_listeners:
+                listener(header, payload, now)
         elif isinstance(payload, p.ConfigAck):
             self._print(f"node {header.node_id} CONFIG_ACK version "
                         f"{payload.config_version}: {payload.status.name}")

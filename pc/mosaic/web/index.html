@@ -1,0 +1,183 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MOSAIC dashboard</title>
+<script>
+  try {
+    var saved = localStorage.getItem("mosaic-theme");
+    if (saved === "light" || saved === "dark") document.documentElement.dataset.theme = saved;
+  } catch (e) {}
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap">
+<link rel="stylesheet" href="style.css">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect x='3' y='3' width='8' height='8' rx='2' fill='%23e8365f'/%3E%3Crect x='13' y='3' width='8' height='8' rx='2' fill='%23e8365f' opacity='.55'/%3E%3Crect x='3' y='13' width='8' height='8' rx='2' fill='%23e8365f' opacity='.55'/%3E%3Crect x='13' y='13' width='8' height='8' rx='2' fill='%23e8365f'/%3E%3C/svg%3E">
+</head>
+<body>
+<a class="skip-link" href="#main">Skip to content</a>
+
+<svg class="sprite" aria-hidden="true" focusable="false">
+  <symbol id="i-logo" viewBox="0 0 24 24"><rect x="3" y="3" width="8" height="8" rx="2" fill="currentColor" stroke="none"/><rect x="13" y="3" width="8" height="8" rx="2" fill="currentColor" stroke="none" opacity=".5"/><rect x="3" y="13" width="8" height="8" rx="2" fill="currentColor" stroke="none" opacity=".5"/><rect x="13" y="13" width="8" height="8" rx="2" fill="currentColor" stroke="none"/></symbol>
+  <symbol id="i-node" viewBox="0 0 24 24"><circle cx="12" cy="10" r="2"/><path d="M12 12v9M8.5 6.5a5 5 0 0 0 0 7M15.5 6.5a5 5 0 0 1 0 7M5.6 3.6a9 9 0 0 0 0 12.8M18.4 3.6a9 9 0 0 1 0 12.8"/></symbol>
+  <symbol id="i-thermo" viewBox="0 0 24 24"><path d="M10 13.5V5a2 2 0 1 1 4 0v8.5a4 4 0 1 1-4 0Z"/><path d="M12 10v6"/></symbol>
+  <symbol id="i-drop" viewBox="0 0 24 24"><path d="M12 3.5s-6 6.4-6 10.5a6 6 0 0 0 12 0c0-4.1-6-10.5-6-10.5Z"/></symbol>
+  <symbol id="i-air" viewBox="0 0 24 24"><path d="M3 8h10a3 3 0 1 0-3-3M3 12h15a3 3 0 1 1-3 3M3 16h6"/></symbol>
+  <symbol id="i-motion" viewBox="0 0 24 24"><path d="M3 12h4l3-7 4 14 3-7h4"/></symbol>
+  <symbol id="i-sound" viewBox="0 0 24 24"><path d="M4 10v4M8 7v10M12 4v16M16 7v10M20 10v4"/></symbol>
+  <symbol id="i-mute" viewBox="0 0 24 24"><path d="M4 10v4M8 7v10M16 7v4M20 10v4M3 3l18 18"/></symbol>
+  <symbol id="i-lecturer" viewBox="0 0 24 24"><path d="M4 5h16v10H10l-5 4v-4H4Z"/><path d="M8 9h8M8 12h5"/></symbol>
+  <symbol id="i-discussion" viewBox="0 0 24 24"><circle cx="8" cy="8" r="3"/><circle cx="17" cy="9" r="2.5"/><path d="M2.5 19a5.5 5.5 0 0 1 11 0M14 19a4 4 0 0 1 7.5-1.9"/></symbol>
+  <symbol id="i-background" viewBox="0 0 24 24"><path d="M3 10c3-3 6 3 9 0s6-3 9 0M3 15c3-3 6 3 9 0s6-3 9 0"/></symbol>
+  <symbol id="i-transient" viewBox="0 0 24 24"><path d="M13 3 5 14h6l-1 7 8-11h-6Z"/></symbol>
+  <symbol id="i-unsure" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .9-1 1.6v.6M12 17h.01"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12.5 4.5 4.5L19 7.5"/></symbol>
+  <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol>
+  <symbol id="i-offline" viewBox="0 0 24 24"><path d="M3 3l18 18M8.5 16a5 5 0 0 1 5.5-1M5.5 12.5a9.5 9.5 0 0 1 4.6-2.3M2.5 9a14 14 0 0 1 4.3-2.8M14.5 7.3A14 14 0 0 1 21.5 9M12 19.5h.01"/></symbol>
+  <symbol id="i-alert" viewBox="0 0 24 24"><path d="M12 4 21 20H3Z"/><path d="M12 10v4M12 17h.01"/></symbol>
+  <symbol id="i-loss" viewBox="0 0 24 24"><rect x="3" y="7" width="5" height="10" rx="1"/><rect x="16" y="7" width="5" height="10" rx="1" stroke-dasharray="2 2"/><path d="M8 12h3M13 12h3"/></symbol>
+  <symbol id="i-rtt" viewBox="0 0 24 24"><path d="M4 9h13l-3-3M20 15H7l3 3"/></symbol>
+  <symbol id="i-reboot" viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-2.3-5.7M20 4v5h-5"/></symbol>
+  <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></symbol>
+  <symbol id="i-moon" viewBox="0 0 24 24"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5Z"/></symbol>
+  <symbol id="i-auto" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 4v16" /><path d="M12 4a8 8 0 0 1 0 16Z" fill="currentColor" stroke="none"/></symbol>
+</svg>
+
+<header class="topbar">
+  <div class="wrap topbar-inner">
+    <a class="brand" href="/" aria-label="MOSAIC dashboard home">
+      <svg class="icon brand-mark" aria-hidden="true"><use href="#i-logo"/></svg>
+      <span class="wordmark">mosaic</span>
+    </a>
+    <div class="topbar-tools">
+      <span class="live" id="live" data-state="connecting">
+        <span class="live-dot" aria-hidden="true"></span><span id="live-text">Connecting</span>
+      </span>
+      <time class="clock" id="clock" aria-label="Current time"></time>
+      <button class="icon-btn" id="theme" type="button" aria-label="Theme: system">
+        <svg class="icon" aria-hidden="true"><use href="#i-auto"/></svg>
+      </button>
+    </div>
+  </div>
+</header>
+
+<main id="main" class="wrap" tabindex="-1">
+  <h1 class="sr-only">MOSAIC classroom sensing dashboard</h1>
+
+  <section class="summary" aria-label="Overview">
+    <article class="tile rise">
+      <div class="tile-head"><span class="badge"><svg class="icon" aria-hidden="true"><use href="#i-node"/></svg></span><span class="label">Nodes online</span></div>
+      <p class="big"><span id="s-online">0</span><span class="big-sub">/<span id="s-total">0</span></span></p>
+      <div class="dots" id="s-dots" aria-hidden="true"></div>
+    </article>
+    <article class="tile rise">
+      <div class="tile-head"><span class="badge"><svg class="icon" aria-hidden="true"><use href="#i-air"/></svg></span><span class="label" title="Highest CO₂ across online nodes">Air quality</span></div>
+      <p class="big"><span id="s-co2">—</span><span class="unit">ppm</span></p>
+      <span class="chip" id="s-air" data-level="none">—</span>
+    </article>
+    <article class="tile rise">
+      <div class="tile-head"><span class="badge"><svg class="icon" aria-hidden="true"><use href="#i-thermo"/></svg></span><span class="label" title="Average across online nodes">Temperature</span></div>
+      <p class="big"><span id="s-temp">—</span><span class="unit">°C</span></p>
+      <p class="minor"><svg class="icon icon-sm" aria-hidden="true"><use href="#i-drop"/></svg><span id="s-hum">—</span>% RH</p>
+    </article>
+    <article class="tile rise">
+      <div class="tile-head"><span class="badge"><svg class="icon" aria-hidden="true"><use href="#i-motion"/></svg></span><span class="label" title="Average share of time with motion">Motion</span></div>
+      <p class="big"><span id="s-pir">—</span><span class="unit">%</span></p>
+      <div class="meter" aria-hidden="true"><span id="s-pir-bar"></span></div>
+    </article>
+  </section>
+
+  <section aria-labelledby="nodes-h">
+    <h2 id="nodes-h" class="section-title">Nodes</h2>
+    <div class="empty" id="empty">
+      <svg class="empty-art" viewBox="0 0 220 120" aria-hidden="true">
+        <rect x="18" y="58" width="56" height="40" rx="6" class="art-board"/>
+        <rect x="34" y="70" width="24" height="16" rx="2" class="art-chip"/>
+        <path d="M46 58V40" class="art-line"/>
+        <path d="M36 32a14 14 0 0 1 20 0M30 25a22 22 0 0 1 32 0" class="art-wave"/>
+        <path d="M84 78h50" class="art-dash"/>
+        <rect x="142" y="52" width="62" height="40" rx="5" class="art-board"/>
+        <path d="M134 98h78" class="art-line"/>
+        <path d="M152 78l9-10 8 6 10-12 12 8" class="art-accent"/>
+      </svg>
+      <p class="empty-title">Waiting for nodes</p>
+      <p class="empty-hint">Power a node, or run <code>python -m mosaic.dashboard --simulate 3</code></p>
+    </div>
+    <div class="nodes" id="nodes"></div>
+  </section>
+
+  <section aria-labelledby="trends-h" class="trends" id="trends" hidden>
+    <div class="trends-head">
+      <h2 id="trends-h" class="section-title">Trends</h2>
+      <div class="chips" role="group" aria-label="Time range">
+        <button class="chip-btn" type="button" data-range="60" aria-pressed="false">1 min</button>
+        <button class="chip-btn" type="button" data-range="300" aria-pressed="true">5 min</button>
+        <button class="chip-btn" type="button" data-range="600" aria-pressed="false">10 min</button>
+      </div>
+    </div>
+    <div class="chips legend" id="legend" role="group" aria-label="Show nodes"></div>
+    <div class="charts">
+      <figure class="card chart-card">
+        <figcaption class="chart-title"><svg class="icon icon-sm" aria-hidden="true"><use href="#i-air"/></svg>CO₂ <span class="muted">ppm</span></figcaption>
+        <div class="chart" id="chart-co2" role="img"></div>
+        <div class="bands" aria-hidden="true">
+          <span><i class="sw sw-good"></i>Good</span><span><i class="sw sw-fair"></i>Fair</span><span><i class="sw sw-poor"></i>Poor</span>
+        </div>
+      </figure>
+      <figure class="card chart-card">
+        <figcaption class="chart-title"><svg class="icon icon-sm" aria-hidden="true"><use href="#i-thermo"/></svg>Temperature <span class="muted">°C</span></figcaption>
+        <div class="chart" id="chart-temp" role="img"></div>
+      </figure>
+    </div>
+  </section>
+
+  <p class="footnote" id="footnote"></p>
+  <div class="sr-only" aria-live="polite" id="announcer"></div>
+</main>
+
+<template id="node-tpl">
+  <article class="card node rise">
+    <header class="node-head">
+      <span class="badge"><svg class="icon" aria-hidden="true"><use href="#i-node"/></svg></span>
+      <h3 class="node-name"></h3>
+      <span class="series-key" aria-hidden="true"></span>
+      <span class="status" data-status="online"><svg class="icon icon-sm" aria-hidden="true"><use href="#i-check"/></svg><span class="status-text">Online</span></span>
+    </header>
+    <div class="metrics">
+      <div class="metric" data-k="temp"><svg class="icon" aria-hidden="true"><use href="#i-thermo"/></svg><div><p class="value"><span class="v">—</span><span class="unit">°C</span></p><p class="mlabel">Temperature</p></div></div>
+      <div class="metric" data-k="hum"><svg class="icon" aria-hidden="true"><use href="#i-drop"/></svg><div><p class="value"><span class="v">—</span><span class="unit">%</span></p><p class="mlabel">Humidity</p></div></div>
+      <div class="metric metric-wide" data-k="co2"><svg class="icon" aria-hidden="true"><use href="#i-air"/></svg>
+        <div class="grow"><p class="value"><span class="v">—</span><span class="unit">ppm</span><span class="chip chip-sm" data-level="none">—</span></p>
+        <div class="scale" aria-hidden="true"><span class="seg seg-good"></span><span class="seg seg-fair"></span><span class="seg seg-poor"></span><span class="marker"></span></div>
+        <p class="mlabel">CO₂</p></div></div>
+      <div class="metric metric-wide" data-k="pir"><svg class="icon" aria-hidden="true"><use href="#i-motion"/></svg>
+        <div class="grow"><p class="value"><span class="v">—</span><span class="unit">%</span></p>
+        <div class="meter" aria-hidden="true"><span></span></div>
+        <p class="mlabel">Motion</p></div></div>
+    </div>
+    <div class="audio" data-k="audio">
+      <svg class="icon audio-icon" aria-hidden="true"><use href="#i-mute"/></svg>
+      <div class="grow"><p class="audio-class">No audio</p>
+        <div class="probs" aria-hidden="true">
+          <span title="Background"><svg class="icon icon-xs"><use href="#i-background"/></svg><i></i></span>
+          <span title="Lecturer"><svg class="icon icon-xs"><use href="#i-lecturer"/></svg><i></i></span>
+          <span title="Discussion"><svg class="icon icon-xs"><use href="#i-discussion"/></svg><i></i></span>
+          <span title="Transient"><svg class="icon icon-xs"><use href="#i-transient"/></svg><i></i></span>
+        </div>
+      </div>
+      <span class="audio-conf"></span>
+    </div>
+    <footer class="link">
+      <span class="link-item" data-k="rssi"><span class="bars" aria-hidden="true"><i></i><i></i><i></i><i></i></span><span class="lv">—</span></span>
+      <span class="link-item" data-k="loss"><svg class="icon icon-sm" aria-hidden="true"><use href="#i-loss"/></svg><span class="lv">—</span></span>
+      <span class="link-item" data-k="rtt"><svg class="icon icon-sm" aria-hidden="true"><use href="#i-rtt"/></svg><span class="lv">—</span></span>
+      <span class="link-item" data-k="age"><svg class="icon icon-sm" aria-hidden="true"><use href="#i-clock"/></svg><span class="lv">—</span></span>
+    </footer>
+  </article>
+</template>
+
+<script src="app.js"></script>
+</body>
+</html>
