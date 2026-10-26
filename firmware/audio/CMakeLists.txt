@@ -2,7 +2,7 @@
 cmake_minimum_required(VERSION 3.13)
 
 # Import Raspberry Pi Pico SDK
-include($ENV{PICO_SDK_PATH}/external/pico_sdk_import.cmake)
+include("${PICO_SDK_PATH}/external/pico_sdk_import.cmake")
 
 project(mosaic_audio C CXX ASM)
 
