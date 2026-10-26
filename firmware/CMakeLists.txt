@@ -26,3 +26,4 @@ add_subdirectory(common)
 # Standalone sensor / DSP bring-up firmware, one executable per test.
 add_subdirectory(environment)
 add_subdirectory(tests)
+add_subdirectory(audio)
