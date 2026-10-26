@@ -69,6 +69,8 @@ python -m mosaic.dashboard --simulate 3    # rehearse with simulated nodes, no s
 
 The dashboard runs the gateway and serves a web page with each node's status, readings,
 audio class and link quality, plus CO₂ and temperature trends for the last 1–10 minutes.
+A pill in the top bar says whether the data is **Simulated** (sent from this computer),
+from real **Sensors**, or **Mixed**; simulated node cards are also tagged.
 Add `--http-host 0.0.0.0` to open it from another device on the same network, `--csv FILE`
 to log readings, and `--verbose` to also print every packet.
 

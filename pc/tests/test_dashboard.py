@@ -63,6 +63,15 @@ class DashboardState(unittest.TestCase):
         history = dashboard.state()["nodes"][0]["history"]
         self.assertEqual([point[3] for point in history], [610])
 
+    def test_simulated_source(self):
+        self.assertEqual(self.dashboard.state()["source"], "none")
+        self.receive(telemetry())  # From NODE_ADDR, a LAN address
+        self.assertEqual(self.dashboard.state()["source"], "sensors")
+        self.server._received(telemetry(node_id=2), ("127.0.0.1", 5006), time.monotonic())
+        state = self.dashboard.state()
+        self.assertEqual(state["source"], "mixed")
+        self.assertEqual([n["simulated"] for n in state["nodes"]], [False, True])
+
     def test_state_is_json(self):
         self.receive(telemetry(valid_flags=p.Valid.TEMP_HUM, temperature_c=20.0))
         json.dumps(self.dashboard.state())

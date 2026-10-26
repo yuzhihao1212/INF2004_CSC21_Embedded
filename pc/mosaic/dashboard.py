@@ -12,6 +12,7 @@ Standard library only, like the gateway.
 from __future__ import annotations
 
 import argparse
+import ipaddress
 import json
 import os
 import sys
@@ -64,12 +65,17 @@ class Dashboard:
         with self.server.lock:
             now = time.monotonic()
             gateway = self.server.gateway
+            nodes = [self._node(n, now) for _, n in sorted(gateway.nodes.items())]
+            simulated = {n["simulated"] for n in nodes}
             return {
                 "time_ms": int(time.time() * 1000),
                 "history_s": self.history_s,
                 "co2_bands": {"fair": CO2_FAIR_PPM, "poor": CO2_POOR_PPM},
                 "dropped": sum(gateway.dropped.values()),
-                "nodes": [self._node(n, now) for _, n in sorted(gateway.nodes.items())],
+                # none / simulated / sensors / mixed, for the header indicator
+                "source": ("none" if not nodes else "mixed" if len(simulated) == 2
+                           else "simulated" if True in simulated else "sensors"),
+                "nodes": nodes,
             }
 
     def _node(self, n: NodeState, now: float) -> dict:
@@ -78,6 +84,7 @@ class Dashboard:
             "status": n.status(now).value.lower(),
             "age_s": round(now - n.last_seen, 1),
             "ip": n.address[0],
+            "simulated": is_simulated(n.address[0]),
             "received": n.received,
             "lost": n.lost,
             "loss_pct": round(n.loss_pct, 1),
@@ -86,6 +93,16 @@ class Dashboard:
             "telemetry": _telemetry(n.telemetry) if n.telemetry else None,
             "history": list(self.history.get(n.node_id, ())),
         }
+
+
+def is_simulated(ip: str) -> bool:
+    """Packets from this computer come from the simulator; a real Pico always
+    sends from its own Wi-Fi address. The protocol itself has no such flag, so
+    a simulator run on another computer would show as real."""
+    try:
+        return ipaddress.ip_address(ip).is_loopback
+    except ValueError:
+        return False
 
 
 def _telemetry(t: p.Telemetry) -> dict:

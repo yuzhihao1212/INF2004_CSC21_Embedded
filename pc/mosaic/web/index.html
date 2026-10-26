@@ -40,6 +40,7 @@
   <symbol id="i-loss" viewBox="0 0 24 24"><rect x="3" y="7" width="5" height="10" rx="1"/><rect x="16" y="7" width="5" height="10" rx="1" stroke-dasharray="2 2"/><path d="M8 12h3M13 12h3"/></symbol>
   <symbol id="i-rtt" viewBox="0 0 24 24"><path d="M4 9h13l-3-3M20 15H7l3 3"/></symbol>
   <symbol id="i-reboot" viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-2.3-5.7M20 4v5h-5"/></symbol>
+  <symbol id="i-flask" viewBox="0 0 24 24"><path d="M9 3h6M10 3v6l-5.2 9.1A2 2 0 0 0 6.5 21h11a2 2 0 0 0 1.7-2.9L14 9V3M7.2 15h9.6"/></symbol>
   <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></symbol>
   <symbol id="i-moon" viewBox="0 0 24 24"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5Z"/></symbol>
   <symbol id="i-auto" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 4v16" /><path d="M12 4a8 8 0 0 1 0 16Z" fill="currentColor" stroke="none"/></symbol>
@@ -52,6 +53,9 @@
       <span class="wordmark">mosaic</span>
     </a>
     <div class="topbar-tools">
+      <span class="source" id="source" data-source="none" hidden>
+        <svg class="icon icon-sm" aria-hidden="true"><use href="#i-flask"/></svg><span id="source-text"></span>
+      </span>
       <span class="live" id="live" data-state="connecting">
         <span class="live-dot" aria-hidden="true"></span><span id="live-text">Connecting</span>
       </span>
@@ -143,6 +147,7 @@
       <span class="badge"><svg class="icon" aria-hidden="true"><use href="#i-node"/></svg></span>
       <h3 class="node-name"></h3>
       <span class="series-key" aria-hidden="true"></span>
+      <span class="sim-chip" hidden title="Simulated node: readings are generated, not measured"><svg class="icon icon-xs" aria-hidden="true"><use href="#i-flask"/></svg>Simulated</span>
       <span class="status" data-status="online"><svg class="icon icon-sm" aria-hidden="true"><use href="#i-check"/></svg><span class="status-text">Online</span></span>
     </header>
     <div class="metrics">
