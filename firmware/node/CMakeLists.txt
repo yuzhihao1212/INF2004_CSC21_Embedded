@@ -1,4 +1,4 @@
-# MOSAIC sensing node: environmental sensors -> protocol v1 TELEMETRY over Wi-Fi.
+# MOSAIC sensing node: environmental sensors -> protocol v2 TELEMETRY over Wi-Fi.
 # Per-node settings come from node_config.cmake (git-ignored, copy
 # node_config.example.cmake) or -D options. Without them the node still
 # builds and runs, but only reads its sensors.
