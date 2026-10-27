@@ -74,6 +74,17 @@ from real **Sensors**, or **Mixed**; simulated node cards are also tagged.
 Add `--http-host 0.0.0.0` to open it from another device on the same network, `--csv FILE`
 to log readings, and `--verbose` to also print every packet.
 
+To change a node's settings, POST only the fields you want to change. The gateway then delivers
+them as a CONFIG, retrying until the node acknowledges, and resends after the node reboots:
+
+```
+curl -d '{"report_interval_ms": 500, "mode": "DISCUSSION"}' http://localhost:8050/api/nodes/1/config
+```
+
+Fields and ranges are listed under CONFIG in [docs/protocol.md](docs/protocol.md). The
+`config` entry for each node in `/api/state` shows the delivery's progress. There are no
+buttons on the page for this yet.
+
 ## Contributing
 
 `main` is protected: all changes go through a pull request with passing CI and one approval.
