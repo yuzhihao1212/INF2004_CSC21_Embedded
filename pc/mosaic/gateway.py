@@ -29,6 +29,7 @@ from datetime import datetime
 from typing import Callable, Optional, TextIO
 
 from mosaic import protocol as p
+from mosaic.fusion import FusionConfig, FusionEngine, format_event
 
 OFFLINE_AFTER_S = 10.0
 STALE_AFTER_REPORTS = 3
@@ -352,8 +353,10 @@ class GatewayServer:
     def __init__(self, bind: Address = ("0.0.0.0", p.PORT_TELEMETRY),
                  config_port: int = p.PORT_CONFIG, ping_interval: float = PING_INTERVAL_S,
                  summary_interval: float = SUMMARY_INTERVAL_S,
-                 csv_file: Optional[TextIO] = None, out: TextIO = sys.stdout) -> None:
+                 csv_file: Optional[TextIO] = None, out: TextIO = sys.stdout,
+                 fusion: Optional[FusionEngine] = None) -> None:
         self.gateway = Gateway()
+        self.fusion = fusion  # Classroom states; None to only receive
         self.config_port = config_port
         self.ping_interval = ping_interval
         self.summary_interval = summary_interval
@@ -393,6 +396,8 @@ class GatewayServer:
                 self.send_pings()
                 self._next_ping = now + self.ping_interval
             self._send_all(self.gateway.config_sends(now, self.config_port), "CONFIG")
+            if self.fusion:
+                self._evaluate_fusion(now)
             for message in self.gateway.messages:
                 self._print(message)
             self.gateway.messages.clear()
@@ -410,11 +415,34 @@ class GatewayServer:
             if self.csv:
                 self.csv.writerow(csv_row(header, payload))
                 self._csv_file.flush()
+            if self.fusion:
+                self.fusion.add(header.node_id, payload, now)
             for listener in self.telemetry_listeners:
                 listener(header, payload, now)
         elif isinstance(payload, p.ConfigAck):
             self._print(f"node {header.node_id} CONFIG_ACK version "
                         f"{payload.config_version}: {payload.status.name}")
+
+    def _evaluate_fusion(self, now: float) -> None:
+        statuses = {node_id: node.status(now) for node_id, node in self.gateway.nodes.items()}
+        self.fusion.evaluate(
+            now,
+            online={n for n, s in statuses.items() if s == NodeStatus.ONLINE},
+            stale={n for n, s in statuses.items() if s == NodeStatus.STALE})
+        for event in self.fusion.drain_events():
+            self._print("classroom " + format_event(event))
+
+    def set_mode(self, mode: p.Mode) -> list[int]:
+        """Change the classroom mode: fusion rules switch at once, and every
+        known node gets a CONFIG with the new mode. Returns those node IDs."""
+        with self.lock:
+            now = time.monotonic()
+            if self.fusion:
+                self.fusion.set_mode(mode, now)
+            nodes = sorted(self.gateway.nodes)
+            for node_id in nodes:
+                self.gateway.set_config(node_id, now, mode=mode)
+            return nodes
 
     def send_pings(self) -> None:
         self._send_all(self.gateway.pings(time.monotonic(), self.config_port), "PING")
@@ -447,6 +475,18 @@ class GatewayServer:
         print(text, file=self.out, flush=True)
 
 
+def add_fusion_argument(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--fusion-config", metavar="FILE",
+                        help="JSON overriding fusion thresholds, zones or mode (see fusion.py)")
+
+
+def load_fusion_config(parser: argparse.ArgumentParser, path: Optional[str]) -> FusionConfig:
+    try:
+        return FusionConfig.from_json(path) if path else FusionConfig()
+    except (OSError, ValueError, KeyError, TypeError) as e:
+        parser.error(f"--fusion-config: {e}")
+
+
 def main(argv: Optional[list[str]] = None) -> None:
     parser = argparse.ArgumentParser(description="MOSAIC PC gateway (protocol v2)")
     parser.add_argument("--host", default="0.0.0.0", help="address to listen on")
@@ -455,11 +495,13 @@ def main(argv: Optional[list[str]] = None) -> None:
                         help="port nodes listen on for PING/CONFIG")
     parser.add_argument("--ping-interval", type=float, default=PING_INTERVAL_S)
     parser.add_argument("--csv", metavar="FILE", help="append every TELEMETRY to this CSV")
+    add_fusion_argument(parser)
     args = parser.parse_args(argv)
 
+    fusion = FusionEngine(load_fusion_config(parser, args.fusion_config))
     csv_file = open(args.csv, "a", newline="") if args.csv else None
     server = GatewayServer((args.host, args.port), args.node_port, args.ping_interval,
-                           csv_file=csv_file)
+                           csv_file=csv_file, fusion=fusion)
     try:
         server.run()
     finally:
