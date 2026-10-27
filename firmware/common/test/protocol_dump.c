@@ -20,35 +20,34 @@ int main(void) {
     memset(&t, 0, sizeof t);
     mosaic_header_init(&t.header, MOSAIC_MSG_TELEMETRY, 3, sizeof t.payload, 42, 123456);
     t.header.flags = MOSAIC_FLAG_FIRST_SINCE_BOOT;
-    t.payload.temperature_c = 25.5f;
-    t.payload.humidity_pct = 61.25f;
-    t.payload.audio_rms = 12.5f;
+    t.payload.temperature_x10 = -55;  /* Negative, to check the sign survives */
+    t.payload.humidity_x10 = 612;
     t.payload.dsp_time_us = 81000;
     t.payload.inference_time_us = 950;
     t.payload.free_heap_bytes = 65536;
     t.payload.co2_ppm = 812;
     t.payload.config_version = 7;
     t.payload.audio_overruns = 2;
-    t.payload.audio_class = MOSAIC_AUDIO_LECTURER_SPEECH;
+    t.payload.audio_window_seq = 301;
+    t.payload.audio_window_count = 2;
+    t.payload.audio[0] = (mosaic_audio_window_t){
+        .rms_x16 = 200, .audio_class = MOSAIC_AUDIO_LECTURER_SPEECH, .prob_pct = {5, 80, 10, 5}};
+    t.payload.audio[1] = (mosaic_audio_window_t){
+        .rms_x16 = 0xFFFF, .audio_class = MOSAIC_AUDIO_UNKNOWN, .prob_pct = {30, 40, 20, 10}};
     t.payload.pir_active_pct = 35;
-    t.payload.audio_prob_pct[0] = 5;
-    t.payload.audio_prob_pct[1] = 80;
-    t.payload.audio_prob_pct[2] = 10;
-    t.payload.audio_prob_pct[3] = 5;
-    t.payload.valid_flags = MOSAIC_VALID_TEMP_HUM | MOSAIC_VALID_CO2 |
-                            MOSAIC_VALID_PIR | MOSAIC_VALID_AUDIO;
+    t.payload.valid_flags = MOSAIC_VALID_TEMP_HUM | MOSAIC_VALID_CO2 | MOSAIC_VALID_PIR;
     t.payload.cpu_load_pct = 63;
     t.payload.wifi_rssi_dbm = -58;
     dump("telemetry", &t, sizeof t);
 
     mosaic_config_packet_t c;
     memset(&c, 0, sizeof c);
-    mosaic_header_init(&c.header, MOSAIC_MSG_CONFIG, 0, sizeof c.payload, 9, 5000);
+    mosaic_header_init(&c.header, MOSAIC_MSG_CONFIG, 3, sizeof c.payload, 9, 5000);  /* To node 3 */
     c.payload = (mosaic_config_t)MOSAIC_DEFAULT_CONFIG;
     c.payload.config_version = 7;
     c.payload.mode = MOSAIC_MODE_DISCUSSION;
-    c.payload.audio_gain = 1.5f;
-    if (mosaic_config_check(&c.payload) != MOSAIC_ACK_OK) return 1;
+    c.payload.audio_gain_x256 = 384;  /* 1.5 */
+    if (mosaic_config_check(&c.payload, 0) != MOSAIC_ACK_OK) return 1;
     dump("config", &c, sizeof c);
 
     mosaic_config_ack_packet_t a;
@@ -68,7 +67,9 @@ int main(void) {
     mosaic_config_t bad = MOSAIC_DEFAULT_CONFIG;
     bad.config_version = 1;
     bad.dht_interval_ms = 1000;  /* Below the DHT22 minimum */
-    if (mosaic_config_check(&bad) != MOSAIC_ACK_INVALID_VALUE) return 1;
+    if (mosaic_config_check(&bad, 0) != MOSAIC_ACK_INVALID_VALUE) return 1;
+    if (mosaic_config_check(&c.payload, 7) != MOSAIC_ACK_OK) return 1;  /* Retry */
+    if (mosaic_config_check(&c.payload, 8) != MOSAIC_ACK_STALE_VERSION) return 1;
     if (mosaic_header_check(&t.header, sizeof t) != MOSAIC_ACK_OK) return 1;
     if (mosaic_header_check(&t.header, sizeof t - 1) != MOSAIC_ACK_INVALID_VALUE) return 1;
     return 0;

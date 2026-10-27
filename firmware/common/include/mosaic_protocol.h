@@ -1,5 +1,5 @@
 /*
- * MOSAIC node <-> PC wire protocol, version 1.
+ * MOSAIC node <-> PC wire protocol, version 2.
  *
  * Specification: docs/protocol.md. The Python mirror is pc/mosaic/protocol.py;
  * any change here must be made there too and MOSAIC_PROTOCOL_VERSION bumped.
@@ -14,6 +14,10 @@
  * a raw buffer pointer: lwIP buffers may be unaligned, and an unaligned word
  * access hard-faults on the RP2040's Cortex-M0+.
  *
+ * Integers only: no float or double anywhere on the wire. Fractional values
+ * are scaled integers, and the suffix says by how much: temperature_x10 is
+ * tenths of a degree, audio_gain_x256 is Q8.8 (256 = 1.0).
+ *
  * Plain C11 and <stdint.h> only, so it builds for both the Pico and the host.
  */
 #ifndef MOSAIC_PROTOCOL_H
@@ -27,7 +31,7 @@ extern "C" {
 #endif
 
 #define MOSAIC_MAGIC            0x534Du  /* "MS" in little-endian byte order */
-#define MOSAIC_PROTOCOL_VERSION 1u
+#define MOSAIC_PROTOCOL_VERSION 2u
 
 #define MOSAIC_PORT_TELEMETRY   5005u    /* PC listens; nodes send TELEMETRY, CONFIG_ACK, PONG */
 #define MOSAIC_PORT_CONFIG      5006u    /* Node listens; PC sends CONFIG, PING */
@@ -53,7 +57,7 @@ typedef struct {
     uint16_t magic;         /* MOSAIC_MAGIC */
     uint8_t  version;       /* MOSAIC_PROTOCOL_VERSION */
     uint8_t  msg_type;      /* mosaic_msg_type_t */
-    uint8_t  node_id;       /* 1..MOSAIC_MAX_NODES on nodes; 0 when sent by the PC */
+    uint8_t  node_id;       /* Node -> PC: the sender. PC -> node: the destination. 1..MOSAIC_MAX_NODES */
     uint8_t  flags;         /* MOSAIC_FLAG_* */
     uint16_t payload_len;   /* Bytes after the header; must equal the type's payload size */
     uint32_t seq;           /* Per-sender counter, +1 per datagram sent; starts at 0 on boot */
@@ -62,7 +66,7 @@ typedef struct {
 
 #define MOSAIC_MAX_NODES 8u
 
-/* ---- TELEMETRY (40-byte payload) ------------------------------------- */
+/* ---- TELEMETRY (48-byte payload) ------------------------------------- */
 
 /* Audio classes. Must match the labels the ML model is trained on. */
 typedef enum {
@@ -80,25 +84,36 @@ typedef enum {
 #define MOSAIC_VALID_CO2        (1u << 1)  /* CO2 reading current (not stale, not warming up) */
 #define MOSAIC_VALID_CO2_WARMUP (1u << 2)  /* CO2 sensor still in warm-up period */
 #define MOSAIC_VALID_PIR        (1u << 3)
-#define MOSAIC_VALID_AUDIO      (1u << 4)  /* audio_class, probabilities and audio_rms valid */
+/* Bit 4 was AUDIO in v1. Audio validity is now audio_window_count. */
+
+/* One classified 500 ms audio window. */
+typedef struct {
+    uint16_t rms_x16;                /* Mean RMS in ADC units, Q12.4 (16 = 1.0) */
+    uint8_t  audio_class;            /* mosaic_audio_class_t */
+    uint8_t  prob_pct[MOSAIC_AUDIO_CLASS_COUNT]; /* Per-class probability, 0..100 */
+    uint8_t  reserved;               /* Send 0 */
+} mosaic_audio_window_t;
+
+/* Two 500 ms windows fit in the default 1 s report, so none are discarded. */
+#define MOSAIC_AUDIO_WINDOWS_PER_REPORT 2u
 
 typedef struct {
-    float    temperature_c;
-    float    humidity_pct;
-    float    audio_rms;              /* Mean RMS of the last classification window (ADC units) */
-    uint32_t dsp_time_us;            /* Feature extraction time for the last window */
-    uint32_t inference_time_us;      /* ML inference time for the last window */
+    uint32_t dsp_time_us;            /* Longest feature extraction in this interval */
+    uint32_t inference_time_us;      /* Longest ML inference in this interval */
     uint32_t free_heap_bytes;
+    int16_t  temperature_x10;        /* DHT22, 0.1 degC */
+    uint16_t humidity_x10;           /* DHT22, 0.1 %RH */
     uint16_t co2_ppm;
     uint16_t config_version;         /* Config currently applied; 0 = compiled-in defaults */
     uint16_t audio_overruns;         /* Audio windows dropped since boot (sampling reliability) */
-    uint8_t  audio_class;            /* mosaic_audio_class_t */
+    uint16_t audio_window_seq;       /* Number of the newest window in audio[]; +1 per window */
+    mosaic_audio_window_t audio[MOSAIC_AUDIO_WINDOWS_PER_REPORT]; /* Oldest first */
+    uint8_t  audio_window_count;     /* Valid entries in audio[]: 0..2. Unused entries are 0 */
     uint8_t  pir_active_pct;         /* % of PIR samples showing motion during this interval */
-    uint8_t  audio_prob_pct[MOSAIC_AUDIO_CLASS_COUNT]; /* Per-class probability, 0..100 */
     uint8_t  valid_flags;            /* MOSAIC_VALID_* */
     uint8_t  cpu_load_pct;
     int8_t   wifi_rssi_dbm;
-    uint8_t  reserved;               /* Send 0 */
+    uint8_t  reserved[3];            /* Send 0 */
 } mosaic_telemetry_t;
 
 /* ---- CONFIG (16-byte payload) ---------------------------------------- */
@@ -121,10 +136,10 @@ typedef struct {
     uint16_t report_interval_ms;
     uint16_t dht_interval_ms;
     uint16_t co2_interval_ms;
-    float    audio_gain;             /* Multiplier applied to samples before feature extraction */
+    uint16_t audio_gain_x256;        /* Sample multiplier before feature extraction, Q8.8 */
     uint8_t  mode;                   /* mosaic_mode_t */
     uint8_t  audio_conf_threshold_pct; /* Below this, the node reports MOSAIC_AUDIO_UNKNOWN */
-    uint8_t  reserved[2];            /* Send 0 */
+    uint8_t  reserved[4];            /* Send 0 */
 } mosaic_config_t;
 
 /* Accepted ranges. A node rejects a CONFIG with any field outside them. */
@@ -134,8 +149,8 @@ typedef struct {
 #define MOSAIC_DHT_INTERVAL_MAX_MS     60000u
 #define MOSAIC_CO2_INTERVAL_MIN_MS     1000u
 #define MOSAIC_CO2_INTERVAL_MAX_MS     60000u
-#define MOSAIC_AUDIO_GAIN_MIN          0.1f
-#define MOSAIC_AUDIO_GAIN_MAX          10.0f
+#define MOSAIC_AUDIO_GAIN_X256_MIN     26u     /* 0.1 */
+#define MOSAIC_AUDIO_GAIN_X256_MAX     2560u   /* 10.0 */
 
 /* Defaults a node uses from boot until its first CONFIG (config_version 0). */
 #define MOSAIC_DEFAULT_CONFIG { \
@@ -143,10 +158,10 @@ typedef struct {
     .report_interval_ms = 1000, \
     .dht_interval_ms = 2500, \
     .co2_interval_ms = 2000, \
-    .audio_gain = 1.0f, \
+    .audio_gain_x256 = 256, \
     .mode = MOSAIC_MODE_LECTURE, \
     .audio_conf_threshold_pct = 60, \
-    .reserved = {0, 0}, \
+    .reserved = {0, 0, 0, 0}, \
 }
 
 /* ---- CONFIG_ACK (4-byte payload) ------------------------------------- */
@@ -155,6 +170,7 @@ typedef enum {
     MOSAIC_ACK_OK            = 0,  /* Applied */
     MOSAIC_ACK_INVALID_VALUE = 1,  /* A field was out of range; nothing applied */
     MOSAIC_ACK_UNSUPPORTED   = 2,  /* Unknown protocol version or message */
+    MOSAIC_ACK_STALE_VERSION = 3,  /* config_version older than the one applied; nothing applied */
 } mosaic_ack_status_t;
 
 typedef struct {
@@ -219,19 +235,23 @@ static inline mosaic_ack_status_t mosaic_header_check(const mosaic_header_t *h, 
     return MOSAIC_ACK_OK;
 }
 
-/* Range-check a CONFIG before applying it. */
-static inline mosaic_ack_status_t mosaic_config_check(const mosaic_config_t *c) {
+/*
+ * Check a CONFIG before applying it. current_version is the config_version the
+ * node has applied now (0 after boot). An older version is a delayed or
+ * replayed packet and is refused; the same version again is a retry and passes.
+ */
+static inline mosaic_ack_status_t mosaic_config_check(const mosaic_config_t *c,
+                                                      uint16_t current_version) {
     if (c->config_version == 0) return MOSAIC_ACK_INVALID_VALUE;
+    if (c->config_version < current_version) return MOSAIC_ACK_STALE_VERSION;
     if (c->report_interval_ms < MOSAIC_REPORT_INTERVAL_MIN_MS ||
         c->report_interval_ms > MOSAIC_REPORT_INTERVAL_MAX_MS) return MOSAIC_ACK_INVALID_VALUE;
     if (c->dht_interval_ms < MOSAIC_DHT_INTERVAL_MIN_MS ||
         c->dht_interval_ms > MOSAIC_DHT_INTERVAL_MAX_MS) return MOSAIC_ACK_INVALID_VALUE;
     if (c->co2_interval_ms < MOSAIC_CO2_INTERVAL_MIN_MS ||
         c->co2_interval_ms > MOSAIC_CO2_INTERVAL_MAX_MS) return MOSAIC_ACK_INVALID_VALUE;
-    /* Written so that NaN fails both comparisons and is rejected. */
-    if (!(c->audio_gain >= MOSAIC_AUDIO_GAIN_MIN && c->audio_gain <= MOSAIC_AUDIO_GAIN_MAX)) {
-        return MOSAIC_ACK_INVALID_VALUE;
-    }
+    if (c->audio_gain_x256 < MOSAIC_AUDIO_GAIN_X256_MIN ||
+        c->audio_gain_x256 > MOSAIC_AUDIO_GAIN_X256_MAX) return MOSAIC_ACK_INVALID_VALUE;
     if (c->mode >= MOSAIC_MODE_COUNT) return MOSAIC_ACK_INVALID_VALUE;
     if (c->audio_conf_threshold_pct > 100) return MOSAIC_ACK_INVALID_VALUE;
     return MOSAIC_ACK_OK;
@@ -245,16 +265,18 @@ static inline mosaic_ack_status_t mosaic_config_check(const mosaic_config_t *c) 
 #define MOSAIC_STATIC_ASSERT _Static_assert
 #endif
 
-MOSAIC_STATIC_ASSERT(sizeof(float) == 4, "float must be IEEE-754 single precision");
 MOSAIC_STATIC_ASSERT(sizeof(mosaic_header_t) == 16, "header layout changed");
-MOSAIC_STATIC_ASSERT(sizeof(mosaic_telemetry_t) == 40, "telemetry layout changed");
+MOSAIC_STATIC_ASSERT(sizeof(mosaic_audio_window_t) == 8, "audio window layout changed");
+MOSAIC_STATIC_ASSERT(sizeof(mosaic_telemetry_t) == 48, "telemetry layout changed");
 MOSAIC_STATIC_ASSERT(sizeof(mosaic_config_t) == 16, "config layout changed");
 MOSAIC_STATIC_ASSERT(sizeof(mosaic_config_ack_t) == 4, "config ack layout changed");
 MOSAIC_STATIC_ASSERT(sizeof(mosaic_ping_t) == 8, "ping layout changed");
-MOSAIC_STATIC_ASSERT(offsetof(mosaic_telemetry_t, co2_ppm) == 24, "telemetry layout changed");
-MOSAIC_STATIC_ASSERT(offsetof(mosaic_telemetry_t, audio_prob_pct) == 32, "telemetry layout changed");
-MOSAIC_STATIC_ASSERT(offsetof(mosaic_config_t, audio_gain) == 8, "config layout changed");
-MOSAIC_STATIC_ASSERT(sizeof(mosaic_telemetry_packet_t) == 56, "telemetry packet has padding");
+MOSAIC_STATIC_ASSERT(offsetof(mosaic_telemetry_t, temperature_x10) == 12, "telemetry layout changed");
+MOSAIC_STATIC_ASSERT(offsetof(mosaic_telemetry_t, audio) == 24, "telemetry layout changed");
+MOSAIC_STATIC_ASSERT(offsetof(mosaic_telemetry_t, audio_window_count) == 40, "telemetry layout changed");
+MOSAIC_STATIC_ASSERT(offsetof(mosaic_config_t, audio_gain_x256) == 8, "config layout changed");
+MOSAIC_STATIC_ASSERT(offsetof(mosaic_config_t, mode) == 10, "config layout changed");
+MOSAIC_STATIC_ASSERT(sizeof(mosaic_telemetry_packet_t) == 64, "telemetry packet has padding");
 MOSAIC_STATIC_ASSERT(sizeof(mosaic_config_packet_t) == 32, "config packet has padding");
 MOSAIC_STATIC_ASSERT(sizeof(mosaic_config_ack_packet_t) == 20, "config ack packet has padding");
 MOSAIC_STATIC_ASSERT(sizeof(mosaic_ping_packet_t) == 24, "ping packet has padding");
