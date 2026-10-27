@@ -105,6 +105,28 @@ where `fusion.json` is, for example, `{"co2_poor_ppm": 1500, "zones": {"1": "A",
 `pc/tests/test_fusion.py` holds the scripted scenarios (lecture, chatter, discussion,
 ventilation and so on) that check the rules.
 
+To demonstrate the states without hardware, run a scripted classroom:
+
+```
+python -m mosaic.dashboard --scenario demo
+```
+
+Four simulated nodes play the scenario. The console announces each phase and the state it
+should produce, and prints every classroom state change. Scenarios (defined in
+`pc/mosaic/scenarios.py`):
+
+| Scenario | Shows | Length |
+|----------|-------|--------|
+| `lecture` | empty → lecture → rear chatter (noise rising → sustained chatter) → settles | 8 min |
+| `discussion` | group work: noise in Lecture mode, **Discussion** if you click that mode | 6 min |
+| `ventilation` | CO₂ builds up → poor ventilation → window opened → normal | 6 min |
+| `comfort` | air-conditioning fails → out of range → restored | 6 min |
+| `exam` | silent, motionless exam stays occupied (PIR is motion, not presence) | 6 min |
+| `demo` | all of the above in one run | 18 min |
+
+`pc/tests/test_scenarios.py` plays each one through the fusion engine and fails if a phase no
+longer reaches its state, for example after a threshold is changed.
+
 ## Contributing
 
 `main` is protected: all changes go through a pull request with passing CI and one approval.
