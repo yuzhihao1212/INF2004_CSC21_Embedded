@@ -3,6 +3,7 @@
 Run from the pc/ folder, then open http://localhost:8050 :
     python -m mosaic.dashboard
     python -m mosaic.dashboard --simulate 3     # rehearse without hardware
+    python -m mosaic.dashboard --scenario demo  # 4 simulated nodes play a scripted classroom
 
 The page (mosaic/web/) polls /api/state once a second. To change a node's
 settings, POST the fields to change as JSON to /api/nodes/<id>/config, e.g.
@@ -256,15 +257,19 @@ def main(argv: Optional[list[str]] = None) -> None:
     parser.add_argument("--csv", metavar="FILE", help="append every TELEMETRY to this CSV")
     parser.add_argument("--simulate", type=int, default=0, metavar="N",
                         help="also run N simulated nodes in this process")
+    simulator.add_scenario_argument(parser)
     parser.add_argument("--verbose", action="store_true", help="print every packet")
     add_fusion_argument(parser)
     args = parser.parse_args(argv)
+    if args.scenario and not args.simulate:
+        args.simulate = 4  # Scenarios script zones A-D
     fusion = FusionEngine(load_fusion_config(parser, args.fusion_config))
 
     csv_file = open(args.csv, "a", newline="") if args.csv else None
     quiet = None if args.verbose else open(os.devnull, "w")
     server = GatewayServer((args.host, args.port), args.node_port, args.ping_interval,
-                           csv_file=csv_file, out=quiet or sys.stdout, fusion=fusion)
+                           csv_file=csv_file, out=quiet or sys.stdout, fusion=fusion,
+                           fusion_out=sys.stdout)
     dashboard = Dashboard(server)
     httpd = start_http(dashboard, args.http_host, args.http_port)
     url_host = "localhost" if args.http_host in ("127.0.0.1", "0.0.0.0") else args.http_host
@@ -274,6 +279,8 @@ def main(argv: Optional[list[str]] = None) -> None:
     if args.simulate:
         sim_args = ["--nodes", str(args.simulate), "--pc-ip", "127.0.0.1",
                     "--pc-port", str(args.port), "--listen-port", str(args.node_port)]
+        if args.scenario:
+            sim_args += ["--scenario", args.scenario]
         threading.Thread(target=simulator.main, args=(sim_args,), daemon=True).start()
 
     try:
