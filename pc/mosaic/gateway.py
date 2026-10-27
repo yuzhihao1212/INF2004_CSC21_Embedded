@@ -354,9 +354,11 @@ class GatewayServer:
                  config_port: int = p.PORT_CONFIG, ping_interval: float = PING_INTERVAL_S,
                  summary_interval: float = SUMMARY_INTERVAL_S,
                  csv_file: Optional[TextIO] = None, out: TextIO = sys.stdout,
-                 fusion: Optional[FusionEngine] = None) -> None:
+                 fusion: Optional[FusionEngine] = None,
+                 fusion_out: Optional[TextIO] = None) -> None:
         self.gateway = Gateway()
         self.fusion = fusion  # Classroom states; None to only receive
+        self.fusion_out = fusion_out or out  # Where classroom state changes are printed
         self.config_port = config_port
         self.ping_interval = ping_interval
         self.summary_interval = summary_interval
@@ -430,7 +432,7 @@ class GatewayServer:
             online={n for n, s in statuses.items() if s == NodeStatus.ONLINE},
             stale={n for n, s in statuses.items() if s == NodeStatus.STALE})
         for event in self.fusion.drain_events():
-            self._print("classroom " + format_event(event))
+            print("classroom " + format_event(event), file=self.fusion_out, flush=True)
 
     def set_mode(self, mode: p.Mode) -> list[int]:
         """Change the classroom mode: fusion rules switch at once, and every
