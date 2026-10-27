@@ -13,7 +13,7 @@ ml/                Audio dataset preparation, feature extraction and model train
   scripts/         Run from the repository root, e.g. python ml/scripts/train_pico_model.py
   data/            Feature datasets (raw audio folders are git-ignored)
 pc/                PC-side gateway, sensor fusion and dashboard
-  mosaic/          Protocol v1, gateway receiver and node simulator
+  mosaic/          Protocol v2, gateway receiver and node simulator
   tests/           Unit tests, run from pc/ with python -m unittest
   prototype/       Early text-format UDP sender/receiver (superseded by mosaic/)
 docs/              Project brief and team workflow
