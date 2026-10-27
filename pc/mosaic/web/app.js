@@ -18,6 +18,15 @@
     mixed: ["Mixed", "i-flask", "Some nodes are simulated: check each card"],
   };
   const LEVEL = { good: "Good", fair: "Fair", poor: "Poor", warmup: "Warming up", none: "—" };
+  const ACTIVITY = {
+    UNKNOWN: "No data", EMPTY: "Empty", QUIET: "Occupied, quiet", FOCUSED_LECTURE: "Focused lecture",
+    DISCUSSION: "Discussion", NOISE_RISING: "Noise rising", SUSTAINED_CHATTER: "Sustained chatter",
+  };
+  // [label, chip level]
+  const AIR = { UNKNOWN: ["Air: no data", "warmup"], NORMAL: ["Air: normal", "good"],
+                POOR_VENTILATION: ["Poor ventilation", "poor"] };
+  const COMFORT = { UNKNOWN: ["Comfort: no data", "warmup"], COMFORTABLE: ["Comfortable", "good"],
+                    OUT_OF_RANGE: ["Temperature/humidity out of range", "fair"] };
   const DASHES = ["", "7 4", "2 4", "10 4 2 4"];  // Second cue besides colour
   const LINK_LABELS = { rssi: "Wi-Fi signal", loss: "Packet loss", rtt: "Round trip", age: "Last update" };
 
@@ -307,6 +316,33 @@
     });
   }
 
+  /* ---- Classroom (fusion engine) ---- */
+  function renderClassroom(c) {
+    $("#classroom").hidden = !c;
+    if (!c) return;
+    const activity = $("#c-activity");
+    activity.textContent = ACTIVITY[c.activity] || c.activity;
+    activity.dataset.occupied = String(c.occupied);
+    for (const [id, table, value] of [["#c-air", AIR, c.air], ["#c-comfort", COMFORT, c.comfort]]) {
+      const [text, level] = table[value];
+      const chip = $(id);
+      chip.textContent = text;
+      chip.dataset.level = level;
+    }
+    $("#c-confidence").textContent = `Confidence ${Math.round(c.confidence * 100)}%`;
+    $("#c-reason").textContent = c.comfort_reasons.join(", ");
+    document.querySelectorAll("#modes .chip-btn").forEach((b) =>
+      b.setAttribute("aria-pressed", String(b.dataset.mode === c.mode)));
+  }
+
+  document.querySelectorAll("#modes .chip-btn").forEach((b) => b.addEventListener("click", async () => {
+    const res = await fetch("/api/mode", { method: "POST", body: JSON.stringify({ mode: b.dataset.mode }) });
+    if (res.ok) {
+      const { nodes } = await res.json();
+      el.announcer.textContent = `Mode set to ${b.textContent}; sent to ${nodes.length} nodes`;
+    }
+  }));
+
   /* ---- Main render ---- */
   function render() {
     const nodes = state.nodes;
@@ -321,6 +357,7 @@
     }
     el.empty.hidden = nodes.length > 0;
     el.trends.hidden = nodes.length === 0;
+    renderClassroom(state.classroom);
     renderSummary(nodes);
     nodes.forEach(updateCard);
 

@@ -12,6 +12,7 @@ import urllib.request
 
 from mosaic import protocol as p
 from mosaic.dashboard import Dashboard, start_http
+from mosaic.fusion import FusionEngine
 from mosaic.gateway import GatewayServer
 
 NODE_ADDR = ("192.168.1.21", p.PORT_CONFIG)
@@ -165,6 +166,47 @@ class ConfigApi(unittest.TestCase):
                 self.assertIn("error", reply)
         with self.server.lock:
             self.assertIsNone(self.server.gateway.nodes[1].config)
+
+
+class ModeApi(unittest.TestCase):
+    def setUp(self):
+        self.server = GatewayServer(bind=("127.0.0.1", 0), out=io.StringIO(),
+                                    fusion=FusionEngine())
+        self.dashboard = Dashboard(self.server)
+        self.httpd = start_http(self.dashboard, "127.0.0.1", 0)
+        self.addCleanup(self.server.close)
+        self.addCleanup(self.httpd.server_close)
+        self.addCleanup(self.httpd.shutdown)
+        self.url = f"http://127.0.0.1:{self.httpd.server_address[1]}/api/mode"
+        for node_id in (1, 2):
+            self.server._received(telemetry(node_id=node_id), NODE_ADDR, time.monotonic())
+
+    def post(self, body):
+        try:
+            with urllib.request.urlopen(self.url, data=json.dumps(body).encode(), timeout=2) as r:
+                return r.status, json.loads(r.read())
+        except urllib.error.HTTPError as e:
+            with e:
+                return e.code, json.loads(e.read())
+
+    def test_mode_switches_fusion_and_configures_nodes(self):
+        self.assertEqual(self.post({"mode": "DISCUSSION"}),
+                         (202, {"mode": "DISCUSSION", "nodes": [1, 2]}))
+        self.assertEqual(self.server.fusion.mode, p.Mode.DISCUSSION)
+        for node in self.server.gateway.nodes.values():
+            self.assertEqual(node.config.config.mode, p.Mode.DISCUSSION)
+        self.server.poll(timeout=0)  # Evaluates fusion
+        classroom = self.dashboard.state()["classroom"]
+        self.assertEqual((classroom["mode"], classroom["activity"]), ("DISCUSSION", "UNKNOWN"))
+        self.assertEqual([z["zone"] for z in classroom["zones"]], ["A", "B"])
+
+    def test_bad_mode(self):
+        for body in [{"mode": "party"}, {"mode": 7}, {"mode": "LECTURE", "x": 1}, {}]:
+            with self.subTest(body=body):
+                status, reply = self.post(body)
+                self.assertEqual(status, 400)
+                self.assertIn("error", reply)
+        self.assertEqual(self.server.fusion.mode, p.Mode.LECTURE)
 
 
 if __name__ == "__main__":
