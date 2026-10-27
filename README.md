@@ -85,6 +85,26 @@ Fields and ranges are listed under CONFIG in [docs/protocol.md](docs/protocol.md
 `config` entry for each node in `/api/state` shows the delivery's progress. There are no
 buttons on the page for this yet.
 
+### Classroom states (fusion)
+
+The gateway and dashboard run the fusion engine (`pc/mosaic/fusion.py`, statechart 6.4). It
+combines every zone's audio probabilities, PIR motion, CO₂ and temperature/humidity into
+three parallel states: **activity** (empty, quiet, focused lecture, discussion, noise rising,
+sustained chatter), **air** (normal or poor ventilation) and **comfort**. The page shows them
+under *Classroom*, with buttons that switch the classroom mode (Lecture, Discussion, Quiet work)
+for fusion and every node at once.
+
+Thresholds, dwell times and the node → zone map are defaults in `FusionConfig`. To tune them
+without editing code, pass a JSON file containing only the values to change:
+
+```
+python -m mosaic.dashboard --fusion-config fusion.json
+```
+
+where `fusion.json` is, for example, `{"co2_poor_ppm": 1500, "zones": {"1": "A", "2": "C"}}`.
+`pc/tests/test_fusion.py` holds the scripted scenarios (lecture, chatter, discussion,
+ventilation and so on) that check the rules.
+
 ## Contributing
 
 `main` is protected: all changes go through a pull request with passing CI and one approval.
