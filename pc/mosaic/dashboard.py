@@ -9,8 +9,10 @@ settings, POST the fields to change as JSON to /api/nodes/<id>/config, e.g.
     curl -d '{"report_interval_ms": 500, "mode": "DISCUSSION"}' \
          http://localhost:8050/api/nodes/1/config
 The gateway then delivers it as a CONFIG and /api/state shows its progress.
-The CO2 bands are
-display thresholds only; sensor fusion (occupancy, alerts) is not built yet.
+POST {"mode": "DISCUSSION"} to /api/mode to change the classroom mode: fusion
+switches rules and every node gets the new mode. /api/state includes the
+fusion engine's classroom states under "classroom". The CO2 bands are
+display colours only; fusion has its own thresholds.
 Standard library only, like the gateway.
 """
 
@@ -31,7 +33,9 @@ from typing import Optional
 
 from mosaic import protocol as p
 from mosaic import simulator
-from mosaic.gateway import PING_INTERVAL_S, ConfigDelivery, GatewayServer, NodeState
+from mosaic.fusion import FusionEngine
+from mosaic.gateway import (PING_INTERVAL_S, ConfigDelivery, GatewayServer, NodeState,
+                            add_fusion_argument, load_fusion_config)
 
 HTTP_PORT = 8050
 HISTORY_S = 600
@@ -84,6 +88,7 @@ class Dashboard:
                 "source": ("none" if not nodes else "mixed" if len(simulated) == 2
                            else "simulated" if True in simulated else "sensors"),
                 "nodes": nodes,
+                "classroom": self.server.fusion.state() if self.server.fusion else None,
             }
 
     def _node(self, n: NodeState, now: float) -> dict:
@@ -183,7 +188,10 @@ def make_handler(dashboard: Dashboard) -> type[BaseHTTPRequestHandler]:
             self._send(200, _CONTENT_TYPES[file.suffix], file.read_bytes())
 
         def do_POST(self) -> None:
-            match = _CONFIG_PATH.fullmatch(self.path.split("?", 1)[0])
+            path = self.path.split("?", 1)[0]
+            if path == "/api/mode":
+                return self._post_mode()
+            match = _CONFIG_PATH.fullmatch(path)
             if not match:
                 return self._send(404, "text/plain; charset=utf-8", b"Not found")
             length = int(self.headers.get("Content-Length") or 0)
@@ -197,6 +205,20 @@ def make_handler(dashboard: Dashboard) -> type[BaseHTTPRequestHandler]:
             except ValueError as e:  # Includes malformed JSON
                 return self._json(400, {"error": str(e)})
             self._json(202, {"config_version": config.config_version})
+
+        def _post_mode(self) -> None:
+            length = int(self.headers.get("Content-Length") or 0)
+            if length > _MAX_BODY:
+                return self._json(413, {"error": "request too large"})
+            try:
+                body = json.loads(self.rfile.read(length) or b"null")
+                if not isinstance(body, dict) or set(body) != {"mode"}:
+                    raise ValueError('expected {"mode": "LECTURE" | "DISCUSSION" | "QUIET_WORK"}')
+                mode = p.Mode(config_fields(body)["mode"])
+                nodes = dashboard.server.set_mode(mode)
+            except ValueError as e:
+                return self._json(400, {"error": str(e)})
+            self._json(202, {"mode": mode.name, "nodes": nodes})
 
         def _json(self, code: int, value: dict) -> None:
             self._send(code, "application/json", json.dumps(value).encode())
@@ -235,12 +257,14 @@ def main(argv: Optional[list[str]] = None) -> None:
     parser.add_argument("--simulate", type=int, default=0, metavar="N",
                         help="also run N simulated nodes in this process")
     parser.add_argument("--verbose", action="store_true", help="print every packet")
+    add_fusion_argument(parser)
     args = parser.parse_args(argv)
+    fusion = FusionEngine(load_fusion_config(parser, args.fusion_config))
 
     csv_file = open(args.csv, "a", newline="") if args.csv else None
     quiet = None if args.verbose else open(os.devnull, "w")
     server = GatewayServer((args.host, args.port), args.node_port, args.ping_interval,
-                           csv_file=csv_file, out=quiet or sys.stdout)
+                           csv_file=csv_file, out=quiet or sys.stdout, fusion=fusion)
     dashboard = Dashboard(server)
     httpd = start_http(dashboard, args.http_host, args.http_port)
     url_host = "localhost" if args.http_host in ("127.0.0.1", "0.0.0.0") else args.http_host
