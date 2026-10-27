@@ -108,9 +108,10 @@ def is_simulated(ip: str) -> bool:
 def _telemetry(t: p.Telemetry) -> dict:
     v = t.valid_flags
     audio = None
-    if p.Valid.AUDIO in v:
-        audio = {"class": t.audio_class.name.lower(), "confidence": t.audio_confidence_pct,
-                 "probs": list(t.audio_prob_pct)}
+    if t.latest_audio:
+        w = t.latest_audio
+        audio = {"class": w.audio_class.name.lower(), "confidence": w.confidence_pct,
+                 "probs": list(w.prob_pct)}
     return {
         "temperature_c": round(t.temperature_c, 1) if p.Valid.TEMP_HUM in v else None,
         "humidity_pct": round(t.humidity_pct, 1) if p.Valid.TEMP_HUM in v else None,
