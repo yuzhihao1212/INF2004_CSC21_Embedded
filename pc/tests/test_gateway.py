@@ -149,17 +149,20 @@ class Latency(unittest.TestCase):
         data, address = pings[0]
         self.assertEqual(address, (NODE_ADDR[0], p.PORT_CONFIG))
         header, ping = p.decode(data)
-        self.assertEqual((header.msg_type, header.node_id), (p.MsgType.PING, 0))
+        self.assertEqual((header.msg_type, header.node_id), (p.MsgType.PING, 1))  # Destination
         gw.handle(datagram(p.MsgType.PONG, ping, seq=1), NODE_ADDR, now=50.012)
         self.assertAlmostEqual(gw.nodes[1].rtt_ms, 12.0, places=3)
 
-    def test_one_ping_per_address_and_none_to_offline(self):
+    def test_one_ping_per_node_and_none_to_offline(self):
         gw = Gateway()
         gw.handle(telemetry(node_id=1), ("10.0.0.1", 5006), now=0.0)
         gw.handle(telemetry(node_id=2), ("10.0.0.1", 5006), now=0.0)
         gw.handle(telemetry(node_id=3), ("10.0.0.3", 5006), now=0.0)
         gw.handle(telemetry(node_id=1, seq=1), ("10.0.0.1", 5006), now=20.0)
-        self.assertEqual([addr for _, addr in gw.pings(now=20.0)], [("10.0.0.1", p.PORT_CONFIG)])
+        gw.handle(telemetry(node_id=2, seq=1), ("10.0.0.1", 5006), now=20.0)
+        pings = [(p.decode(data)[0].node_id, addr) for data, addr in gw.pings(now=20.0)]
+        self.assertEqual(pings, [(1, ("10.0.0.1", p.PORT_CONFIG)),
+                                 (2, ("10.0.0.1", p.PORT_CONFIG))])
 
     def test_pc_seq_increments(self):
         gw = Gateway()
@@ -180,6 +183,29 @@ class Simulated(unittest.TestCase):
             self.assertNotIn(p.Valid.CO2, t.valid_flags)
         header, _ = p.decode(sim.telemetry(now=1.0)[0])
         self.assertEqual((header.seq, header.flags), (1, 0))
+
+    def test_simulator_reports_both_audio_windows(self):
+        sim = Simulator(nodes=1, seed=1)
+        _, first = p.decode(sim.telemetry(now=0.0)[0])
+        _, second = p.decode(sim.telemetry(now=1.0)[0])
+        self.assertEqual(len(first.audio), p.AUDIO_WINDOWS_PER_REPORT)
+        self.assertEqual(second.audio_window_seq - first.audio_window_seq,
+                         p.AUDIO_WINDOWS_PER_REPORT)
+
+    def test_simulated_node_checks_config(self):
+        sim = Simulator(nodes=2, seed=1)
+
+        def send(node_id, version):
+            data = p.encode(p.Header(p.MsgType.CONFIG, node_id, 0, 0), p.Config(version))
+            return [p.decode(r) for r in sim.handle(data, now=0.0)]
+
+        [(header, ack)] = send(2, 5)
+        self.assertEqual((header.node_id, ack), (2, p.ConfigAck(5, p.AckStatus.OK)))
+        self.assertEqual(sim.nodes[0].config_version, 0)  # Node 1 ignored it
+        [(_, ack)] = send(2, 4)
+        self.assertEqual(ack, p.ConfigAck(4, p.AckStatus.STALE_VERSION))
+        self.assertEqual(sim.nodes[1].config_version, 5)
+        self.assertEqual(send(0, 6), [])  # No node 0
 
     def test_simulator_loss_consumes_seq(self):
         sim = Simulator(nodes=1, seed=1, loss=1.0)
@@ -211,11 +237,13 @@ class Simulated(unittest.TestCase):
         self.assertEqual(server.gateway.dropped["127.0.0.1"], 1)
         self.assertIn("node 2", server.out.getvalue())
 
-        # PING reaches the simulated node, every node answers, all get an RTT.
+        # One PING per node; each simulated node answers its own, all get an RTT.
         server.send_pings()
-        data, source = node_sock.recvfrom(p.MAX_DATAGRAM)
-        for reply in sim.handle(data, now=5.0):
-            node_sock.sendto(reply, source)
+        for _ in range(3):
+            data, source = node_sock.recvfrom(p.MAX_DATAGRAM)
+            replies = sim.handle(data, now=5.0)
+            self.assertEqual(len(replies), 1)
+            node_sock.sendto(replies[0], source)
         self._poll_until(server, lambda: all(n.rtt_ms is not None
                                              for n in server.gateway.nodes.values()))
 

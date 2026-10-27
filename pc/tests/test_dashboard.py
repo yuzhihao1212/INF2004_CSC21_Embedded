@@ -32,7 +32,7 @@ class DashboardState(unittest.TestCase):
 
     def test_valid_and_invalid_fields(self):
         self.receive(telemetry(
-            temperature_c=24.46, humidity_pct=61.0, co2_ppm=650, pir_active_pct=40,
+            temperature_x10=245, humidity_x10=610, co2_ppm=650, pir_active_pct=40,
             valid_flags=p.Valid.TEMP_HUM | p.Valid.CO2 | p.Valid.PIR, wifi_rssi_dbm=-60))
         self.receive(telemetry(node_id=2, co2_ppm=999, valid_flags=p.Valid.CO2_WARMUP))
         nodes = self.dashboard.state()["nodes"]
@@ -48,9 +48,10 @@ class DashboardState(unittest.TestCase):
         self.assertTrue(two["co2_warmup"])
         self.assertIsNone(two["temperature_c"])
 
-    def test_audio_reported_when_valid(self):
-        self.receive(telemetry(audio_class=p.AudioClass.LECTURER_SPEECH,
-                               audio_prob_pct=(5, 80, 10, 5), valid_flags=p.Valid.AUDIO))
+    def test_latest_audio_window_shown(self):
+        self.receive(telemetry(audio=(
+            p.AudioWindow(100, p.AudioClass.BACKGROUND_NOISE, (90, 5, 3, 2)),
+            p.AudioWindow(100, p.AudioClass.LECTURER_SPEECH, (5, 80, 10, 5)))))
         audio = self.dashboard.state()["nodes"][0]["telemetry"]["audio"]
         self.assertEqual(audio, {"class": "lecturer_speech", "confidence": 80,
                                  "probs": [5, 80, 10, 5]})
@@ -73,7 +74,7 @@ class DashboardState(unittest.TestCase):
         self.assertEqual([n["simulated"] for n in state["nodes"]], [False, True])
 
     def test_state_is_json(self):
-        self.receive(telemetry(valid_flags=p.Valid.TEMP_HUM, temperature_c=20.0))
+        self.receive(telemetry(valid_flags=p.Valid.TEMP_HUM, temperature_x10=200))
         json.dumps(self.dashboard.state())
 
 

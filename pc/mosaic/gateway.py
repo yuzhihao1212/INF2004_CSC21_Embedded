@@ -132,16 +132,16 @@ class Gateway:
         node.last_seq = header.seq
 
     def pings(self, now: float, port: int = p.PORT_CONFIG) -> list[tuple[bytes, Address]]:
-        """One PING per node IP that isn't OFFLINE. Real nodes each have
-        their own IP; simulated nodes share one and all answer it."""
-        targets = dict.fromkeys(
-            node.address[0] for node in self.nodes.values()
-            if node.status(now) != NodeStatus.OFFLINE)
+        """One PING per node that isn't OFFLINE, addressed by node_id. A node
+        ignores PC messages for another ID, so simulated nodes sharing one IP
+        each answer only their own."""
         out = []
-        for ip in targets:
-            header = p.Header(p.MsgType.PING, 0, self.seq, int(now * 1000) % _SEQ_MOD)
+        for node_id, node in sorted(self.nodes.items()):
+            if node.status(now) == NodeStatus.OFFLINE:
+                continue
+            header = p.Header(p.MsgType.PING, node_id, self.seq, int(now * 1000) % _SEQ_MOD)
             self.seq = (self.seq + 1) % _SEQ_MOD
-            out.append((p.encode(header, p.Ping(int(now * 1e6))), (ip, port)))
+            out.append((p.encode(header, p.Ping(int(now * 1e6))), (node.address[0], port)))
         return out
 
     def status_changes(self, now: float) -> list[tuple[int, NodeStatus]]:
@@ -165,8 +165,8 @@ def format_telemetry(header: p.Header, t: p.Telemetry) -> str:
     else:
         parts.append("CO2 warm-up " if p.Valid.CO2_WARMUP in v else "CO2   --    ")
     parts.append(f"PIR {t.pir_active_pct:3}%" if p.Valid.PIR in v else "PIR  --")
-    parts.append(f"{t.audio_class.name} {t.audio_confidence_pct}%"
-                 if p.Valid.AUDIO in v else "audio --")
+    audio = t.latest_audio
+    parts.append(f"{audio.audio_class.name} {audio.confidence_pct}%" if audio else "audio --")
     parts.append(f"RSSI {t.wifi_rssi_dbm} dBm")
     if header.flags & p.FLAG_FIRST_SINCE_BOOT:
         parts.append("(boot)")
@@ -187,20 +187,24 @@ def format_summary(gateway: Gateway, now: float) -> str:
 
 CSV_FIELDS = [
     "pc_time", "node_id", "seq", "sender_time_ms", "flags",
-    "temperature_c", "humidity_pct", "audio_rms", "dsp_time_us", "inference_time_us",
-    "free_heap_bytes", "co2_ppm", "config_version", "audio_overruns", "audio_class",
-    "pir_active_pct", "audio_prob_pct", "valid_flags", "cpu_load_pct", "wifi_rssi_dbm",
+    "temperature_c", "humidity_pct", "dsp_time_us", "inference_time_us",
+    "free_heap_bytes", "co2_ppm", "config_version", "audio_overruns", "audio_window_seq",
+    "audio_classes", "audio_prob_pct", "audio_rms", "pir_active_pct", "valid_flags",
+    "cpu_load_pct", "wifi_rssi_dbm",
 ]
 
 
 def csv_row(header: p.Header, t: p.Telemetry) -> list:
     return [
         datetime.now().isoformat(timespec="milliseconds"), header.node_id, header.seq,
-        header.sender_time_ms, header.flags, f"{t.temperature_c:.2f}",
-        f"{t.humidity_pct:.2f}", f"{t.audio_rms:.3f}", t.dsp_time_us, t.inference_time_us,
-        t.free_heap_bytes, t.co2_ppm, t.config_version, t.audio_overruns, t.audio_class.name,
-        t.pir_active_pct, "/".join(map(str, t.audio_prob_pct)), int(t.valid_flags),
-        t.cpu_load_pct, t.wifi_rssi_dbm,
+        header.sender_time_ms, header.flags, f"{t.temperature_c:.1f}",
+        f"{t.humidity_pct:.1f}", t.dsp_time_us, t.inference_time_us,
+        t.free_heap_bytes, t.co2_ppm, t.config_version, t.audio_overruns, t.audio_window_seq,
+        # One entry per audio window, oldest first, separated by ";"
+        ";".join(w.audio_class.name for w in t.audio),
+        ";".join("/".join(map(str, w.prob_pct)) for w in t.audio),
+        ";".join(f"{w.rms:.4f}" for w in t.audio),
+        t.pir_active_pct, int(t.valid_flags), t.cpu_load_pct, t.wifi_rssi_dbm,
     ]
 
 
@@ -294,7 +298,7 @@ class GatewayServer:
 
 
 def main(argv: Optional[list[str]] = None) -> None:
-    parser = argparse.ArgumentParser(description="MOSAIC PC gateway (protocol v1)")
+    parser = argparse.ArgumentParser(description="MOSAIC PC gateway (protocol v2)")
     parser.add_argument("--host", default="0.0.0.0", help="address to listen on")
     parser.add_argument("--port", type=int, default=p.PORT_TELEMETRY)
     parser.add_argument("--node-port", type=int, default=p.PORT_CONFIG,
