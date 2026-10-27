@@ -1,4 +1,4 @@
-"""Simulated MOSAIC nodes speaking protocol v1, for testing the PC gateway
+"""Simulated MOSAIC nodes speaking protocol v2, for testing the PC gateway
 without hardware. Replaces pc/prototype/simulate_nodesender.py, which sends
 the old text format.
 
@@ -6,8 +6,8 @@ Run from the pc/ folder, next to  python -m mosaic.gateway :
     python -m mosaic.simulator --nodes 3
     python -m mosaic.simulator --loss 0.1 --reboot-every 30
 
-All simulated nodes share one socket on the node port (5006), so they answer
-every PING and CONFIG together. Real nodes each have their own IP.
+All simulated nodes share one socket on the node port (5006). Each answers
+only the PINGs and CONFIGs addressed to its node ID, as a real node does.
 """
 
 from __future__ import annotations
@@ -32,6 +32,7 @@ class SimNode:
     seq: int = 0
     first: bool = True
     config_version: int = 0
+    audio_window_seq: int = 0
     temperature_c: float = 25.0
     humidity_pct: float = 60.0
     co2_ppm: float = 600.0
@@ -76,42 +77,49 @@ class Simulator:
         node.humidity_pct = min(80.0, max(40.0, node.humidity_pct + rng.gauss(0, 0.2)))
         node.co2_ppm = min(2000.0, max(420.0, node.co2_ppm + rng.gauss(1.0, 5.0)))
 
-        weights = [rng.random() for _ in range(p.AUDIO_CLASS_COUNT)]
-        weights[rng.randrange(p.AUDIO_CLASS_COUNT)] += 2.0  # One class usually dominates
-        probs = [int(100 * w / sum(weights)) for w in weights]
-        best = max(range(p.AUDIO_CLASS_COUNT), key=probs.__getitem__)
-        audio_class = p.AudioClass(best + 1) if probs[best] >= 60 else p.AudioClass.UNKNOWN
+        windows = tuple(self._audio_window() for _ in range(p.AUDIO_WINDOWS_PER_REPORT))
+        node.audio_window_seq = (node.audio_window_seq + len(windows)) % (1 << 16)
 
-        valid = p.Valid.TEMP_HUM | p.Valid.PIR | p.Valid.AUDIO
+        valid = p.Valid.TEMP_HUM | p.Valid.PIR
         warming = now - node.boot_time < self.warmup_s
         valid |= p.Valid.CO2_WARMUP if warming else p.Valid.CO2
         return p.Telemetry(
-            temperature_c=round(node.temperature_c, 1),
-            humidity_pct=round(node.humidity_pct, 1),
-            audio_rms=round(rng.uniform(5.0, 60.0), 2),
+            temperature_x10=round(node.temperature_c * 10),
+            humidity_x10=round(node.humidity_pct * 10),
             dsp_time_us=rng.randint(75000, 90000),
             inference_time_us=rng.randint(800, 1200),
             free_heap_bytes=rng.randint(60000, 70000),
             co2_ppm=0 if warming else int(node.co2_ppm),
             config_version=node.config_version,
-            audio_class=audio_class,
+            audio_window_seq=node.audio_window_seq,
+            audio=windows,
             pir_active_pct=rng.choice([0, 0, 10, 40, 80, 100]),
-            audio_prob_pct=tuple(probs),
             valid_flags=valid,
             cpu_load_pct=rng.randint(40, 70),
             wifi_rssi_dbm=rng.randint(-70, -50),
         )
 
+    def _audio_window(self) -> p.AudioWindow:
+        rng = self.rng
+        weights = [rng.random() for _ in range(p.AUDIO_CLASS_COUNT)]
+        weights[rng.randrange(p.AUDIO_CLASS_COUNT)] += 2.0  # One class usually dominates
+        probs = [int(100 * w / sum(weights)) for w in weights]
+        best = max(range(p.AUDIO_CLASS_COUNT), key=probs.__getitem__)
+        audio_class = p.AudioClass(best + 1) if probs[best] >= 60 else p.AudioClass.UNKNOWN
+        return p.AudioWindow(rng.randint(5 * 16, 60 * 16), audio_class, tuple(probs))
+
     def handle(self, data: bytes, now: float) -> list[bytes]:
-        """Replies from every node to a PING or CONFIG; [] for anything else."""
+        """The addressed node's reply to a PING or CONFIG; [] for anything else."""
         try:
             header, payload = p.decode(data)
         except p.ProtocolError:
             return []
         replies = []
         for node in self.nodes:
+            if node.node_id != header.node_id:  # Addressed to another node
+                continue
             if isinstance(payload, p.Config):  # Same rules as the node firmware
-                status = payload.check()
+                status = payload.check(node.config_version)
                 if status == p.AckStatus.OK:
                     node.config_version = payload.config_version
                 ack = p.ConfigAck(payload.config_version, status)
@@ -122,7 +130,7 @@ class Simulator:
 
 
 def main(argv: Optional[list[str]] = None) -> None:
-    parser = argparse.ArgumentParser(description="Simulated MOSAIC nodes (protocol v1)")
+    parser = argparse.ArgumentParser(description="Simulated MOSAIC nodes (protocol v2)")
     parser.add_argument("--pc-ip", default="127.0.0.1")
     parser.add_argument("--pc-port", type=int, default=p.PORT_TELEMETRY)
     parser.add_argument("--listen-port", type=int, default=p.PORT_CONFIG)
