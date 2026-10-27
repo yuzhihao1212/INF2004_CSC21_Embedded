@@ -1,7 +1,7 @@
 /*
- * MOSAIC sensing node: reads the environmental sensors and sends protocol v1
+ * MOSAIC sensing node: reads the environmental sensors and sends protocol v2
  * TELEMETRY to the PC gateway over Wi-Fi (docs/protocol.md). Answers PING and
- * CONFIG from the PC. Audio is not wired in yet, so AUDIO is never valid.
+ * CONFIG from the PC. Audio is not wired in yet, so no audio windows are sent.
  *
  * One cooperative loop, no RTOS. lwIP runs in poll mode: its callbacks run
  * inside cyw43_arch_poll() on this same thread, so nothing needs locking.
@@ -75,7 +75,7 @@ static bool send_to_pc(void *packet, uint16_t len) {
 
 static void on_receive(void *arg, struct udp_pcb *upcb, struct pbuf *p,
                        const ip_addr_t *addr, u16_t port) {
-    (void)arg; (void)upcb; (void)addr; (void)port;
+    (void)arg; (void)upcb; (void)port;
     uint8_t buf[MOSAIC_MAX_DATAGRAM];
     uint16_t len = p->tot_len;
     /* Copy out of the pbuf: never cast it, it may be unaligned. */
@@ -87,6 +87,9 @@ static void on_receive(void *arg, struct udp_pcb *upcb, struct pbuf *p,
     mosaic_header_t h;
     memcpy(&h, buf, sizeof h);
     if (mosaic_header_check(&h, len) != MOSAIC_ACK_OK) return;
+    /* Only the configured PC may talk to this node, and only to this node's ID.
+     * Not authentication (an IP can be spoofed), but stops stray senders. */
+    if (!ip_addr_cmp(addr, &pc_addr) || h.node_id != MOSAIC_NODE_ID) return;
     uint32_t time = (uint32_t)now_ms();
 
     if (h.msg_type == MOSAIC_MSG_PING) {
@@ -104,7 +107,7 @@ static void on_receive(void *arg, struct udp_pcb *upcb, struct pbuf *p,
         mosaic_header_init(&ack.header, MOSAIC_MSG_CONFIG_ACK, MOSAIC_NODE_ID,
                            sizeof ack.payload, 0, time);
         ack.payload.config_version = c.config_version;
-        ack.payload.status = (uint8_t)mosaic_config_check(&c);
+        ack.payload.status = (uint8_t)mosaic_config_check(&c, config.config_version);
         if (ack.payload.status == MOSAIC_ACK_OK) {
             /* audio_gain, mode and threshold are stored for when audio is added. */
             config = c;
@@ -112,6 +115,9 @@ static void on_receive(void *arg, struct udp_pcb *upcb, struct pbuf *p,
             printf("CONFIG %u applied: report %u ms, DHT %u ms, CO2 %u ms\n",
                    c.config_version, c.report_interval_ms, c.dht_interval_ms,
                    c.co2_interval_ms);
+        } else if (ack.payload.status == MOSAIC_ACK_STALE_VERSION) {
+            printf("CONFIG %u rejected: older than applied version %u\n",
+                   c.config_version, config.config_version);
         } else {
             printf("CONFIG %u rejected: value out of range\n", c.config_version);
         }
@@ -155,11 +161,11 @@ static bool send_telemetry(const environment_record_t *env, unsigned pir_samples
                        sizeof t.payload, 0, (uint32_t)now_ms());
     if (first) t.header.flags = MOSAIC_FLAG_FIRST_SINCE_BOOT;
 
-    /* environment_record_t is fixed-point; the v1 wire format is float. */
+    /* environment_record_t and the v2 wire format share the same 0.1 units. */
     uint8_t valid = 0;
     if ((env->validity_flags & ENV_DHT_VALID) == ENV_DHT_VALID) {
-        t.payload.temperature_c = env->temperature_x10 / 10.0f;
-        t.payload.humidity_pct = env->humidity_x10 / 10.0f;
+        t.payload.temperature_x10 = env->temperature_x10;
+        t.payload.humidity_x10 = env->humidity_x10;
         valid |= MOSAIC_VALID_TEMP_HUM;
     }
     if (env->validity_flags & ENV_CO2_VALID) {
@@ -173,7 +179,7 @@ static bool send_telemetry(const environment_record_t *env, unsigned pir_samples
         valid |= MOSAIC_VALID_PIR;
     }
     t.payload.valid_flags = valid;
-    t.payload.audio_class = MOSAIC_AUDIO_UNKNOWN;
+    /* audio_window_count stays 0 until the audio task is added. */
     t.payload.config_version = config.config_version;
     t.payload.free_heap_bytes = free_heap_bytes();
     int32_t rssi;
