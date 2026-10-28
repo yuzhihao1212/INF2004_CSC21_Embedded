@@ -128,6 +128,24 @@ should produce, and prints every classroom state change. Scenarios (defined in
 `pc/tests/test_scenarios.py` plays each one through the fusion engine and fails if a phase no
 longer reaches its state, for example after a threshold is changed.
 
+### Zone map and integer fusion
+
+The Classroom panel includes a floor-plan heatmap with Activity, CO₂, Temperature
+and Motion views. Buttons work with Tab and Enter/Space; icons and labels accompany
+colour. The front/lecturer's desk and reference zone are marked; stale cells dim,
+offline cells hatch. Each zone has its own 10-second dwell (configuration
+`zone_dwell_ms`), faster than the classroom activity dwell. Configure positions
+with `zone_layout`, for example `{"A":[0,0],"B":[0,1],"C":[1,0],"D":[1,1]}`;
+row 0 is at the front. Every configured zone must have a unique cell.
+
+Fusion decisions now use integer milliseconds, exact sums/counts, scaled wire
+values and Q16 reference gain. Configuration names use explicit units; old
+seconds/fraction/°C keys were renamed without a compatibility shim. See
+[the numeric representation and comparison evidence](docs/fusion_numeric_representation.md)
+for all ranges, rounding, renames and the AST enforcement allow-list. Saved
+reference baselines use integer JSON version 2: recalibrate old version 1 files.
+Dashboard decimal values are presentation only.
+
 ### Lecturer-reference comparison
 
 Place reference node **1 / zone A** at the lecturer's desk. In *Classroom*, click
@@ -150,15 +168,24 @@ persistence to **UNKNOWN**. Gaps reset onset/hold but the windows that did arriv
 still processed; a 2-second report interval must not discard every report.
 
 For activity rules, fusion smooths each calibrated zone's actual paired-window results
-over `audio_smooth_s` (10 s). TALKING includes HOLD. QUIET/PENDING count as known negative
-windows; UNKNOWN and calibration windows do not enter the denominator. At least
+over `audio_smooth_ms` (10000 ms). PENDING and TALKING (including HOLD) both count as positive
+evidence: the 10-second smoother replaces the per-window onset gate. QUIET counts
+as a known negative window; UNKNOWN and calibration windows do not enter the denominator. At least
 `reference_min_known_windows` (default 4) are required, and the TALKING fraction must
-reach `reference_talking_fraction` (default 0.5). A brief unknown window does not erase
+reach `reference_talking_pct` (default 50). A brief unknown window does not erase
 usable rolling evidence. When the rolling result is unknown, its evidence expires, or
 either node is stale/offline, fusion falls back to the existing conversation probability
-rule. It returns to reference comparison when usable known evidence returns. Calibration,
+rule. It returns to reference comparison when usable known evidence returns.
+Fusion uses the applied CONFIG report intervals supplied by the gateway: rolling
+freshness is at least one report interval plus 500 ms batching age and pairing
+tolerance (2750 ms for 2-second reports at default tolerance). Strict per-window
+pairing/expiry stays unchanged. This allows asymmetric 2-second streams to use
+PENDING evidence without restarting classroom dwell between reports. Very sparse
+reports still need four known windows within the 10-second smoothing period;
+otherwise fusion falls back to probabilities. Direct Python integrations must
+pass the applied `report_interval_ms` keyword to `FusionEngine.add` (default 1000). Calibration,
 reset and JSON load clear old smoothing history. `/api/state` exposes `smoothed_state`,
-`talking_fraction`, `known_windows` and `decision_source` beside the raw window `state`.
+`talking_pct`, `known_windows` and `decision_source` beside the raw window `state`.
 
 All comparison runs on the PC, with no node-to-node relay or shared Pico clock. Window
 times are estimated from PC receive time, spacing the oldest-first windows by 0.5 s;

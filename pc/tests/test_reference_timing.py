@@ -3,6 +3,8 @@
 Metrics are time shares sampled every 50 ms, not repeated samples masquerading
 as independent audio windows. 'talking_share' uses the rolling decision when
 available, and 'raw_talking_share' always measures the unchanged window policy.
+The separate lecture_window_talking_share counts emitted known paired windows
+exactly once rather than sampling the latest state.
 Lecture-only shares include the normal release tail after students stop. New
 noise entries are forbidden during lecture; an existing alert may take the
 documented smoothing + activity dwell time to clear at that transition.
@@ -15,6 +17,7 @@ from dataclasses import replace
 
 from mosaic import protocol as p, scenarios
 from mosaic.fusion import FusionEngine
+from mosaic.reference import ReferenceFusion, ReferenceState
 from mosaic.simulator import Simulator
 
 REPORTED_PHASES = {1: (0.00, 0.40), 2: (0.10, 0.20),
@@ -24,14 +27,29 @@ CASES = [("reported", 1, REPORTED_PHASES),
 CASES += [(f"seed_{seed}", seed, None) for seed in (2, 7, 19, 42)]
 
 
-def replay(seed=1, phases=None, *, aligned=False):
+class RecordingReference(ReferenceFusion):
+    """Observe actual paired-window results without sampling them repeatedly."""
+    def __init__(self, *args):
+        super().__init__(*args)
+        self.recorded = []
+
+    def drain_results(self):
+        results = super().drain_results()
+        self.recorded.extend(results["C"])
+        return results
+
+
+def replay(seed=1, phases=None, *, aligned=False, report_interval_s=1):
     scenario = scenarios.SCENARIOS["reference"]
     scenario = replace(scenario, phases=tuple(
         replace(phase, seconds=150) if i == 2 else phase
         for i, phase in enumerate(scenario.phases)))
     sim = Simulator(4, seed=seed, scenario=scenario, aligned=aligned,
-                    receive_jitter_s=0 if aligned else 0.08, phases=phases)
+                    receive_jitter_s=0 if aligned else 0.08, phases=phases,
+                    report_interval_s=report_interval_s)
     engine = FusionEngine()
+    engine.reference = RecordingReference(engine.config.zones, engine.config.reference_zone,
+                                          engine.config.reference_settings())
     engine.calibrate(0)
     started = sum(phase.seconds for phase in scenario.phases[:2])
     ended = started + scenario.phases[2].seconds
@@ -45,7 +63,8 @@ def replay(seed=1, phases=None, *, aligned=False):
             header, telemetry = p.decode(data)
             latest[header.node_id] = received
             engine.add(header.node_id, telemetry, received,
-                       reboot=bool(header.flags & p.FLAG_FIRST_SINCE_BOOT))
+                       reboot=bool(header.flags & p.FLAG_FIRST_SINCE_BOOT),
+                       report_interval_ms=round(report_interval_s * 1000))
             engine.evaluate(received, {n for n, t in latest.items() if received - t <= 3})
             events.extend(engine.drain_events())
         engine.evaluate(now, {n for n, t in latest.items() if now - t <= 3})
@@ -58,18 +77,37 @@ def replay(seed=1, phases=None, *, aligned=False):
         else:
             lecture += 1
             lecture_talking += effective == "TALKING"
-    noise = [e.time - started for e in events if e.new == "NOISE_RISING" and e.time >= started]
-    false_entries = [e.time for e in events if e.new == "NOISE_RISING"
-                     and not started <= e.time < ended]
+    noise = [e.time_ms / 1000 - started for e in events if e.new == "NOISE_RISING" and e.time_ms >= started * 1000]
+    false_entries = [e.time_ms / 1000 for e in events if e.new == "NOISE_RISING"
+                     and not started * 1000 <= e.time_ms < ended * 1000]
+    lecture_windows = [state for time, state in engine.reference.recorded
+                       if not started * 1000 <= time < ended * 1000
+                       and state in (ReferenceState.QUIET, ReferenceState.PENDING, ReferenceState.TALKING)]
     return {"raw_talking_share": round(raw * step_s / (ended - started), 4),
             "talking_share": round(talking * step_s / (ended - started), 4),
             "lecture_talking_share": round(lecture_talking / lecture, 4),
+            "lecture_window_talking_share": round(sum(state == ReferenceState.TALKING
+                for state in lecture_windows) / len(lecture_windows), 4),
+            "lecture_positive_window_share": round(sum(state in (ReferenceState.PENDING, ReferenceState.TALKING)
+                for state in lecture_windows) / len(lecture_windows), 4),
             "noise_after_s": round(noise[0], 3) if noise else None,
             "lecture_noise_entries": false_entries,
             "sustained": any(e.new == "SUSTAINED_CHATTER" for e in events)}
 
 
 class RealisticReference(unittest.TestCase):
+    def test_realistic_two_second_reports(self):
+        for seed in (1, 2, 7):
+            result = replay(seed=seed, phases=REPORTED_PHASES, report_interval_s=2)
+            print(f'TIMING two_second_seed_{seed}: {json.dumps(result, sort_keys=True)}')
+            with self.subTest(seed=seed):
+                self.assertIsNotNone(result['noise_after_s'], result)
+                self.assertLessEqual(result['noise_after_s'], 45, result)
+                self.assertGreaterEqual(result['talking_share'], 0.8, result)
+                self.assertLessEqual(result['lecture_talking_share'], 0.05, result)
+                self.assertLessEqual(result['lecture_positive_window_share'], 0.05, result)
+                self.assertEqual(result['lecture_noise_entries'], [], result)
+
     def test_independent_clocks_do_not_reset_classroom_dwell(self):
         results = [(name, replay(seed, phases)) for name, seed, phases in CASES]
         for name, result in results:
@@ -79,7 +117,10 @@ class RealisticReference(unittest.TestCase):
                 self.assertLessEqual(result["noise_after_s"], 45, result)
                 self.assertGreaterEqual(result["talking_share"], 0.8, result)
                 self.assertLessEqual(result["lecture_talking_share"], 0.05, result)
+                self.assertLessEqual(result["lecture_window_talking_share"], 0.05, result)
+                self.assertLessEqual(result["lecture_positive_window_share"], 0.05, result)
                 self.assertEqual(result["lecture_noise_entries"], [], result)
+                self.assertTrue(result["sustained"], result)
 
     def test_aligned_control(self):
         result = replay(aligned=True)

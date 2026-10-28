@@ -8,7 +8,7 @@ from pathlib import Path
 
 from mosaic import protocol as p
 from mosaic.fusion import FusionConfig, FusionEngine
-from mosaic.reference import ReferenceConfig, ReferenceFusion
+from mosaic.reference import ReferenceConfig, ReferenceFusion, round_ratio
 
 SPEECH = (5, 85, 5, 5)
 OTHER_SPEECH = (5, 5, 85, 5)
@@ -50,7 +50,7 @@ class Reference(unittest.TestCase):
         for i in range(20):
             rms = 20 + 4 * i
             self.pair(rms, math.sqrt(0.25 * rms * rms + background))
-        self.assertIsNotNone(self.status["gain"])
+        self.assertIsNotNone(self.status["gain_q16"])
 
     def talking(self):
         self.calibrate()
@@ -65,7 +65,7 @@ class Reference(unittest.TestCase):
         self.calibrate()
         self.ref.calibrate(self.now, "C")
         self.assertEqual((self.status["state"], self.status["pairs_collected"]), ("CALIBRATING", 0))
-        self.assertIsNone(self.status["gain"])
+        self.assertIsNone(self.status["gain_q16"])
         self.ref.reset("C")
         self.assertEqual(self.status["state"], "UNCALIBRATED")
 
@@ -74,27 +74,28 @@ class Reference(unittest.TestCase):
         for i in range(19):
             self.pair(20 + 4 * i, 10 + 2 * i)
         self.assertEqual(self.status["pairs_collected"], 19)
-        self.assertIsNone(self.status["gain"])
+        self.assertIsNone(self.status["gain_q16"])
         self.pair(96, 48)
         self.assertEqual(self.status["state"], "QUIET")
-        self.assertAlmostEqual(self.status["gain"], 0.25)
-        self.assertAlmostEqual(self.status["background_power"], 0)
-        self.assertAlmostEqual(self.status["upper_residual"], 0)
+        self.assertAlmostEqual(self.status["gain_q16"], 16384)
+        self.assertAlmostEqual(self.status["background_power_x256"], 0)
+        self.assertAlmostEqual(self.status["upper_residual_x256"], 0)
         self.pair(100, 300)  # Baseline stays frozen, rather than learning student speech.
-        self.assertAlmostEqual(self.status["gain"], 0.25)
+        self.assertAlmostEqual(self.status["gain_q16"], 16384)
         self.assertEqual(self.status["pairs_collected"], 20)
 
     def test_background_recovered_from_quantised_rms(self):
         self.calibrate(background=16)
-        self.assertAlmostEqual(self.status["gain"], 0.25, delta=0.002)
-        self.assertAlmostEqual(self.status["background_power"], 16, delta=2)
+        self.assertAlmostEqual(self.status["gain_q16"], 16384, delta=131)
+        self.assertAlmostEqual(self.status["background_power_x256"], 16 * 256, delta=2 * 256)
 
     def test_threshold_formula(self):
         self.calibrate(background=16)
         s = self.pair(40, 60)
-        power = s["gain"] * 40 ** 2 + s["background_power"]
-        self.assertAlmostEqual(s["expected_rms"], math.sqrt(power))
-        self.assertAlmostEqual(s["threshold"], math.sqrt(power + s["upper_residual"]) * 1.25 + 4)
+        power = (s["gain_q16"] * (40 * 16) ** 2 >> 16) + s["background_power_x256"]
+        self.assertEqual(s["expected_power_x256"], power)
+        self.assertEqual(s["threshold_power_x256"], power + s["upper_residual_x256"])
+        self.assertGreater((60 * 16 - 64) ** 2 * 16, s["threshold_power_x256"] * 25)
 
     def test_nearest_rank_positive_residual_percentile(self):
         self.ref.calibrate(0)
@@ -102,9 +103,9 @@ class Reference(unittest.TestCase):
             r = 20 + i * 4
             self.pair(r, math.sqrt(0.25 * r * r + (200 if i == 19 else i % 3)))
         s = self.status
-        errors = sorted(max(0, y - (s["gain"] * x + s["background_power"]))
+        errors = sorted(max(0, y - ((s["gain_q16"] * x >> 16) + s["background_power_x256"]))
                         for x, y in self.ref.students["C"].powers)
-        self.assertAlmostEqual(s["upper_residual"], errors[18])
+        self.assertAlmostEqual(s["upper_residual_x256"], errors[18])
         self.assertLess(errors[18], errors[19])
 
     def test_negative_intercept_refits_through_origin(self):
@@ -113,15 +114,15 @@ class Reference(unittest.TestCase):
             r = 20 + i * 4
             self.pair(r, math.sqrt(0.25 * r * r - 25))
         pairs = self.ref.students["C"].powers
-        self.assertEqual(self.status["background_power"], 0)
-        self.assertAlmostEqual(self.status["gain"], sum(x * y for x, y in pairs) / sum(x * x for x, y in pairs))
+        self.assertEqual(self.status["background_power_x256"], 0)
+        self.assertAlmostEqual(self.status["gain_q16"], round_ratio(sum(x * y for x, y in pairs) * 65536, sum(x * x for x, y in pairs)))
 
     def test_negative_gain_clamped(self):
         self.ref.calibrate(0)
         for i in range(20):
             self.pair(20 + i, 50 - i)
-        self.assertEqual(self.status["gain"], 0)
-        self.assertGreater(self.status["background_power"], 0)
+        self.assertEqual(self.status["gain_q16"], 0)
+        self.assertGreater(self.status["background_power_x256"], 0)
 
     def test_constant_reference_requires_level_variation_and_caps_pairs(self):
         self.ref.calibrate(0)
@@ -129,7 +130,7 @@ class Reference(unittest.TestCase):
             self.pair(40, 20)
         self.assertEqual(self.status["state"], "CALIBRATING")
         self.assertEqual(self.status["pairs_collected"], 64)
-        self.assertIsNone(self.status["gain"])
+        self.assertIsNone(self.status["gain_q16"])
 
     def test_calibration_requires_reference_speech_and_level(self):
         self.ref.calibrate(0)
@@ -147,12 +148,12 @@ class Reference(unittest.TestCase):
 
     def test_pairing_outside_tolerance(self):
         self.ref.calibrate(0)
-        self.pair(offset=0.25001)
+        self.pair(offset=0.251)
         self.assertEqual(self.status["pairs_collected"], 0)
         self.assertEqual(self.status["state"], "UNKNOWN")
 
     def test_pairing_tolerance_configurable(self):
-        self.ref = ReferenceFusion({1: "A", 3: "C"}, config=ReferenceConfig(pair_tolerance_s=0.1))
+        self.ref = ReferenceFusion({1: "A", 3: "C"}, config=ReferenceConfig(pair_tolerance_ms=100))
         self.ref.calibrate(0)
         self.pair(offset=0.15)
         self.assertEqual(self.status["pairs_collected"], 0)
@@ -161,7 +162,7 @@ class Reference(unittest.TestCase):
         self.calibrate()
         now = self.now + 1
         self.send(3, 80, now, count=2)
-        self.assertEqual([w.time for w in self.ref.students["C"].windows], [now - 0.5, now])
+        self.assertEqual([w.time_ms for w in self.ref.students["C"].windows], [round(now * 1000) - 500, round(now * 1000)])
         self.send(1, 40, now, count=2)
         self.assertEqual(self.status["state"], "TALKING")
 
@@ -192,13 +193,13 @@ class Reference(unittest.TestCase):
     def test_json_config_exposes_reference_thresholds(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "fusion.json"
-            path.write_text(json.dumps({"reference_zone": "B", "reference_relative_margin": 0.5,
-                                        "reference_pair_tolerance_s": 0.1}))
+            path.write_text(json.dumps({"reference_zone": "B", "reference_relative_margin_pct": 50,
+                                        "reference_pair_tolerance_ms": 100}))
             config = FusionConfig.from_json(path)
             engine = FusionEngine(config)
             self.assertEqual(engine.reference.reference_node, 2)
-            self.assertEqual(engine.reference.config.relative_margin, 0.5)
-            self.assertEqual(engine.reference.config.pair_tolerance_s, 0.1)
+            self.assertEqual(engine.reference.config.relative_margin_pct, 50)
+            self.assertEqual(engine.reference.config.pair_tolerance_ms, 100)
 
     def test_two_window_onset_hold_resume_and_release(self):
         self.calibrate()
@@ -235,7 +236,7 @@ class Reference(unittest.TestCase):
 
     def test_threshold_is_strictly_greater(self):
         self.calibrate()
-        self.pair(40, 29)  # Exact threshold = 20 * 1.25 + 4.
+        self.pair(40, 29)  # Exact threshold_power_x256 = 20 * 1.25 + 4.
         self.assertEqual(self.status["state"], "QUIET")
 
     def test_offline_and_stale_audio_reset_persistence(self):
@@ -243,11 +244,11 @@ class Reference(unittest.TestCase):
         for online in ({1}, {3}, set()):
             self.ref.evaluate(self.now, online)
             self.assertEqual(self.status["state"], "UNKNOWN")
-        self.assertIsNotNone(self.status["gain"])
+        self.assertIsNotNone(self.status["gain_q16"])
         self.assertEqual(self.pair(student=80)["state"], "PENDING")
-        self.ref.evaluate(self.now + 1.5001, {1, 3})
+        self.ref.evaluate(self.now + 1.501, {1, 3})
         self.assertEqual(self.status["state"], "UNKNOWN")
-        self.assertIsNone(self.status["threshold"])
+        self.assertIsNone(self.status["threshold_power_x256"])
 
     def test_sequence_gap_resets_and_does_not_fall_back(self):
         self.talking()
@@ -266,7 +267,7 @@ class Reference(unittest.TestCase):
 
     def test_two_second_reports_reset_persistence_but_process_received_windows(self):
         self.calibrate()
-        gain = self.status["gain"]
+        gain_q16 = self.status["gain_q16"]
         for _ in range(4):
             self.now += 2
             for node in (1, 3):
@@ -275,7 +276,7 @@ class Reference(unittest.TestCase):
                 self.ref.add(node, p.Telemetry(audio_window_seq=self.seq[node],
                     audio=(window(40 if node == 1 else 80),) * 2), self.now)
             self.ref.evaluate(self.now, {1, 3})
-            self.assertEqual(self.status["gain"], gain)
+            self.assertEqual(self.status["gain_q16"], gain_q16)
             self.assertEqual(self.status["state"], "TALKING")
 
     def test_duplicate_and_out_of_order_do_not_collect_or_latch(self):
@@ -322,10 +323,10 @@ class Reference(unittest.TestCase):
             restored = ReferenceFusion({1: "A", 3: "C"})
             restored.load(path)
             s = restored.state()["zones"]["C"]
-            self.assertEqual(s["gain"], self.status["gain"])
+            self.assertEqual(s["gain_q16"], self.status["gain_q16"])
             self.assertEqual(s["pairs_collected"], 20)
             self.assertEqual(s["state"], "UNKNOWN")
-            self.assertIsNone(s["threshold"])
+            self.assertIsNone(s["threshold_power_x256"])
             self.assertFalse(s["hold"])
 
     def test_invalid_json_is_atomic(self):
@@ -334,31 +335,31 @@ class Reference(unittest.TestCase):
             path = Path(tmp) / "reference.json"
             self.ref.save(path)
             original = json.loads(path.read_text())
-            for key, value in (("gain", -1), ("background_power", float("nan")),
-                               ("pairs_collected", 19), ("upper_residual", True)):
+            for key, value in (("gain_q16", -1), ("background_power_x256", float("nan")),
+                               ("pairs_collected", 19), ("upper_residual_x256", True)):
                 data = json.loads(json.dumps(original))
                 data["models"]["C"][key] = value
                 path.write_text(json.dumps(data))
                 with self.assertRaises(ValueError):
                     self.ref.load(path)
-                self.assertAlmostEqual(self.status["gain"], 0.25)
+                self.assertAlmostEqual(self.status["gain_q16"], 16384)
             data = original | {"reference_zone": "B"}
             path.write_text(json.dumps(data))
             with self.assertRaises(ValueError):
                 self.ref.load(path)
 
     def test_invalid_reference_settings(self):
-        for kwargs in ({"min_pairs": 19}, {"max_pairs": 65}, {"max_gap_s": 0.1},
-                       {"relative_margin": -1}, {"student_speech_pct": 101},
-                       {"max_age_s": float("nan")}, {"pair_tolerance_s": -1}):
+        for kwargs in ({"min_pairs": 19}, {"max_pairs": 65}, {"max_gap_ms": 0.1},
+                       {"relative_margin_pct": -1}, {"student_speech_pct": 101},
+                       {"max_age_ms": float("nan")}, {"pair_tolerance_ms": -1}):
             with self.subTest(kwargs=kwargs), self.assertRaises(ValueError):
                 ReferenceConfig(**kwargs)
 
 
 class FusionReference(unittest.TestCase):
     def setUp(self):
-        self.engine = FusionEngine(FusionConfig(occupied_after_s=0, activity_dwell_s=0,
-                                                chatter_after_s=1, audio_smooth_s=0.5,
+        self.engine = FusionEngine(FusionConfig(occupied_after_ms=0, activity_dwell_ms=0,
+                                                chatter_after_ms=1000, audio_smooth_ms=500,
                                                 reference_min_known_windows=1))
         self.engine.calibrate(0)
         self.now, self.seq = 0.0, 0
@@ -407,8 +408,8 @@ class FusionReference(unittest.TestCase):
 
     def test_disabled_and_uncalibrated_keep_legacy_rule(self):
         for reference_zone in (None, "A"):
-            engine = FusionEngine(FusionConfig(reference_zone=reference_zone, occupied_after_s=0,
-                                               activity_dwell_s=0))
+            engine = FusionEngine(FusionConfig(reference_zone=reference_zone, occupied_after_ms=0,
+                                               activity_dwell_ms=0))
             for now in (0, 1):
                 engine.add(3, p.Telemetry(audio=(window(100, OTHER_SPEECH),)), now)
                 engine.evaluate(now, {3})
@@ -418,7 +419,7 @@ class FusionReference(unittest.TestCase):
 class RollingReference(unittest.TestCase):
     def setUp(self):
         self.engine = FusionEngine(FusionConfig(zones={1: "A", 3: "C"}, front_zones=("A",),
-                                                occupied_after_s=0, activity_dwell_s=0))
+                                                occupied_after_ms=0, activity_dwell_ms=0))
         self.engine.calibrate(0)
         self.now, self.seq = 0.0, 0
         for i in range(20):
@@ -441,7 +442,7 @@ class RollingReference(unittest.TestCase):
         self.assertEqual(self.status["known_windows"], 1)
         self.feed(local=100, count=2)  # PENDING, TALKING: both must be counted.
         self.assertEqual(self.status["known_windows"], 3)
-        self.assertAlmostEqual(self.status["talking_fraction"], 1 / 3)
+        self.assertEqual(self.status["talking_pct"], 67)  # PENDING and TALKING are both positive.
         self.assertEqual(self.status["smoothed_state"], "UNKNOWN")
         self.assertEqual(self.status["decision_source"], "probabilities")
         for _ in range(100):
@@ -450,7 +451,7 @@ class RollingReference(unittest.TestCase):
         self.feed()  # First weak window is HOLD and still TALKING.
         self.assertTrue(self.status["hold"])
         self.assertEqual(self.status["known_windows"], 4)
-        self.assertEqual(self.status["talking_fraction"], 0.5)
+        self.assertEqual(self.status["talking_pct"], 75)
         self.assertEqual(self.status["smoothed_state"], "TALKING")
 
     def test_unknown_samples_excluded_then_old_evidence_expires_to_fallback(self):
@@ -460,21 +461,38 @@ class RollingReference(unittest.TestCase):
         self.engine.evaluate(self.now + 0.1, {1, 3})
         self.assertEqual(self.status["state"], "UNKNOWN")  # Raw window result.
         self.assertEqual(self.status["known_windows"], 4)
-        self.assertEqual(self.status["talking_fraction"], 0.5)
+        self.assertEqual(self.status["talking_pct"], 75)
         self.assertEqual(self.status["smoothed_state"], "TALKING")
-        self.engine.evaluate(self.now + 1.6, {1, 3})
+        self.engine.evaluate(self.now + 1.751, {1, 3})
         self.assertEqual(self.status["smoothed_state"], "UNKNOWN")
         self.assertEqual(self.status["decision_source"], "probabilities")
         self.engine.evaluate(self.now + 10.1, {1, 3})
         self.assertEqual(self.status["known_windows"], 0)
-        self.assertIsNone(self.status["talking_fraction"])
+        self.assertIsNone(self.status["talking_pct"])
 
     def test_fraction_is_configurable(self):
-        self.engine.config.reference_talking_fraction = 0.75
+        self.engine.config.reference_talking_pct = 80
         self.feed(local=100, count=2)
         self.feed()
-        self.assertEqual(self.status["talking_fraction"], 0.5)
+        self.assertEqual(self.status["talking_pct"], 75)
         self.assertEqual(self.status["smoothed_state"], "QUIET")
+
+    def test_pending_alone_is_positive_and_survives_two_second_report_spacing(self):
+        for _ in range(4):
+            self.now += 2
+            self.seq += 4  # Only one of the four completed windows arrives.
+            for node, level in ((1, 60), (3, 100)):
+                self.engine.add(node, p.Telemetry(audio_window_seq=self.seq,
+                    audio=(window(level),)), self.now, report_interval_ms=2000)
+            self.engine.evaluate(self.now, {1, 3})
+            self.assertEqual(self.status['state'], 'PENDING')
+        self.assertEqual(self.status['smoothed_state'], 'TALKING')
+        self.assertEqual(self.status['freshness_ms'], 2750)
+        self.engine.evaluate(self.now + 1.9, {1, 3})
+        self.assertEqual(self.status['state'], 'UNKNOWN')  # Strict per-window expiry remains.
+        self.assertEqual(self.status['smoothed_state'], 'TALKING')
+        self.engine.evaluate(self.now + 2.751, {1, 3})
+        self.assertEqual(self.status['smoothed_state'], 'UNKNOWN')
 
     def test_offline_or_stale_node_forces_fallback_despite_recent_history(self):
         self.feed(local=100, count=2)
@@ -503,9 +521,9 @@ class RollingReference(unittest.TestCase):
         self.assertEqual(self.status["known_windows"], 0)
 
     def test_smoothing_config_validation(self):
-        for kwargs in ({"reference_talking_fraction": 0}, {"reference_talking_fraction": 1.1},
-                       {"reference_talking_fraction": float("nan")},
-                       {"reference_talking_fraction": True}, {"reference_min_known_windows": 0},
+        for kwargs in ({"reference_talking_pct": 0}, {"reference_talking_pct": 1.1},
+                       {"reference_talking_pct": float("nan")},
+                       {"reference_talking_pct": True}, {"reference_min_known_windows": 0},
                        {"reference_min_known_windows": 1.5}):
             with self.subTest(kwargs=kwargs), self.assertRaises(ValueError):
                 FusionConfig(**kwargs)
