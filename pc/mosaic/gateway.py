@@ -423,7 +423,8 @@ class GatewayServer:
                 reboot = (bool(header.flags & p.FLAG_FIRST_SINCE_BOOT)
                           or reboots != self._fusion_reboots.get(header.node_id, reboots))
                 self._fusion_reboots[header.node_id] = reboots
-                self.fusion.add(header.node_id, payload, now, reboot=reboot)
+                self.fusion.add(header.node_id, payload, now, reboot=reboot,
+                                report_interval_ms=self.gateway.nodes[header.node_id].report_interval_ms)
             for listener in self.telemetry_listeners:
                 listener(header, payload, now)
         elif isinstance(payload, p.ConfigAck):

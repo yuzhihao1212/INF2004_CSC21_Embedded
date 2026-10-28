@@ -1,20 +1,21 @@
-"""Lecturer-level comparison on the PC; no sockets, sleeps or Pico clock sync.
+"""Integer lecturer-reference comparison; no sockets or shared Pico clock.
 
-Window i is dated receive_time - (count - 1 - i) * 0.5 seconds. Independent
-audio and report clocks can add up to 500 ms of batching delay, even with tiny
-RTT. Unlike Darius's common-clock C API, receive time cannot align sample starts
-or remove unequal processing/batching/transport delays. Strict per-window
-pairing may therefore produce UNKNOWN/PENDING intermittently. Fusion smooths
-the actual known window results; it must not count repeated evaluations as
-extra windows. This is a level comparison, not echo cancellation.
+Public now arguments are monotonic seconds, converted ONCE by seconds_to_ms;
+FusionEngine uses the *_ms entry points to forward its already-converted time.
+Window i is dated receive_ms - (count - 1 - i) * 500. Independent clocks can
+add 500 ms of batching delay even with tiny RTT; strict pairing can therefore
+produce UNKNOWN/PENDING. Fusion smooths actual known window results once each, treating PENDING as
+positive level-plus-speech evidence as well as TALKING/HOLD. Raw two-window onset
+is retained here for diagnostics; it is not an extra gate on the smoother.
 
-The regression, nonnegative gain/background, nearest-rank 95th percentile,
-20/64 pair limits and 25% + 4 ADC-count margin follow origin/darius's
-firmware/audio/reference_detector.c. Protocol v2 has probabilities, not its
-three context votes: speech evidence is 100 - background - transient. Missing
-or invalid evidence produces UNKNOWN, never a negative speech observation.
-Calibration is operator-controlled and frozen once fitted. Only baselines,
-not timestamps, pending windows or TALKING state, are persisted.
+All levels use raw Q12.4 rms_x16 (0..65535), powers use ADC^2 * 256, speech
+uses integer percent, and learned gain is nonnegative Q16 (65536 = unity).
+Least squares uses exact integer sums; coefficients round half away from zero,
+then gain/background saturate at zero. Prediction truncates the Q16 product.
+Python ints do not overflow. No roots are computed here, even for outputs;
+dashboard.py alone converts powers to display RMS. Persistence/hold, variance
+gate, nearest-rank percentile and default 25% + 4 ADC margin follow the float
+baseline. Baseline JSON v2 stores integer coefficients only; v1 needs recalibration.
 """
 
 from __future__ import annotations
@@ -29,7 +30,43 @@ from typing import Optional
 
 from mosaic import protocol as p
 
-WINDOW_S = 0.5
+WINDOW_MS = 500
+Q16 = 65536
+MAX_RMS_X16 = 65535
+
+
+def seconds_to_ms(now):
+    """The ONLY floating boundary: caller monotonic seconds -> integer ms.
+
+    Round half away from zero once per public call. Internal *_ms entry points
+    let FusionEngine forward its already-converted timestamp without converting
+    it twice. No sensor value or decision arithmetic passes this boundary.
+    """
+    if isinstance(now, bool) or not isinstance(now, (int, float)) or not math.isfinite(now):
+        raise ValueError("now must be finite monotonic seconds")
+    magnitude = int(abs(now) * 1000 + 0.5)
+    return -magnitude if now < 0 else magnitude
+
+
+def round_ratio(numerator: int, denominator: int) -> int:
+    """Exact rational rounding, ties away from zero; positive denominator."""
+    if denominator <= 0:
+        raise ValueError("denominator must be positive")
+    rounded = (abs(numerator) * 2 + denominator) // (2 * denominator)
+    return -rounded if numerator < 0 else rounded
+
+
+def clamp_int(value: int, low: int, high: int) -> int:
+    """Clamp direct callers to wire bounds; reject decimal/bool inputs."""
+    if type(value) is not int:
+        raise ValueError("telemetry values must be integers")
+    return min(high, max(low, value))
+
+
+def require_ms(now_ms: int) -> None:
+    """The explicit integer-clock API must never admit decimal timestamps."""
+    if type(now_ms) is not int:
+        raise ValueError("now_ms must be integer milliseconds")
 
 
 class ReferenceState(enum.Enum):
@@ -43,62 +80,62 @@ class ReferenceState(enum.Enum):
 
 @dataclass(frozen=True)
 class ReferenceConfig:
-    pair_tolerance_s: float = 0.25
-    max_age_s: float = 1.5
-    max_gap_s: float = 0.75
-    calibration_speech_pct: float = 60.0
-    student_speech_pct: float = 60.0
-    min_rms: float = 4.0
+    pair_tolerance_ms: int = 250
+    max_age_ms: int = 1500
+    max_gap_ms: int = 750
+    calibration_speech_pct: int = 60
+    student_speech_pct: int = 60
+    min_rms_x16: int = 64
     min_pairs: int = 20
     max_pairs: int = 64
-    relative_margin: float = 0.25
-    absolute_margin: float = 4.0
+    relative_margin_pct: int = 25
+    abs_margin_x16: int = 64
 
     def __post_init__(self) -> None:
-        for name, value in asdict(self).items():
-            if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
-                raise ValueError(f"reference {name} must be a finite number")
-        if not 20 <= self.min_pairs <= self.max_pairs <= 64 or any(
-                not isinstance(n, int) for n in (self.min_pairs, self.max_pairs)):
-            raise ValueError("reference pair counts must be integers: 20 <= min <= max <= 64")
-        if self.pair_tolerance_s < 0:
+        if any(type(value) is not int for value in asdict(self).values()):
+            raise ValueError("reference settings must be integers")
+        if not 20 <= self.min_pairs <= self.max_pairs <= 64:
+            raise ValueError("reference pair counts: 20 <= min <= max <= 64")
+        if self.pair_tolerance_ms < 0:
             raise ValueError("reference pairing tolerance must be nonnegative")
-        if self.max_gap_s < WINDOW_S or self.max_age_s < WINDOW_S:
-            raise ValueError("reference gap and age limits must be at least 0.5 s")
+        if min(self.max_gap_ms, self.max_age_ms) < WINDOW_MS:
+            raise ValueError("reference gap and age limits must be at least 500 ms")
         if not all(0 <= x <= 100 for x in (self.calibration_speech_pct, self.student_speech_pct)):
             raise ValueError("reference speech thresholds must be percentages")
-        if not 0 <= self.min_rms <= 4095 or min(self.relative_margin, self.absolute_margin) < 0:
-            raise ValueError("reference RMS/margins must be nonnegative ADC levels")
+        if (not 0 <= self.min_rms_x16 <= MAX_RMS_X16
+                or not 0 <= self.abs_margin_x16 <= MAX_RMS_X16
+                or not 0 <= self.relative_margin_pct <= 100):
+            raise ValueError("reference margins must be valid integer ADC/percentage levels")
 
 
 @dataclass(frozen=True)
 class _Window:
-    time: float
-    rms: float
-    speech: float
+    time_ms: int
+    rms_x16: int
+    speech_pct: int
 
 
 @dataclass
 class _Student:
     state: ReferenceState = ReferenceState.UNCALIBRATED
     calibrating: bool = False
-    started: float = float("-inf")
-    powers: list[tuple[float, float]] = field(default_factory=list)
+    started_ms: Optional[int] = None
+    powers: list[tuple[int, int]] = field(default_factory=list)
     saved_pairs: int = 0
-    gain: Optional[float] = None
-    background_power: Optional[float] = None
-    upper_residual: Optional[float] = None
+    gain_q16: Optional[int] = None
+    background_power_x256: Optional[int] = None
+    upper_residual_x256: Optional[int] = None
     references: deque[_Window] = field(default_factory=deque)
     windows: deque[_Window] = field(default_factory=deque)
-    last_pair: Optional[tuple[float, float]] = None
+    last_pair: Optional[tuple[int, int]] = None
     positive: int = 0
     weak: int = 0
     hold: bool = False
-    student_rms: Optional[float] = None
-    expected_rms: Optional[float] = None
-    threshold: Optional[float] = None
+    student_rms_x16: Optional[int] = None
+    expected_power_x256: Optional[int] = None
+    threshold_power_x256: Optional[int] = None
     reason: str = "Start lecturer-only calibration"
-    results: list[tuple[float, ReferenceState]] = field(default_factory=list)
+    results: list[tuple[int, ReferenceState]] = field(default_factory=list)
 
 
 class ReferenceFusion:
@@ -111,8 +148,8 @@ class ReferenceFusion:
         self.reference_node = matches[0] if len(matches) == 1 else None
         self.students = {zone: _Student() for zone in zones.values() if zone != reference_zone}
         self._revisions = {zone: 0 for zone in self.students}
-        # node -> newest audio sequence, estimated newest time, overrun counter
-        self._streams: dict[int, tuple[int, float, int]] = {}
+        # node -> newest audio sequence, estimated newest time_ms, overrun counter
+        self._streams: dict[int, tuple[int, int, int]] = {}
 
     @property
     def enabled(self) -> bool:
@@ -125,12 +162,16 @@ class ReferenceFusion:
             raise KeyError(zone)
         return [zone] if zone is not None else list(self.students)
 
-    def calibrate(self, now: float, zone: Optional[str] = None) -> None:
+    def calibrate(self, now, zone: Optional[str] = None) -> None:
+        self.calibrate_ms(seconds_to_ms(now), zone)
+
+    def calibrate_ms(self, now_ms: int, zone: Optional[str] = None) -> None:
         """Discard selected baselines and collect future lecturer-only pairs."""
+        require_ms(now_ms)
         for name in self._targets(zone):
             self._revisions[name] += 1
             self.students[name] = _Student(state=ReferenceState.CALIBRATING,
-                                           calibrating=True, started=now,
+                                           calibrating=True, started_ms=now_ms,
                                            reason="Keep students quiet while the lecturer speaks")
 
     def reset(self, zone: Optional[str] = None) -> None:
@@ -144,7 +185,7 @@ class ReferenceFusion:
         student.state, student.reason = ReferenceState.UNKNOWN, reason
         student.positive = student.weak = 0
         student.hold = False
-        student.expected_rms = student.threshold = None
+        student.expected_power_x256 = student.threshold_power_x256 = None
         student.last_pair = None
 
     def _invalidate(self, node_id: int, reason: str) -> None:
@@ -155,7 +196,10 @@ class ReferenceFusion:
             student.references.clear()
             student.windows.clear()
 
-    def add(self, node_id: int, telemetry: p.Telemetry, now: float, *, reboot: bool = False) -> None:
+    def add(self, node_id: int, telemetry: p.Telemetry, now, *, reboot: bool = False) -> None:
+        self.add_ms(node_id, telemetry, seconds_to_ms(now), reboot=reboot)
+
+    def add_ms(self, node_id: int, telemetry: p.Telemetry, now_ms: int, *, reboot: bool = False) -> None:
         """Queue each new window once, oldest first; pair in either arrival order.
 
         UNKNOWN class is not invalid if probabilities are usable. Protocol v2
@@ -164,34 +208,35 @@ class ReferenceFusion:
         Missing windows reset persistence but the available windows are still
         processed. Overruns and invalid/nonmonotonic reports are discarded.
         """
+        require_ms(now_ms)
         if not self.enabled or node_id not in self.zones:
             return
-        if not math.isfinite(now):
-            raise ValueError("now must be finite monotonic seconds")
         if reboot:
             self._streams.pop(node_id, None)
             self._invalidate(node_id, "Node rebooted; confirm placement/gain before reuse")
         previous = self._streams.get(node_id)
         count = len(telemetry.audio)
         seq = telemetry.audio_window_seq
-        if not 0 <= count <= p.AUDIO_WINDOWS_PER_REPORT or not 0 <= seq < 65536:
+        if (not 0 <= count <= p.AUDIO_WINDOWS_PER_REPORT or type(seq) is not int
+                or not 0 <= seq < 65536 or type(telemetry.audio_overruns) is not int
+                or not 0 <= telemetry.audio_overruns <= 65535):
             self._invalidate(node_id, "Invalid audio window count or sequence")
             return
         delta = (seq - previous[0]) % 65536 if previous else count
         if previous and ((delta == 0 and count > 0) or delta >= 32768):
             self._invalidate(node_id, "Repeated or out-of-order audio")
             return
-        self._streams[node_id] = (seq, now, telemetry.audio_overruns)
+        self._streams[node_id] = (seq, now_ms, telemetry.audio_overruns)
         if not count:
             self._invalidate(node_id, "No valid audio windows")
             return
         new_count = min(delta, count)
-        first_time = now - (new_count - 1) * WINDOW_S
+        first_time = now_ms - (new_count - 1) * WINDOW_MS
         if previous:
             if first_time <= previous[1] or telemetry.audio_overruns != previous[2]:
                 self._invalidate(node_id, "Audio overrun or nonmonotonic receive time")
                 return
-            if delta > count or first_time - previous[1] > self.config.max_gap_s:
+            if delta > count or first_time - previous[1] > self.config.max_gap_ms:
                 affected = (self.students.values() if node_id == self.reference_node
                             else [self.students[self.zones[node_id]]])
                 for student in affected:
@@ -203,47 +248,47 @@ class ReferenceFusion:
         windows = []
         for i, window in enumerate(telemetry.audio[-new_count:]):
             probs = window.prob_pct
-            if (not math.isfinite(window.rms) or not 0 <= window.rms <= 4095
+            if (type(window.rms_x16) is not int or not 0 <= window.rms_x16 <= MAX_RMS_X16
                     or len(probs) != p.AUDIO_CLASS_COUNT
-                    or any(not math.isfinite(x) or not 0 <= x <= 100 for x in probs)
+                    or any(type(x) is not int or not 0 <= x <= 100 for x in probs)
                     or not 0 < sum(probs) <= 100):
                 self._invalidate(node_id, "Invalid RMS or class probabilities")
                 return
-            speech = 100 - probs[p.AudioClass.BACKGROUND_NOISE - 1] - probs[p.AudioClass.TRANSIENT_NOISE - 1]
-            windows.append(_Window(first_time + i * WINDOW_S, window.rms, speech))
+            speech_pct = 100 - probs[p.AudioClass.BACKGROUND_NOISE - 1] - probs[p.AudioClass.TRANSIENT_NOISE - 1]
+            windows.append(_Window(first_time + i * WINDOW_MS, window.rms_x16, speech_pct))
         affected = (self.students.values() if node_id == self.reference_node
                     else [self.students[self.zones[node_id]]])
         for student in affected:
             queue = student.references if node_id == self.reference_node else student.windows
             queue.extend(windows)
-            self._pair(student, now)
+            self._pair(student, now_ms)
 
-    def _pair(self, student: _Student, now: float) -> None:
+    def _pair(self, student: _Student, now_ms: int) -> None:
         cfg = self.config
         for queue in (student.references, student.windows):
-            while queue and now - queue[0].time > cfg.max_age_s:
+            while queue and now_ms - queue[0].time_ms > cfg.max_age_ms:
                 queue.popleft()
                 self._unknown(student, "Audio expired before pairing")
         while student.references and student.windows:
             ref, local = student.references[0], student.windows[0]
-            delta = ref.time - local.time
-            if abs(delta) > cfg.pair_tolerance_s + 1e-9:
+            delta = ref.time_ms - local.time_ms
+            if abs(delta) > cfg.pair_tolerance_ms:
                 (student.references if delta < 0 else student.windows).popleft()
                 self._unknown(student, "Unaligned audio windows")
                 continue
             student.references.popleft()
             student.windows.popleft()
-            if min(ref.time, local.time) < student.started:
+            if student.started_ms is not None and min(ref.time_ms, local.time_ms) < student.started_ms:
                 continue
-            if student.last_pair and any(t - prev > cfg.max_gap_s or t <= prev
-                                         for t, prev in zip((ref.time, local.time), student.last_pair)):
+            if student.last_pair and any(t - prev > cfg.max_gap_ms or t <= prev
+                                         for t, prev in zip((ref.time_ms, local.time_ms), student.last_pair)):
                 self._unknown(student, "Gap between paired windows")
                 continue
-            student.last_pair = (ref.time, local.time)
+            student.last_pair = (ref.time_ms, local.time_ms)
             self._step(student, ref, local)
-            student.results.append((local.time, student.state))
+            student.results.append((local.time_ms, student.state))
 
-    def drain_results(self) -> dict[str, list[tuple[float, ReferenceState]]]:
+    def drain_results(self) -> dict[str, list[tuple[int, ReferenceState]]]:
         """Each paired window's result exactly once, including both batch entries."""
         out = {name: s.results for name, s in self.students.items()}
         for student in self.students.values():
@@ -255,37 +300,43 @@ class ReferenceFusion:
         return self._revisions[zone]
 
     def _fit(self, student: _Student) -> bool:
+        # x/y are power in (ADC * 16)^2 = ADC^2 * 256. Python ints
+        # retain exact sums, covariance and variance with no overflow.
         pairs = student.powers
         n = len(pairs)
-        mx = sum(x for x, _ in pairs) / n
-        my = sum(y for _, y in pairs) / n
-        variance = sum((x - mx) ** 2 for x, _ in pairs)
-        if variance <= 1e-6 * mx * mx * n:
-            return False
-        gain = max(0.0, sum((x - mx) * (y - my) for x, y in pairs) / variance)
-        background = my - gain * mx
-        if background < 0:
-            background = 0.0
-            xx = sum(x * x for x, _ in pairs)
-            gain = max(0.0, sum(x * y for x, y in pairs) / xx) if xx else 0.0
-        residuals = sorted(max(0.0, y - (gain * x + background)) for x, y in pairs)
-        student.gain, student.background_power = gain, background
-        student.upper_residual = residuals[math.ceil(0.95 * n) - 1]
+        sx, sy = sum(x for x, _ in pairs), sum(y for _, y in pairs)
+        sxx = sum(x * x for x, _ in pairs)
+        sxy = sum(x * y for x, y in pairs)
+        denominator = n * sxx - sx * sx
+        if denominator * 1000000 <= sx * sx:
+            return False  # Same relative variance gate as the float baseline.
+        numerator = max(0, n * sxy - sx * sy)
+        intercept_num = sy * denominator - numerator * sx
+        if intercept_num < 0:
+            background = 0
+            numerator, denominator = sxy, sxx  # Nonnegative through-origin refit.
+        else:
+            background = round_ratio(intercept_num, n * denominator)
+        student.gain_q16 = max(0, round_ratio(numerator * Q16, denominator))
+        student.background_power_x256 = max(0, background)
+        residuals = sorted(max(0, y - ((student.gain_q16 * x >> 16) + background))
+                           for x, y in pairs)
+        student.upper_residual_x256 = residuals[(95 * n + 99) // 100 - 1]
         return True
 
     def _step(self, student: _Student, ref: _Window, local: _Window) -> None:
         cfg = self.config
-        student.student_rms = local.rms
-        if student.gain is None:
+        student.student_rms_x16 = local.rms_x16
+        if student.gain_q16 is None:
             if not student.calibrating:
                 student.state = ReferenceState.UNCALIBRATED
                 return
             student.state = ReferenceState.CALIBRATING
-            if ref.speech < cfg.calibration_speech_pct or ref.rms < cfg.min_rms:
-                student.reason = "Waiting for lecturer speech"
+            if ref.speech_pct < cfg.calibration_speech_pct or ref.rms_x16 < cfg.min_rms_x16:
+                student.reason = "Waiting for lecturer speech_pct"
                 return
             if len(student.powers) < cfg.max_pairs:
-                student.powers.append((ref.rms ** 2, local.rms ** 2))
+                student.powers.append((ref.rms_x16 ** 2, local.rms_x16 ** 2))
             if len(student.powers) < cfg.min_pairs:
                 return
             if not self._fit(student):
@@ -296,8 +347,8 @@ class ReferenceFusion:
             # Calibration itself never emits a talking event.
             self._levels(student, ref, local)
         else:
-            strong = self._levels(student, ref, local) and local.speech >= cfg.student_speech_pct
-            if local.rms < cfg.min_rms:  # C's LOW_LEVEL resets immediately, even during hold.
+            strong = self._levels(student, ref, local) and local.speech_pct >= cfg.student_speech_pct
+            if local.rms_x16 < cfg.min_rms_x16:  # C's LOW_LEVEL resets immediately, even during hold.
                 student.positive = student.weak = 0
                 student.state, student.hold = ReferenceState.QUIET, False
             elif strong:
@@ -310,17 +361,26 @@ class ReferenceFusion:
             else:
                 student.positive = student.weak = 0
                 student.state, student.hold = ReferenceState.QUIET, False
-            student.reason = "Excess speech" if strong else "Within baseline or insufficient speech"
+            student.reason = "Excess speech_pct" if strong else "Within baseline or insufficient speech_pct"
 
     def _levels(self, student: _Student, ref: _Window, local: _Window) -> bool:
-        expected = student.gain * ref.rms ** 2 + student.background_power
-        student.expected_rms = math.sqrt(max(0.0, expected))
-        student.threshold = (math.sqrt(max(0.0, expected + student.upper_residual))
-                             * (1 + self.config.relative_margin) + self.config.absolute_margin)
-        return local.rms > student.threshold
+        expected = ((student.gain_q16 * ref.rms_x16 ** 2) >> 16) + student.background_power_x256
+        student.expected_power_x256 = expected
+        student.threshold_power_x256 = expected + student.upper_residual_x256
+        adjusted = local.rms_x16 - self.config.abs_margin_x16
+        # Reduce the rational margin before squaring: 125/100 = 5/4,
+        # so the default is adjusted^2 * 16 > power * 25. No square root.
+        margin = 100 + self.config.relative_margin_pct
+        common = math.gcd(margin, 100)
+        numerator, denominator = margin // common, 100 // common
+        return adjusted > 0 and adjusted ** 2 * denominator ** 2 > student.threshold_power_x256 * numerator ** 2
 
-    def evaluate(self, now: float, online: set[int]) -> None:
+    def evaluate(self, now, online: set[int]) -> None:
+        self.evaluate_ms(seconds_to_ms(now), online)
+
+    def evaluate_ms(self, now_ms: int, online: set[int]) -> None:
         """Expire persistence even without another packet. STALE is not ONLINE."""
+        require_ms(now_ms)
         if not self.enabled:
             return
         for node, name in self.zones.items():
@@ -331,14 +391,14 @@ class ReferenceFusion:
                 self._unknown(student, "Reference or student node stale/offline")
                 student.references.clear()
                 student.windows.clear()
-            elif student.last_pair and now - min(student.last_pair) > self.config.max_age_s:
+            elif student.last_pair and now_ms - min(student.last_pair) > self.config.max_age_ms:
                 self._unknown(student, "Paired audio stale")
                 student.references.clear()
                 student.windows.clear()
-            self._pair(student, now)
+            self._pair(student, now_ms)
 
     def calibrated(self, zone: str) -> bool:
-        return self.enabled and zone in self.students and self.students[zone].gain is not None
+        return self.enabled and zone in self.students and self.students[zone].gain_q16 is not None
 
     def talking(self, zone: str) -> bool:
         return self.calibrated(zone) and self.students[zone].state == ReferenceState.TALKING
@@ -347,25 +407,25 @@ class ReferenceFusion:
         return {"enabled": self.enabled, "zone": self.reference_zone,
                 "zones": {name: {
                     "state": s.state.value, "pairs_collected": len(s.powers) or s.saved_pairs,
-                    "required_pairs": self.config.min_pairs, "gain": s.gain,
-                    "background_power": s.background_power, "upper_residual": s.upper_residual,
-                    "threshold": s.threshold, "student_rms": s.student_rms,
-                    "expected_rms": s.expected_rms, "hold": s.hold, "reason": s.reason,
+                    "required_pairs": self.config.min_pairs, "gain_q16": s.gain_q16,
+                    "background_power_x256": s.background_power_x256, "upper_residual_x256": s.upper_residual_x256,
+                    "threshold_power_x256": s.threshold_power_x256, "student_rms_x16": s.student_rms_x16,
+                    "expected_power_x256": s.expected_power_x256, "hold": s.hold, "reason": s.reason,
                 } for name, s in self.students.items()} if self.enabled else {}}
 
     def save(self, path: str | Path) -> None:
         """Save frozen baselines only; loading requires the same map/profile."""
         models = {zone: {key: status[key] for key in (
-            "gain", "background_power", "upper_residual", "pairs_collected")}
-                  for zone, status in self.state()["zones"].items() if status["gain"] is not None}
-        Path(path).write_text(json.dumps({"version": 1, "reference_zone": self.reference_zone,
+            "gain_q16", "background_power_x256", "upper_residual_x256", "pairs_collected")}
+                  for zone, status in self.state()["zones"].items() if status["gain_q16"] is not None}
+        Path(path).write_text(json.dumps({"version": 2, "reference_zone": self.reference_zone,
                                          "zones": self.zones, "profile": asdict(self.config),
                                          "models": models}, indent=2, allow_nan=False) + "\n")
 
     def load(self, path: str | Path) -> None:
         """Validate completely before replacing state. Never restore a live alert."""
         data = json.loads(Path(path).read_text())
-        if (not isinstance(data, dict) or data.get("version") != 1
+        if (not isinstance(data, dict) or data.get("version") != 2
                 or data.get("reference_zone") != self.reference_zone
                 or data.get("zones") != {str(n): z for n, z in self.zones.items()}
                 or data.get("profile") != asdict(self.config)
@@ -375,14 +435,13 @@ class ReferenceFusion:
         for name, model in data["models"].items():
             if name not in loaded or not isinstance(model, dict):
                 raise ValueError("invalid calibration zone")
-            values = [model.get(k) for k in ("gain", "background_power", "upper_residual")]
+            values = [model.get(k) for k in ("gain_q16", "background_power_x256", "upper_residual_x256")]
             n = model.get("pairs_collected")
-            if (any(isinstance(v, bool) or not isinstance(v, (int, float))
-                    or not math.isfinite(v) or v < 0 for v in values)
+            if (any(type(v) is not int or v < 0 for v in values)
                     or type(n) is not int or not self.config.min_pairs <= n <= self.config.max_pairs):
                 raise ValueError("invalid calibration coefficients or pair count")
             s = loaded[name]
-            s.gain, s.background_power, s.upper_residual = values
+            s.gain_q16, s.background_power_x256, s.upper_residual_x256 = values
             s.saved_pairs = n
             self._unknown(s, "Loaded baseline; waiting for fresh paired audio")
         self.students = loaded

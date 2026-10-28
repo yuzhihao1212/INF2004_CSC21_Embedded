@@ -316,10 +316,81 @@
     });
   }
 
+  /* ---- Classroom floor plan: display-only metrics, never decision rules ---- */
+  let mapMetric = "activity";
+  const ZONE_ACTIVITY = {
+    NO_DATA: ["No audio", "i-unsure", "none"], STILL: ["Still", "i-mute", "good"],
+    MOTION: ["Motion", "i-motion", "fair"], LECTURER: ["Lecturer", "i-lecturer", "lecture"],
+    TALKING: ["Talking", "i-discussion", "poor"],
+  };
+  function renderMap(c) {
+    const grid = $("#zone-grid");
+    const zones = [...c.zones].sort((a, b) => a.layout[0] - b.layout[0] || a.layout[1] - b.layout[1]);
+    grid.style.setProperty("--map-cols", Math.max(1, ...zones.map((z) => z.layout[1] + 1)));
+    grid.replaceChildren(...zones.map((zone) => {
+      const cell = document.createElement("article");
+      cell.className = "zone-cell";
+      cell.setAttribute("role", "listitem");
+      cell.dataset.zone = zone.zone;
+      cell.dataset.status = zone.status;
+      cell.style.gridRow = zone.layout[0] + 1;
+      cell.style.gridColumn = zone.layout[1] + 1;
+      const head = document.createElement("div");
+      head.className = "zone-head";
+      const name = document.createElement("h4");
+      name.textContent = `Zone ${zone.zone}`;
+      const node = document.createElement("span");
+      node.className = "zone-node";
+      node.textContent = `Node ${zone.node_id}`;
+      head.append(name, node);
+      if (zone.reference_zone) {
+        const reference = document.createElement("span");
+        reference.className = "zone-reference";
+        reference.textContent = "Reference";
+        head.append(reference);
+      }
+      let [text, icon, level] = ZONE_ACTIVITY[zone.state] || ZONE_ACTIVITY.NO_DATA;
+      if (mapMetric === "co2") {
+        text = zone.co2_ppm == null ? "No CO₂ data" : `${zone.co2_ppm} ppm · ${zone.air === "UNKNOWN" ? "Settling" : LEVEL[zone.air.toLowerCase()]}`;
+        icon = zone.air === "POOR" ? "i-alert" : "i-air";
+        level = zone.air.toLowerCase();
+      } else if (mapMetric === "temperature") {
+        const comfort = zone.comfort === "UNKNOWN" ? "Settling" : zone.comfort === "OUT_OF_RANGE" ? "Out of range" : "In range";
+        text = zone.temperature_c == null ? "No temperature data" : `${fmt(zone.temperature_c, 1)} °C · ${comfort}`;
+        icon = zone.comfort === "OUT_OF_RANGE" ? "i-alert" : "i-thermo";
+        level = zone.comfort === "UNKNOWN" ? "none" : zone.comfort === "OUT_OF_RANGE" ? "poor" : "good";
+      } else if (mapMetric === "motion") {
+        text = zone.motion_pct == null ? "No motion data" : `${zone.motion_pct}% · ${zone.motion_active ? "Motion" : "Still"}`;
+        icon = zone.motion_active ? "i-motion" : "i-mute";
+        level = zone.motion_active == null ? "none" : zone.motion_active ? "fair" : "good";
+      }
+      if (zone.status === "OFFLINE") [text, icon, level] = ["Offline", "i-offline", "none"];
+      cell.dataset.level = level;
+      const value = document.createElement("p");
+      value.className = "zone-value";
+      const symbol = svg("svg", { class: "icon", "aria-hidden": "true" }, value);
+      svg("use", { href: `#${icon}` }, symbol);
+      const label = document.createElement("span");
+      label.textContent = text;
+      value.append(label);
+      const status = document.createElement("p");
+      status.className = "zone-status";
+      status.textContent = zone.status === "STALE" ? "Stale · last usable readings" : zone.status === "OFFLINE" ? "Awaiting node" : `Online · ${ZONE_ACTIVITY[zone.state][0]}`;
+      cell.append(head, value, status);
+      return cell;
+    }));
+  }
+  document.querySelectorAll("#map-metrics [data-metric]").forEach((button) => button.addEventListener("click", () => {
+    mapMetric = button.dataset.metric;
+    document.querySelectorAll("#map-metrics [data-metric]").forEach((b) => b.setAttribute("aria-pressed", String(b === button)));
+    if (state && state.classroom) renderMap(state.classroom);
+  }));
+
   /* ---- Classroom (fusion engine) ---- */
   function renderClassroom(c) {
     $("#classroom").hidden = !c;
     if (!c) return;
+    renderMap(c);
     const activity = $("#c-activity");
     activity.textContent = ACTIVITY[c.activity] || c.activity;
     activity.dataset.occupied = String(c.occupied);
@@ -329,7 +400,7 @@
       chip.textContent = text;
       chip.dataset.level = level;
     }
-    $("#c-confidence").textContent = `Confidence ${Math.round(c.confidence * 100)}%`;
+    $("#c-confidence").textContent = `Confidence ${c.confidence_pct}%`;
     $("#c-reason").textContent = c.comfort_reasons.join(", ");
     document.querySelectorAll("#modes .chip-btn").forEach((b) =>
       b.setAttribute("aria-pressed", String(b.dataset.mode === c.mode)));
@@ -343,7 +414,7 @@
         const label = shown === "CALIBRATING"
           ? `Calibrating ${status.pairs_collected}/${status.required_pairs}`
           : shown.charAt(0) + shown.slice(1).toLowerCase();
-        const share = status.talking_fraction == null ? "" : ` (${Math.round(status.talking_fraction * 100)}%)`;
+        const share = status.talking_pct == null ? "" : ` (${status.talking_pct}%)`;
         item.textContent = `${zone}: ${label}${status.gain == null ? "" : share}`;
         item.title = `${status.reason}. Latest window: ${status.state}${status.hold ? " (hold)" : ""}; ${status.known_windows || 0} known windows; rule: ${status.decision_source || "probabilities"}. RMS ${fmt(status.student_rms, 1)}, expected ${fmt(status.expected_rms, 1)}, threshold ${fmt(status.threshold, 1)}, gain ${fmt(status.gain, 3)}`;
         return item;
