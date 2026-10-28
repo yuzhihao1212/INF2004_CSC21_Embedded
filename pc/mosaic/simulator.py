@@ -18,6 +18,8 @@ only the PINGs and CONFIGs addressed to its node ID, as a real node does.
 from __future__ import annotations
 
 import argparse
+import heapq
+import math
 import random
 import select
 import socket
@@ -43,6 +45,12 @@ class SimNode:
     temperature_c: float = 25.0
     humidity_pct: float = 60.0
     co2_ppm: float = 600.0
+    audio_phase_s: float = 0.0
+    report_phase_s: float = 0.0
+    audio_period_s: float = 0.5
+    report_interval_s: float = 1.0
+    next_report: Optional[float] = None
+    last_audio_index: int = -1
 
     def header(self, msg_type: p.MsgType, now: float) -> p.Header:
         if self.boot_time is None:
@@ -57,18 +65,48 @@ class SimNode:
 
     def reboot(self) -> None:
         self.boot_time, self.seq, self.first, self.config_version = None, 0, True, 0
+        self.audio_window_seq = 0
 
 
 class Simulator:
     def __init__(self, nodes: int = 3, seed: Optional[int] = None, loss: float = 0.0,
                  warmup_s: float = CO2_WARMUP_S,
-                 scenario: Optional[scenarios.Scenario] = None) -> None:
+                 scenario: Optional[scenarios.Scenario] = None, *, aligned: bool = False,
+                 receive_jitter_s: float = 0.0, report_interval_s: float = 1.0,
+                 phases: Optional[dict[int, tuple[float, float]]] = None) -> None:
+        """Independent audio/report clocks by default; aligned=True is a test fixture.
+
+        poll(now) returns (receive_time, datagram) deliveries, including uniform
+        0..receive_jitter_s network delay. Consumers must use those receive times,
+        not the time they happen to poll. Timing has its own seeded RNG so sensor
+        noise cannot accidentally change the clock phases or network jitter.
+        phases overrides (audio phase, report phase) for reproducible fault cases.
+        """
+        if (not math.isfinite(receive_jitter_s) or not math.isfinite(report_interval_s)
+                or receive_jitter_s < 0 or report_interval_s <= 0):
+            raise ValueError("jitter must be nonnegative and report interval positive")
         self.nodes = [SimNode(i) for i in range(1, nodes + 1)]
         self.rng = random.Random(seed)
+        self.timing_rng = random.Random(seed)
+        self.aligned = aligned
+        self.receive_jitter_s = receive_jitter_s
+        for node in self.nodes:
+            node.report_interval_s = report_interval_s
+            if aligned:
+                node.last_audio_index = -2  # Legacy fixture starts with two completed windows.
+            else:
+                node.audio_phase_s = self.timing_rng.uniform(0, 0.5)
+                node.report_phase_s = self.timing_rng.uniform(0, report_interval_s)
+                node.audio_period_s *= 1 + self.timing_rng.uniform(-100, 100) * 1e-6
+            if phases and node.node_id in phases:
+                node.audio_phase_s, node.report_phase_s = phases[node.node_id]
+                node.audio_period_s = 0.5
         self.loss = loss
         self.warmup_s = warmup_s
         self.scenario = scenario
-        self.start: Optional[float] = None  # Time of the first report
+        self.start: Optional[float] = None  # Shared physical simulation epoch, not Pico clocks.
+        self._deliveries: list[tuple[float, int, bytes]] = []
+        self._delivery_order = 0
 
     def phase(self, now: float) -> Optional[tuple[int, scenarios.Phase]]:
         """The scenario phase being played at `now`, or None without a scenario."""
@@ -79,35 +117,71 @@ class Simulator:
         return self.scenario.phase_at(now - self.start)
 
     def telemetry(self, now: float) -> list[bytes]:
-        """One TELEMETRY per node. A 'lost' datagram still uses up a seq,
-        as on a real node whose packet is lost in the air."""
-        out = []
+        """Datagrams due by now; use poll() when exact receive times matter."""
+        return [data for _, data in self.poll(now)]
+
+    def poll(self, now: float) -> list[tuple[float, bytes]]:
+        if self.start is None:
+            self.start = now
         for node in self.nodes:
-            header = node.header(p.MsgType.TELEMETRY, now)
-            payload = self._readings(node, now)
+            if node.next_report is None:
+                node.next_report = self.start + node.report_phase_s
+        # Generate in send order so advancing virtual time in larger steps does
+        # not change RNG consumption, payloads or delivery order.
+        while min(node.next_report for node in self.nodes) <= now + 1e-9:
+            node = min(self.nodes, key=lambda n: (n.next_report, n.node_id))
+            sent = node.next_report
+            header = node.header(p.MsgType.TELEMETRY, sent)
+            index = math.floor((sent - self.start - node.audio_phase_s) / node.audio_period_s + 1e-9)
+            completed = max(0, index - node.last_audio_index)
+            times = tuple(self.start + node.audio_phase_s + i * node.audio_period_s
+                          for i in range(max(node.last_audio_index + 1, index - 1), index + 1))
+            node.last_audio_index = index
+            node.audio_window_seq = (node.audio_window_seq + completed) % 65536
+            payload = self._readings(node, sent, times)
+            received = sent + self.timing_rng.uniform(0, self.receive_jitter_s)
             if self.rng.random() >= self.loss:
-                out.append(p.encode(header, payload))
+                heapq.heappush(self._deliveries, (received, self._delivery_order, p.encode(header, payload)))
+                self._delivery_order += 1
+            node.next_report += node.report_interval_s
+        out = []
+        while self._deliveries and self._deliveries[0][0] <= now + 1e-9:
+            received, _, data = heapq.heappop(self._deliveries)
+            out.append((received, data))
         return out
 
-    def _readings(self, node: SimNode, now: float) -> p.Telemetry:
+    def next_event(self) -> float:
+        """Next send or receive deadline after poll(); used by the socket loop."""
+        return min([n.next_report for n in self.nodes]
+                   + ([self._deliveries[0][0]] if self._deliveries else []))
+
+    def _readings(self, node: SimNode, now: float, window_times: tuple[float, ...]) -> p.Telemetry:
         rng = self.rng
         phase = self.phase(now)
         if phase is None:  # Random walk
             node.temperature_c = min(30.0, max(22.0, node.temperature_c + rng.gauss(0, 0.05)))
             node.humidity_pct = min(80.0, max(40.0, node.humidity_pct + rng.gauss(0, 0.2)))
             node.co2_ppm = min(2000.0, max(420.0, node.co2_ppm + rng.gauss(1.0, 5.0)))
-            windows = tuple(self._audio_window() for _ in range(p.AUDIO_WINDOWS_PER_REPORT))
+            windows = tuple(self._audio_window() for _ in window_times)
             pir = rng.choice([0, 0, 10, 40, 80, 100])
         else:
             zone = phase[1].zone(node.node_id)
             node.temperature_c += (zone.temperature_c - node.temperature_c) * DRIFT + rng.gauss(0, 0.03)
             node.humidity_pct += (zone.humidity_pct - node.humidity_pct) * DRIFT + rng.gauss(0, 0.1)
             node.co2_ppm += (zone.co2_ppm - node.co2_ppm) * DRIFT + rng.gauss(0, 3.0)
-            windows = tuple(self._audio_window(zone.probs)
-                            for _ in range(p.AUDIO_WINDOWS_PER_REPORT))
+            # Audio is stamped from its TRUE completion time, before report
+            # batching/jitter. All nodes hear the same lecturer envelope, sampled
+            # on their independent audio clocks. Phase transitions are not dated
+            # from when a delayed report happens to reach the PC.
+            windows = []
+            for completed_at in window_times:
+                audio_zone = self.phase(completed_at)[1].zone(node.node_id)
+                rms = audio_zone.rms
+                if rms is not None:
+                    rms *= 1 + 0.25 * math.sin((completed_at - self.start) * 0.8)
+                windows.append(self._audio_window(audio_zone.probs, rms))
+            windows = tuple(windows)
             pir = round(min(100.0, max(0.0, rng.gauss(zone.pir_pct, zone.pir_pct * 0.3))))
-
-        node.audio_window_seq = (node.audio_window_seq + len(windows)) % (1 << 16)
 
         valid = p.Valid.TEMP_HUM | p.Valid.PIR
         warming = now - node.boot_time < self.warmup_s
@@ -128,7 +202,8 @@ class Simulator:
             wifi_rssi_dbm=rng.randint(-70, -50),
         )
 
-    def _audio_window(self, mix: Optional[tuple[int, ...]] = None) -> p.AudioWindow:
+    def _audio_window(self, mix: Optional[tuple[int, ...]] = None,
+                      rms: Optional[float] = None) -> p.AudioWindow:
         """A classified window: random, or near the given class mix (%)."""
         rng = self.rng
         if mix is None:
@@ -139,7 +214,8 @@ class Simulator:
         probs = [int(100 * w / sum(weights)) for w in weights]
         best = max(range(p.AUDIO_CLASS_COUNT), key=probs.__getitem__)
         audio_class = p.AudioClass(best + 1) if probs[best] >= 60 else p.AudioClass.UNKNOWN
-        return p.AudioWindow(rng.randint(5 * 16, 60 * 16), audio_class, tuple(probs))
+        level = rng.randint(5 * 16, 60 * 16) if rms is None else round(rms * 16)
+        return p.AudioWindow(level, audio_class, tuple(probs))
 
     def handle(self, data: bytes, now: float) -> list[bytes]:
         """The addressed node's reply to a PING or CONFIG; [] for anything else."""
@@ -155,6 +231,8 @@ class Simulator:
                 status = payload.check(node.config_version)
                 if status == p.AckStatus.OK:
                     node.config_version = payload.config_version
+                    node.report_interval_s = payload.report_interval_ms / 1000
+                    node.next_report = now + node.report_interval_s
                 ack = p.ConfigAck(payload.config_version, status)
                 replies.append(p.encode(node.header(p.MsgType.CONFIG_ACK, now), ack))
             elif header.msg_type == p.MsgType.PING:
@@ -166,6 +244,12 @@ def add_scenario_argument(parser: argparse.ArgumentParser) -> None:
     names = ", ".join(f"{name} ({s.seconds / 60:.0f} min)" for name, s in scenarios.SCENARIOS.items())
     parser.add_argument("--scenario", choices=scenarios.SCENARIOS, metavar="NAME",
                         help=f"play a scripted classroom: {names}")
+
+
+def add_timing_arguments(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--aligned", action="store_true", help="align simulated clocks (test fixture)")
+    parser.add_argument("--receive-jitter-ms", type=float, default=0,
+                        help="uniform simulated receive delay from 0 to this many milliseconds")
 
 
 def main(argv: Optional[list[str]] = None) -> None:
@@ -181,9 +265,14 @@ def main(argv: Optional[list[str]] = None) -> None:
                         help="reboot a random node every S seconds (0 = never)")
     parser.add_argument("--seed", type=int)
     add_scenario_argument(parser)
+    add_timing_arguments(parser)
     args = parser.parse_args(argv)
 
-    sim = Simulator(args.nodes, args.seed, args.loss, scenario=scenarios.get(args.scenario))
+    if args.receive_jitter_ms < 0 or args.interval <= 0:
+        parser.error("jitter must be nonnegative and interval positive")
+    sim = Simulator(args.nodes, args.seed, args.loss, scenario=scenarios.get(args.scenario),
+                    aligned=args.aligned, receive_jitter_s=args.receive_jitter_ms / 1000,
+                    report_interval_s=args.interval)
     if sim.scenario:
         print(f"Scenario {args.scenario} ({sim.scenario.seconds / 60:.0f} min): "
               f"{sim.scenario.description}")
@@ -194,27 +283,25 @@ def main(argv: Optional[list[str]] = None) -> None:
           f"listening on {args.listen_port} (Ctrl+C to stop)")
 
     now = time.monotonic()
-    next_report = now
     next_reboot = now + args.reboot_every if args.reboot_every else None
     last_phase = None
     try:
         while True:
             now = time.monotonic()
-            if now >= next_report:
-                for data in sim.telemetry(now):
-                    sock.sendto(data, pc)
-                next_report += args.interval
-                phase = sim.phase(now)
-                if phase and phase[0] != last_phase:
-                    last_phase = phase[0]
-                    print(f"[{phase[0] + 1}/{len(sim.scenario.phases)}] {phase[1].label} "
-                          f"({phase[1].seconds:.0f} s) -> expect {phase[1].expect}", flush=True)
+            for received, data in sim.poll(now):
+                sock.sendto(data, pc)
+            phase = sim.phase(now)
+            if phase and phase[0] != last_phase:
+                last_phase = phase[0]
+                print(f"[{phase[0] + 1}/{len(sim.scenario.phases)}] {phase[1].label} "
+                      f"({phase[1].seconds:.0f} s) -> expect {phase[1].expect}", flush=True)
             if next_reboot is not None and now >= next_reboot:
                 node = sim.rng.choice(sim.nodes)
                 node.reboot()
                 print(f"node {node.node_id} rebooted")
                 next_reboot += args.reboot_every
-            readable, _, _ = select.select([sock], [], [], max(0.0, next_report - now))
+            deadline = min(sim.next_event(), next_reboot or float("inf"))
+            readable, _, _ = select.select([sock], [], [], max(0.0, deadline - time.monotonic()))
             if readable:
                 try:
                     data, source = sock.recvfrom(p.MAX_DATAGRAM + 1)

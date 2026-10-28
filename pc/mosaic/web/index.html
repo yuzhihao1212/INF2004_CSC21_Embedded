@@ -87,6 +87,14 @@
         <span class="minor" id="c-confidence" title="Share of zones reporting fresh data"></span>
       </div>
       <p class="minor" id="c-reason"></p>
+      <div class="reference-row" id="c-reference">
+        <strong id="reference-label">Reference</strong>
+        <span class="minor reference-summary" id="reference-status" aria-live="polite"></span>
+        <button class="chip-btn" id="calibrate" type="button" aria-describedby="reference-hint">Calibrate</button>
+        <button class="chip-btn" id="calibrate-reset" type="button">Reset</button>
+        <p class="minor reference-hint" id="reference-hint">During calibration, let only the lecturer speak. Recalibrate after moving nodes or changing gain.</p>
+        <p class="reference-error" id="reference-error" role="status" hidden></p>
+      </div>
     </div>
   </section>
 
