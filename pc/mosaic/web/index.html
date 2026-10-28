@@ -70,6 +70,26 @@
 <main id="main" class="wrap" tabindex="-1">
   <h1 class="sr-only">MOSAIC classroom sensing dashboard</h1>
 
+  <section class="classroom" id="classroom" aria-labelledby="classroom-h" hidden>
+    <div class="classroom-head">
+      <h2 id="classroom-h" class="section-title">Classroom</h2>
+      <div class="chips" role="group" aria-label="Classroom mode" id="modes">
+        <button class="chip-btn" type="button" data-mode="LECTURE" aria-pressed="false">Lecture</button>
+        <button class="chip-btn" type="button" data-mode="DISCUSSION" aria-pressed="false">Discussion</button>
+        <button class="chip-btn" type="button" data-mode="QUIET_WORK" aria-pressed="false">Quiet work</button>
+      </div>
+    </div>
+    <div class="classroom-body tile">
+      <p class="activity" id="c-activity" aria-live="polite">—</p>
+      <div class="classroom-chips">
+        <span class="chip" id="c-air" data-level="none">—</span>
+        <span class="chip" id="c-comfort" data-level="none">—</span>
+        <span class="minor" id="c-confidence" title="Share of zones reporting fresh data"></span>
+      </div>
+      <p class="minor" id="c-reason"></p>
+    </div>
+  </section>
+
   <section class="summary" aria-label="Overview">
     <article class="tile rise">
       <div class="tile-head"><span class="badge"><svg class="icon" aria-hidden="true"><use href="#i-node"/></svg></span><span class="label">Nodes online</span></div>

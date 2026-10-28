@@ -74,9 +74,62 @@ from real **Sensors**, or **Mixed**; simulated node cards are also tagged.
 Add `--http-host 0.0.0.0` to open it from another device on the same network, `--csv FILE`
 to log readings, and `--verbose` to also print every packet.
 
+To change a node's settings, POST only the fields you want to change. The gateway then delivers
+them as a CONFIG, retrying until the node acknowledges, and resends after the node reboots:
+
+```
+curl -d '{"report_interval_ms": 500, "mode": "DISCUSSION"}' http://localhost:8050/api/nodes/1/config
+```
+
+Fields and ranges are listed under CONFIG in [docs/protocol.md](docs/protocol.md). The
+`config` entry for each node in `/api/state` shows the delivery's progress. There are no
+buttons on the page for this yet.
+
+### Classroom states (fusion)
+
+The gateway and dashboard run the fusion engine (`pc/mosaic/fusion.py`, statechart 6.4). It
+combines every zone's audio probabilities, PIR motion, CO₂ and temperature/humidity into
+three parallel states: **activity** (empty, quiet, focused lecture, discussion, noise rising,
+sustained chatter), **air** (normal or poor ventilation) and **comfort**. The page shows them
+under *Classroom*, with buttons that switch the classroom mode (Lecture, Discussion, Quiet work)
+for fusion and every node at once.
+
+Thresholds, dwell times and the node → zone map are defaults in `FusionConfig`. To tune them
+without editing code, pass a JSON file containing only the values to change:
+
+```
+python -m mosaic.dashboard --fusion-config fusion.json
+```
+
+where `fusion.json` is, for example, `{"co2_poor_ppm": 1500, "zones": {"1": "A", "2": "C"}}`.
+`pc/tests/test_fusion.py` holds the scripted scenarios (lecture, chatter, discussion,
+ventilation and so on) that check the rules.
+
+To demonstrate the states without hardware, run a scripted classroom:
+
+```
+python -m mosaic.dashboard --scenario demo
+```
+
+Four simulated nodes play the scenario. The console announces each phase and the state it
+should produce, and prints every classroom state change. Scenarios (defined in
+`pc/mosaic/scenarios.py`):
+
+| Scenario | Shows | Length |
+|----------|-------|--------|
+| `lecture` | empty → lecture → rear chatter (noise rising → sustained chatter) → settles | 8 min |
+| `discussion` | group work: noise in Lecture mode, **Discussion** if you click that mode | 6 min |
+| `ventilation` | CO₂ builds up → poor ventilation → window opened → normal | 6 min |
+| `comfort` | air-conditioning fails → out of range → restored | 6 min |
+| `exam` | silent, motionless exam stays occupied (PIR is motion, not presence) | 6 min |
+| `demo` | all of the above in one run | 18 min |
+
+`pc/tests/test_scenarios.py` plays each one through the fusion engine and fails if a phase no
+longer reaches its state, for example after a threshold is changed.
+
 ## Running a real node
 
-`firmware/node/` builds `mosaic_node.uf2`: DHT22, CO₂ and PIR readings sent as protocol v1
+`firmware/node/` builds `mosaic_node.uf2`: DHT22, CO₂ and PIR readings sent as protocol v2
 TELEMETRY every second over Wi-Fi (audio not wired in yet).
 
 1. Copy `firmware/node/node_config.example.cmake` to `firmware/node/node_config.cmake` and set
@@ -87,6 +140,10 @@ TELEMETRY every second over Wi-Fi (audio not wired in yet).
 3. Start `python -m mosaic.dashboard` (or `python -m mosaic.gateway`) on the PC. The Pico
    and PC must be on the same network, and the network must allow devices to talk to each
    other (many campus and guest Wi-Fi networks don't; a phone hotspot works).
+4. Check the PC can reconfigure the node: run the dashboard with `--verbose`, then send
+   `curl -d '{"report_interval_ms": 500}' http://localhost:8050/api/nodes/1/config`
+   (use your node ID). The console prints `CONFIG 1 applied` once the node acknowledges.
+   The node only accepts CONFIG from the PC IP it was built with.
 
 The onboard LED blinks once per packet sent. Wi-Fi status and the node's IP are printed on
 the USB serial port.

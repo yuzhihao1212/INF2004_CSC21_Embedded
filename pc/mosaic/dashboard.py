@@ -3,9 +3,17 @@
 Run from the pc/ folder, then open http://localhost:8050 :
     python -m mosaic.dashboard
     python -m mosaic.dashboard --simulate 3     # rehearse without hardware
+    python -m mosaic.dashboard --scenario demo  # 4 simulated nodes play a scripted classroom
 
-The page (mosaic/web/) polls /api/state once a second. The CO2 bands are
-display thresholds only; sensor fusion (occupancy, alerts) is not built yet.
+The page (mosaic/web/) polls /api/state once a second. To change a node's
+settings, POST the fields to change as JSON to /api/nodes/<id>/config, e.g.
+    curl -d '{"report_interval_ms": 500, "mode": "DISCUSSION"}' \
+         http://localhost:8050/api/nodes/1/config
+The gateway then delivers it as a CONFIG and /api/state shows its progress.
+POST {"mode": "DISCUSSION"} to /api/mode to change the classroom mode: fusion
+switches rules and every node gets the new mode. /api/state includes the
+fusion engine's classroom states under "classroom". The CO2 bands are
+display colours only; fusion has its own thresholds.
 Standard library only, like the gateway.
 """
 
@@ -15,6 +23,7 @@ import argparse
 import ipaddress
 import json
 import os
+import re
 import sys
 import threading
 import time
@@ -25,13 +34,17 @@ from typing import Optional
 
 from mosaic import protocol as p
 from mosaic import simulator
-from mosaic.gateway import PING_INTERVAL_S, GatewayServer, NodeState
+from mosaic.fusion import FusionEngine
+from mosaic.gateway import (PING_INTERVAL_S, ConfigDelivery, GatewayServer, NodeState,
+                            add_fusion_argument, load_fusion_config)
 
 HTTP_PORT = 8050
 HISTORY_S = 600
 CO2_FAIR_PPM = 800   # Common classroom guidance; tune with the fusion thresholds
 CO2_POOR_PPM = 1200
 WEB_DIR = Path(__file__).with_name("web")
+_CONFIG_PATH = re.compile(r"/api/nodes/(\d+)/config")
+_MAX_BODY = 4096
 _CONTENT_TYPES = {".html": "text/html; charset=utf-8", ".css": "text/css; charset=utf-8",
                   ".js": "text/javascript; charset=utf-8", ".svg": "image/svg+xml"}
 
@@ -76,6 +89,7 @@ class Dashboard:
                 "source": ("none" if not nodes else "mixed" if len(simulated) == 2
                            else "simulated" if True in simulated else "sensors"),
                 "nodes": nodes,
+                "classroom": self.server.fusion.state() if self.server.fusion else None,
             }
 
     def _node(self, n: NodeState, now: float) -> dict:
@@ -91,6 +105,7 @@ class Dashboard:
             "reboots": n.reboots,
             "rtt_ms": None if n.rtt_ms is None else round(n.rtt_ms, 1),
             "telemetry": _telemetry(n.telemetry) if n.telemetry else None,
+            "config": _config(n.config) if n.config else None,
             "history": list(self.history.get(n.node_id, ())),
         }
 
@@ -124,6 +139,40 @@ def _telemetry(t: p.Telemetry) -> dict:
     }
 
 
+def _config(d: ConfigDelivery) -> dict:
+    c = d.config
+    return {
+        "version": c.config_version,
+        "state": d.state.value.lower(),
+        "sends": d.sends,
+        "ack": d.status.name if d.status is not None else None,
+        "report_interval_ms": c.report_interval_ms,
+        "dht_interval_ms": c.dht_interval_ms,
+        "co2_interval_ms": c.co2_interval_ms,
+        "audio_gain_x256": c.audio_gain_x256,
+        "mode": c.mode.name,
+        "audio_conf_threshold_pct": c.audio_conf_threshold_pct,
+    }
+
+
+def config_fields(body: dict) -> dict:
+    """Validate a JSON config request into Config field values. `mode` may be
+    a name ("DISCUSSION") or a number. Raises ValueError."""
+    if not isinstance(body, dict) or not body:
+        raise ValueError("expected a JSON object of fields to change")
+    fields = {}
+    for name, value in body.items():
+        if name == "mode" and isinstance(value, str):
+            try:
+                value = p.Mode[value.upper()]
+            except KeyError:
+                raise ValueError(f"unknown mode {value!r}") from None
+        elif isinstance(value, bool) or not isinstance(value, int):
+            raise ValueError(f"{name} must be an integer")
+        fields[name] = value
+    return fields
+
+
 def make_handler(dashboard: Dashboard) -> type[BaseHTTPRequestHandler]:
     web_root = WEB_DIR.resolve()
 
@@ -138,6 +187,42 @@ def make_handler(dashboard: Dashboard) -> type[BaseHTTPRequestHandler]:
             if file.parent != web_root or not file.is_file() or file.suffix not in _CONTENT_TYPES:
                 return self._send(404, "text/plain; charset=utf-8", b"Not found")
             self._send(200, _CONTENT_TYPES[file.suffix], file.read_bytes())
+
+        def do_POST(self) -> None:
+            path = self.path.split("?", 1)[0]
+            if path == "/api/mode":
+                return self._post_mode()
+            match = _CONFIG_PATH.fullmatch(path)
+            if not match:
+                return self._send(404, "text/plain; charset=utf-8", b"Not found")
+            length = int(self.headers.get("Content-Length") or 0)
+            if length > _MAX_BODY:
+                return self._json(413, {"error": "request too large"})
+            try:
+                fields = config_fields(json.loads(self.rfile.read(length) or b"null"))
+                config = dashboard.server.set_config(int(match[1]), **fields)
+            except KeyError:
+                return self._json(404, {"error": f"node {match[1]} has not reported yet"})
+            except ValueError as e:  # Includes malformed JSON
+                return self._json(400, {"error": str(e)})
+            self._json(202, {"config_version": config.config_version})
+
+        def _post_mode(self) -> None:
+            length = int(self.headers.get("Content-Length") or 0)
+            if length > _MAX_BODY:
+                return self._json(413, {"error": "request too large"})
+            try:
+                body = json.loads(self.rfile.read(length) or b"null")
+                if not isinstance(body, dict) or set(body) != {"mode"}:
+                    raise ValueError('expected {"mode": "LECTURE" | "DISCUSSION" | "QUIET_WORK"}')
+                mode = p.Mode(config_fields(body)["mode"])
+                nodes = dashboard.server.set_mode(mode)
+            except ValueError as e:
+                return self._json(400, {"error": str(e)})
+            self._json(202, {"mode": mode.name, "nodes": nodes})
+
+        def _json(self, code: int, value: dict) -> None:
+            self._send(code, "application/json", json.dumps(value).encode())
 
         def _send(self, code: int, content_type: str, body: bytes) -> None:
             self.send_response(code)
@@ -172,13 +257,19 @@ def main(argv: Optional[list[str]] = None) -> None:
     parser.add_argument("--csv", metavar="FILE", help="append every TELEMETRY to this CSV")
     parser.add_argument("--simulate", type=int, default=0, metavar="N",
                         help="also run N simulated nodes in this process")
+    simulator.add_scenario_argument(parser)
     parser.add_argument("--verbose", action="store_true", help="print every packet")
+    add_fusion_argument(parser)
     args = parser.parse_args(argv)
+    if args.scenario and not args.simulate:
+        args.simulate = 4  # Scenarios script zones A-D
+    fusion = FusionEngine(load_fusion_config(parser, args.fusion_config))
 
     csv_file = open(args.csv, "a", newline="") if args.csv else None
     quiet = None if args.verbose else open(os.devnull, "w")
     server = GatewayServer((args.host, args.port), args.node_port, args.ping_interval,
-                           csv_file=csv_file, out=quiet or sys.stdout)
+                           csv_file=csv_file, out=quiet or sys.stdout, fusion=fusion,
+                           fusion_out=sys.stdout)
     dashboard = Dashboard(server)
     httpd = start_http(dashboard, args.http_host, args.http_port)
     url_host = "localhost" if args.http_host in ("127.0.0.1", "0.0.0.0") else args.http_host
@@ -188,6 +279,8 @@ def main(argv: Optional[list[str]] = None) -> None:
     if args.simulate:
         sim_args = ["--nodes", str(args.simulate), "--pc-ip", "127.0.0.1",
                     "--pc-port", str(args.port), "--listen-port", str(args.node_port)]
+        if args.scenario:
+            sim_args += ["--scenario", args.scenario]
         threading.Thread(target=simulator.main, args=(sim_args,), daemon=True).start()
 
     try:
