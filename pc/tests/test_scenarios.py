@@ -40,6 +40,17 @@ EXPECTED = {
         ("FOCUSED_LECTURE", "NORMAL", "OUT_OF_RANGE"), LECTURE],
 }
 
+# Zone activity is independent of classroom dwell. Rear lecture bleed-through
+# stays STILL after calibration; identical class probabilities cannot make it TALKING.
+EXPECTED_ZONES = {
+    'reference': [{'A': 'LECTURER', 'C': 'STILL'}, {'C': 'STILL'},
+                  {'C': 'TALKING'}, {'C': 'STILL'}],
+    'lecture': [{'A': 'STILL', 'C': 'STILL'}, {'A': 'LECTURER', 'C': 'STILL'},
+                {'A': 'LECTURER', 'C': 'TALKING', 'D': 'TALKING'}, {'C': 'STILL'}],
+    'discussion': [{'A': 'LECTURER', 'C': 'STILL'}, {'A': 'TALKING', 'C': 'TALKING'},
+                   {'A': 'LECTURER', 'C': 'STILL'}],
+}
+
 
 def play(scenario: scenarios.Scenario, mode: p.Mode, seed: int, *, aligned=False) -> list[tuple[str, str, str]]:
     """Phase-end states with independent clocks and exact PC delivery times."""
@@ -61,9 +72,14 @@ def play(scenario: scenarios.Scenario, mode: p.Mode, seed: int, *, aligned=False
         if step in boundaries:
             s = engine.state()
             ends.append((s["activity"], s["air"], s["comfort"]))
+            name = next(name for name, value in scenarios.SCENARIOS.items() if value is scenario)
+            if name in EXPECTED_ZONES:
+                actual = {z['zone']: z['state'] for z in s['zones']}
+                for zone, expected in EXPECTED_ZONES[name][boundaries[step]].items():
+                    assert actual[zone] == expected, (name, boundaries[step], zone, actual)
             if scenario is scenarios.SCENARIOS["reference"]:
                 students = s["reference"]["zones"]
-                assert all(z["gain"] is not None for z in students.values())
+                assert all(z["gain_q16"] is not None for z in students.values())
                 assert students["C"]["smoothed_state"] == ("TALKING" if boundaries[step] == 2 else "QUIET")
     return ends
 
