@@ -1,0 +1,270 @@
+{
+  "task": "speech versus non-speech; TALKING is a local activity label",
+  "trained_here": "9-parameter logistic classification head",
+  "pretrained": "Frozen PulseVAD FP32 neural backbone; not retrained",
+  "seed": 42,
+  "source_splits": {
+    "fsdd:jackson": "train",
+    "fsdd:nicolas": "train",
+    "fsdd:theo": "train",
+    "fsdd:yweweler": "validation",
+    "fsdd:george": "test",
+    "fsdd:lucas": "test",
+    "esc:17367": "train",
+    "esc:21189": "train",
+    "esc:101676": "train",
+    "esc:117625": "train",
+    "esc:132852": "validation",
+    "esc:140774": "validation",
+    "esc:160999": "test",
+    "esc:161127": "test",
+    "esc:181766": "test",
+    "esc:188655": "test",
+    "esc:137296": "train",
+    "esc:29532": "train",
+    "esc:104952": "train",
+    "esc:117504": "validation",
+    "esc:144083": "test",
+    "esc:117773": "test",
+    "esc:157204": "test",
+    "esc:21934": "train",
+    "esc:21935": "train",
+    "esc:119748": "train",
+    "esc:127108": "train",
+    "esc:142593": "validation",
+    "esc:143933": "validation",
+    "esc:175945": "test",
+    "esc:179984": "test",
+    "esc:201194": "test",
+    "esc:208624": "test",
+    "esc:137": "train",
+    "esc:53501": "train",
+    "esc:104168": "train",
+    "esc:109316": "train",
+    "esc:125548": "validation",
+    "esc:132830": "validation",
+    "esc:158653": "test",
+    "esc:167155": "test",
+    "esc:205090": "test",
+    "esc:215005": "test",
+    "esc:101336": "train",
+    "esc:103995": "train",
+    "esc:114254": "train",
+    "esc:118624": "train",
+    "esc:144510": "validation",
+    "esc:151089": "validation",
+    "esc:182034": "test",
+    "esc:182039": "test",
+    "esc:218980": "test",
+    "esc:218981": "test",
+    "esc:21896": "train",
+    "esc:23996": "train",
+    "esc:102567": "train",
+    "esc:135469": "validation",
+    "esc:151269": "validation",
+    "esc:218199": "test",
+    "esc:141683": "test",
+    "esc:181977": "test",
+    "esc:100210": "train",
+    "esc:106072": "train",
+    "esc:106073": "train",
+    "esc:152020": "validation",
+    "esc:146200": "test",
+    "esc:172732": "test",
+    "esc:182007": "test",
+    "esc:182010": "test",
+    "esc:18527": "train",
+    "esc:106014": "train",
+    "esc:106015": "train",
+    "esc:115382": "validation",
+    "esc:119455": "validation",
+    "esc:171652": "test",
+    "esc:186935": "test",
+    "esc:209992": "test",
+    "esc:17150": "train",
+    "esc:17565": "train",
+    "esc:18766": "train",
+    "esc:104632": "validation",
+    "esc:104958": "validation",
+    "esc:164661": "test",
+    "esc:186924": "test",
+    "esc:189212": "test",
+    "esc:155858": "train",
+    "esc:209471": "train",
+    "esc:209472": "train",
+    "esc:103597": "validation",
+    "esc:103598": "validation",
+    "esc:117627": "test",
+    "esc:117630": "test",
+    "esc:234263": "test",
+    "esc:234855": "test",
+    "synthetic:silence:train": "train",
+    "synthetic:noise:train": "train",
+    "synthetic:silence:validation": "validation",
+    "synthetic:noise:validation": "validation",
+    "synthetic:silence:test": "test",
+    "synthetic:noise:test": "test"
+  },
+  "candidates": [
+    {
+      "C": 0.01,
+      "validation": {
+        "examples": 145,
+        "accuracy": 0.993103448275862,
+        "source_balanced_accuracy": 0.995,
+        "confusion_matrix": [
+          [
+            112,
+            1
+          ],
+          [
+            0,
+            32
+          ]
+        ],
+        "labels": [
+          "non_speech",
+          "speech"
+        ]
+      }
+    },
+    {
+      "C": 0.1,
+      "validation": {
+        "examples": 145,
+        "accuracy": 0.993103448275862,
+        "source_balanced_accuracy": 0.995,
+        "confusion_matrix": [
+          [
+            112,
+            1
+          ],
+          [
+            0,
+            32
+          ]
+        ],
+        "labels": [
+          "non_speech",
+          "speech"
+        ]
+      }
+    },
+    {
+      "C": 1.0,
+      "validation": {
+        "examples": 145,
+        "accuracy": 1.0,
+        "source_balanced_accuracy": 1.0,
+        "confusion_matrix": [
+          [
+            113,
+            0
+          ],
+          [
+            0,
+            32
+          ]
+        ],
+        "labels": [
+          "non_speech",
+          "speech"
+        ]
+      }
+    }
+  ],
+  "selected_C": 1.0,
+  "pretrained_results": {
+    "validation": {
+      "examples": 145,
+      "accuracy": 1.0,
+      "source_balanced_accuracy": 1.0,
+      "confusion_matrix": [
+        [
+          113,
+          0
+        ],
+        [
+          0,
+          32
+        ]
+      ],
+      "labels": [
+        "non_speech",
+        "speech"
+      ]
+    },
+    "test": {
+      "examples": 318,
+      "accuracy": 0.9182389937106918,
+      "source_balanced_accuracy": 0.8892655746509129,
+      "confusion_matrix": [
+        [
+          207,
+          6
+        ],
+        [
+          20,
+          85
+        ]
+      ],
+      "labels": [
+        "non_speech",
+        "speech"
+      ]
+    }
+  },
+  "own_head_results": {
+    "validation": {
+      "examples": 145,
+      "accuracy": 1.0,
+      "source_balanced_accuracy": 1.0,
+      "confusion_matrix": [
+        [
+          113,
+          0
+        ],
+        [
+          0,
+          32
+        ]
+      ],
+      "labels": [
+        "non_speech",
+        "speech"
+      ]
+    },
+    "test": {
+      "examples": 318,
+      "accuracy": 0.9245283018867925,
+      "source_balanced_accuracy": 0.9062432867883995,
+      "confusion_matrix": [
+        [
+          204,
+          9
+        ],
+        [
+          15,
+          90
+        ]
+      ],
+      "labels": [
+        "non_speech",
+        "speech"
+      ]
+    }
+  },
+  "deployed_default": "pretrained",
+  "dataset_repositories": {
+    "Jakobovski/free-spoken-digit-dataset": "26eb9aaf76e81b692f806f9140c2d2777410d7a1",
+    "karolpiczak/ESC-50": "33c8ce9eb2cf0b1c2f8bcf322eb349b6be34dbb6"
+  },
+  "manifest_sha256": "e9dbcaeecb433741e109f17444cb91f0a01eaa39b86da31d28be3916c5545e68",
+  "limitations": [
+    "Small public spoken-digit/noise subset; not classroom accuracy.",
+    "Speech frame labels inferred from trimmed utterances, not manually annotated.",
+    "Source separation applies to the local head; upstream pretrained exposure is unknown.",
+    "Does not identify students or separate lecturer speech.",
+    "Training audio: FSDD CC BY-SA 4.0; ESC-50 CC BY-NC with per-file credits."
+  ]
+}

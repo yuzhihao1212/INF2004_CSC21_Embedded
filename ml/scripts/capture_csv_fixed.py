@@ -1,9 +1,9 @@
 import csv
 import serial
 
-PORT = "COM5"  # change if Pico W appears on a different COM port
+PORT = "COM5"  # Change if your Pico W appears on a different COM port
 BAUD = 115200
-LABEL = "transient"  # background, lecture, talking, or transient
+LABEL = "lecture6"  # background, lecture, talking, or transient
 OUTPUT_FILE = f"{LABEL}.csv"
 
 header = [
@@ -15,6 +15,7 @@ header = [
 ]
 
 sample_id = 0
+last_signal_status = None
 with serial.Serial(PORT, BAUD, timeout=1) as ser, open(OUTPUT_FILE, "w", newline="") as f:
     writer = csv.writer(f)
     writer.writerow(header)
@@ -23,6 +24,12 @@ with serial.Serial(PORT, BAUD, timeout=1) as ser, open(OUTPUT_FILE, "w", newline
         while True:
             line = ser.readline().decode("utf-8", errors="ignore").strip()
             if not line:
+                continue
+            if line.startswith("SIGNAL_STATUS="):
+                status = line.split("|", 1)[0].split("=", 1)[1].strip()
+                if status != last_signal_status:
+                    print(line)
+                    last_signal_status = status
                 continue
             if not line.startswith("FEATURES_Q8="):
                 continue

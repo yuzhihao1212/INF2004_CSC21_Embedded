@@ -1,5 +1,6 @@
 #include "audio_dsp.h"
 #include <stdint.h>
+#include <stddef.h>
 #include <math.h>
 #include <limits.h>
 /* Pure DSP: no GPIO, ADC, DMA, multicore, printf or timing calls. */
@@ -37,6 +38,16 @@
 // mfcc
 #define MEL_FILTERS 20
 #define MFCC_COUNT 5
+
+#if NUM_FRAMES != AUDIO_DSP_SEQUENCE_FRAMES || MEL_FILTERS != AUDIO_DSP_MEL_BANDS
+#error "DSP sequence dimensions must match the public API"
+#endif
+#if FRAME_SIZE != AUDIO_DSP_FRAME_SAMPLES || HOP_SIZE != AUDIO_DSP_HOP_SAMPLES
+#error "DSP frame timing must match the public API"
+#endif
+#if SAMPLE_RATE != AUDIO_DSP_SAMPLE_RATE || AUDIO_SAMPLES != AUDIO_DSP_WINDOW_SAMPLES
+#error "DSP sample rate/window must match the public API"
+#endif
 
 // features
 #define FRAME_FEATURES 10
@@ -446,7 +457,8 @@ static void calculate_spectrum(const int32_t *frame, dsp_workspace_t *w)
 
 // MFCC extraction: log energies in Q12, DCT coeffs in Q14;
 // output is Q8 after multiplying by scale of 256.
-static void calculate_mfcc(const uint32_t *powers, int32_t mfcc[MFCC_COUNT])
+static void calculate_mfcc(const uint32_t *powers, int32_t mfcc[MFCC_COUNT],
+                           int16_t *out_mel_q8)
 {
     int32_t mel_log[MEL_FILTERS];
     for (int m=0;m<MEL_FILTERS;m++) {
@@ -455,6 +467,12 @@ static void calculate_mfcc(const uint32_t *powers, int32_t mfcc[MFCC_COUNT])
             energy_q15 += (uint64_t)powers[k] * (uint16_t)mel_weight_table[m][k];
         uint64_t energy = energy_q15 >> 15;
         mel_log[m] = log_q12(energy);
+        if (out_mel_q8) {
+            int32_t q8 = mel_log[m] / 16; /* Q12 -> Q8, truncate toward zero. */
+            if (q8 > INT16_MAX) q8 = INT16_MAX;
+            if (q8 < INT16_MIN) q8 = INT16_MIN;
+            out_mel_q8[m] = (int16_t)q8;
+        }
     }
     for (int c=0;c<MFCC_COUNT;c++) {
         int64_t dct = 0;
@@ -466,7 +484,8 @@ static void calculate_mfcc(const uint32_t *powers, int32_t mfcc[MFCC_COUNT])
 
 // extract 10 features from ONE 25 ms frame, each in Q8
 static void extract_frame_features(
-    const int32_t *frame, int32_t features[FRAME_FEATURES], dsp_workspace_t *w)
+    const int32_t *frame, int32_t features[FRAME_FEATURES], dsp_workspace_t *w,
+    int16_t *out_mel_q8)
 {
     uint64_t sum_sq = 0;
     for (int i=0;i<FRAME_SIZE;i++)
@@ -498,19 +517,22 @@ static void extract_frame_features(
         (int32_t)((high << FEATURE_Q)/total):0;
 
     int32_t mfcc[MFCC_COUNT];
-    calculate_mfcc(w->power_spectrum,mfcc);
+    calculate_mfcc(w->power_spectrum,mfcc,out_mel_q8);
     for (int c=0;c<MFCC_COUNT;c++)
         features[FEAT_MFCC1+c] = mfcc[c];
 }
 
 
 static void build_feature_vector(
-    int32_t output[FINAL_FEATURES]
+    int32_t output[FINAL_FEATURES], int16_t mel_q8[NUM_FRAMES][MEL_FILTERS],
+    int32_t *frame_rms_q8
 )
 {
     for (int frame=0; frame<NUM_FRAMES; frame++) {
         extract_frame_features(&filtered_audio[frame * HOP_SIZE],
-                               all_frame_features[frame], &workspace_core0);
+                               all_frame_features[frame], &workspace_core0,
+                               mel_q8 ? mel_q8[frame] : NULL);
+        if (frame_rms_q8) frame_rms_q8[frame] = all_frame_features[frame][FEAT_RMS];
     }
 
     int64_t sum[FRAME_FEATURES] = {0};
@@ -551,5 +573,17 @@ void audio_dsp_process(const uint16_t samples[AUDIO_DSP_WINDOW_SAMPLES],
 {
     if (!samples || !out_q8) return;
     preprocess_audio(samples);
-    build_feature_vector(out_q8);
+    build_feature_vector(out_q8, NULL, NULL);
+}
+
+int audio_dsp_process_sequence(
+    const uint16_t samples[AUDIO_DSP_WINDOW_SAMPLES],
+    int32_t summary_q8[AUDIO_DSP_FEATURE_COUNT],
+    int16_t mel_q8[AUDIO_DSP_SEQUENCE_FRAMES][AUDIO_DSP_MEL_BANDS],
+    int32_t frame_rms_q8[AUDIO_DSP_SEQUENCE_FRAMES])
+{
+    if (!samples || !summary_q8 || !mel_q8 || !frame_rms_q8) return 0;
+    preprocess_audio(samples);
+    build_feature_vector(summary_q8, mel_q8, frame_rms_q8);
+    return 1;
 }

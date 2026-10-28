@@ -9,9 +9,8 @@ See [docs/](docs/) for the project brief and team workflow.
 firmware/          Pico W firmware (CMake project "mosaic")
   CMakeLists.txt   SDK import and project setup
   tests/           Standalone sensor / DSP bring-up targets, one .uf2 each
-ml/                Audio dataset preparation, feature extraction and model training
-  scripts/         Run from the repository root, e.g. python ml/scripts/train_pico_model.py
-  data/            Feature datasets (raw audio folders are git-ignored)
+ml/                Reusable audio capture, DSP and historical experiment tools
+  scripts/         Microphone capture and DSP verification tools
 pc/                PC-side gateway, sensor fusion and dashboard
   mosaic/          Protocol v1, gateway receiver and node simulator
   tests/           Unit tests, run from pc/ with python -m unittest
@@ -64,3 +63,23 @@ On Windows, allow Python through the firewall when asked so real nodes can reach
 
 `main` is protected: all changes go through a pull request with passing CI and one approval.
 Read **[CONTRIBUTING.md](CONTRIBUTING.md)** for the step-by-step workflow.
+
+## Audio detection direction
+
+The previous lecture/conversation training experiments are retired. Their
+recorded and simulated training data, downloaded source audio, trained models,
+and evaluation outputs have been removed at the user's request.
+
+Firmware, microphone capture, DSP and their verification tools remain. The old
+training, comparison, simulation and evaluation scripts have also been removed.
+No trained classroom classifier is active.
+
+The new `audio_talking` firmware integrates pretrained PulseVAD and a locally
+trained speech/non-speech head. It emits both model scores and local speech
+events over USB. The Pico W build and host numerical checks pass. An optional
+lecturer-reference comparison now runs on the reference Pico using a USB bridge
+for paired readings. Its simulated C logic tests pass; two-node board timing
+and classroom accuracy remain unmeasured. Wi-Fi/fusion integration is pending.
+
+See [speech detector build, run and training instructions](docs/audio_talking_workflow.md).
+See [lecturer-reference comparison and demo commands](docs/lecturer_reference_workflow.md).

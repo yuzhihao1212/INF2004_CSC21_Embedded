@@ -6,6 +6,7 @@
 #include "pico/stdlib.h"
 #include "audio_capture.h"
 #include "audio_dsp.h"
+#include "audio_signal_quality.h"
 
 int main(void)
 {
@@ -32,6 +33,12 @@ int main(void)
             audio_capture_next_window();
 
         if (samples == NULL) {
+            continue;
+        }
+
+        audio_signal_quality_t quality;
+        if (!audio_signal_quality(samples, AUDIO_DSP_WINDOW_SAMPLES, &quality)) {
+            printf("SIGNAL_STATUS=INVALID\n");
             continue;
         }
 
@@ -69,6 +76,14 @@ int main(void)
             features[3] / 256.0f,
             features[4] / 256.0f
         );
+
+        printf("SIGNAL_STATUS=%s | ADC_MIN=%u | ADC_MAX=%u | "
+               "ADC_MEAN_Q8=%lu | ADC_AC_RMS_Q8=%lu | ADC_NEAR_RAIL_SAMPLES=%lu\n",
+               audio_signal_status(&quality, AUDIO_DSP_WINDOW_SAMPLES, features),
+               (unsigned int)quality.minimum, (unsigned int)quality.maximum,
+               (unsigned long)quality.mean_q8,
+               (unsigned long)quality.ac_rms_q8,
+               (unsigned long)quality.clipped_samples);
 
         printf("FEATURES_Q8=");
 

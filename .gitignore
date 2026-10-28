@@ -18,3 +18,22 @@ ml/models/*.pkl
 # OS files
 .DS_Store
 Thumbs.db
+# Python virtual environment
+# Python cache
+# Raw downloaded datasets
+# Ignore large audio folders
+# Trained model files
+ml/candidates/*/models/*.pkl
+# Host DSP build artifacts and simulated audio previews (reproducible)
+ml/simulation/build/
+ml/data/simulated_moe/previews/
+ml/data/batch_training/previews/
+ml/data/batch_training/heldout/previews/
+# VS Code settings
+.vscode/
+# System files
+
+# New speech-presence experiment: regenerate public audio and feature cache.
+ml/data/vad_public/
+ml/candidates/talking_head/features.npz
+ml/diagnostics/

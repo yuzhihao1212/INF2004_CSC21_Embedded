@@ -1,0 +1,13 @@
+{
+  "repository": "https://github.com/AydinAdnan/PulseVAD",
+  "commit": "af25e79d66830a3fee74541812721f6158fc92b5",
+  "format": "FP32 complete model, not the incomplete INT8 C header",
+  "files": {
+    "frontend_np.py": "abdbaae2fc2e5b01d32ef1a3c90a882d0361ca8f2dcbb0155313135a0c1d624a",
+    "LICENSE": "7eae1d79fb85440b0352577e6909c0a32e1df8e6fb8f282029d0004434366418",
+    "mel_filterbank.npy": "6db831a2412a81992e6a67e2aa4a0a256722decd1ee09cb39bd933de8cbd34ab",
+    "pulsevad_2.1k.onnx": "2b8c4874fc4ecd64916fc8726e2a8281b1cb9457c21f42a23a9776a4d538c665",
+    "pulsevad_model.h": "e5c3856aa7a0c96482419fd91bcbdeb94fd68fb39939a3ab94ae5cf5ac9f8f35",
+    "pulsevad_tables.h": "85db5201f32fe06f07a0f221a8b408e2b5566b7833fc16941e6524808bcf1da9"
+  }
+}
