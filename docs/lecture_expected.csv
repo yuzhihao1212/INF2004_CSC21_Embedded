@@ -1,0 +1,9 @@
+start_s,end_s,region,expected_state
+25,40,activity,EMPTY
+100,160,activity,FOCUSED_LECTURE
+310,360,activity,SUSTAINED_CHATTER
+430,450,activity,FOCUSED_LECTURE
+100,160,zone:C:activity,STILL
+200,340,zone:C:activity,TALKING
+100,450,air,NORMAL
+100,450,comfort,COMFORTABLE
