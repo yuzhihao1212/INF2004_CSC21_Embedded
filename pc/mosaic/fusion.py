@@ -12,6 +12,8 @@ OUT_OF_RANGE at the same time:
 Rules:
 - Audio class probabilities are averaged per zone over audio_smooth_s, so a
   single window (a cough, a dropped book) never changes state.
+- Calibrated reference results are smoothed over that same period, counting
+  each known window once. Missing evidence uses the probability rule instead.
 - Every change needs its condition to hold for a dwell time.
 - Enter and exit thresholds differ (hysteresis), so a value hovering at a
   threshold doesn't make the state flicker.
@@ -33,12 +35,14 @@ from __future__ import annotations
 
 import enum
 import json
+import math
 from collections import deque
 from dataclasses import dataclass, field, fields
 from pathlib import Path
 from typing import Optional
 
 from mosaic import protocol as p
+from mosaic.reference import ReferenceConfig, ReferenceFusion, ReferenceState
 
 EVENT_HISTORY = 50
 
@@ -80,6 +84,22 @@ class FusionConfig:
     front_zones: tuple[str, ...] = ("A", "B")
     mode: p.Mode = p.Mode.LECTURE
 
+    # PC lecturer-reference comparison; None disables it. No baseline is
+    # learned until the operator explicitly starts calibration.
+    reference_zone: Optional[str] = "A"
+    reference_pair_tolerance_s: float = 0.25
+    reference_max_age_s: float = 1.5
+    reference_max_gap_s: float = 0.75
+    reference_calibration_speech_pct: float = 60.0
+    reference_student_speech_pct: float = 60.0
+    reference_min_rms: float = 4.0
+    reference_min_pairs: int = 20
+    reference_max_pairs: int = 64
+    reference_relative_margin: float = 0.25
+    reference_absolute_margin: float = 4.0
+    reference_talking_fraction: float = 0.5
+    reference_min_known_windows: int = 4
+
     audio_smooth_s: float = 10.0       # Class probabilities averaged over this
     motion_window_s: float = 60.0      # PIR motion averaged over this
 
@@ -113,6 +133,24 @@ class FusionConfig:
     temp_hysteresis_c: float = 0.5     # Must be this far inside the range to exit
     humidity_hysteresis_pct: float = 3.0
     comfort_dwell_s: float = 60.0
+
+    def reference_settings(self) -> ReferenceConfig:
+        return ReferenceConfig(**{f.name: getattr(self, "reference_" + f.name)
+                                  for f in fields(ReferenceConfig)})
+
+    def __post_init__(self) -> None:
+        if self.reference_zone is not None and not isinstance(self.reference_zone, str):
+            raise ValueError("reference_zone must be a zone name or null")
+        self.reference_settings()  # Validate even when comparison is disabled.
+        if (isinstance(self.reference_talking_fraction, bool)
+                or not isinstance(self.reference_talking_fraction, (int, float))
+                or not math.isfinite(self.reference_talking_fraction)
+                or not 0 < self.reference_talking_fraction <= 1):
+            raise ValueError("reference_talking_fraction must be in (0, 1]")
+        if type(self.reference_min_known_windows) is not int or self.reference_min_known_windows < 1:
+            raise ValueError("reference_min_known_windows must be a positive integer")
+        if self.reference_zone in self.zones.values() and len(set(self.zones.values())) != len(self.zones):
+            raise ValueError("reference comparison requires one node per zone")
 
     @classmethod
     def from_json(cls, path: str | Path) -> FusionConfig:
@@ -160,6 +198,8 @@ class Event:
 class _Zone:
     def __init__(self) -> None:
         self.audio: deque[tuple[float, tuple[int, ...]]] = deque()
+        self.reference: deque[tuple[float, bool]] = deque()
+        self.reference_revision = -1
         self.motion: deque[tuple[float, int]] = deque()
         self.co2: Optional[int] = None
         self.temp_hum: Optional[tuple[float, float]] = None
@@ -192,6 +232,8 @@ class FusionEngine:
     def __init__(self, config: Optional[FusionConfig] = None) -> None:
         self.config = config or FusionConfig()
         self.mode = self.config.mode
+        self.reference = ReferenceFusion(self.config.zones, self.config.reference_zone,
+                                         self.config.reference_settings())
         self._zones: dict[int, _Zone] = {}
         self.activity = _Region("activity", Activity.UNKNOWN)
         self.air = _Region("air", Air.UNKNOWN)
@@ -201,13 +243,16 @@ class FusionEngine:
         self._views: list[ZoneView] = []
         self._confidence = 0.0
         self._pending: list[Event] = []  # New events since drain_events()
+        self._now = 0.0
+        self._online: set[int] = set()
 
     # ---- Inputs ------------------------------------------------------------
 
-    def add(self, node_id: int, t: p.Telemetry, now: float) -> None:
+    def add(self, node_id: int, t: p.Telemetry, now: float, *, reboot: bool = False) -> None:
         """Record one TELEMETRY. Nodes not in config.zones are ignored."""
         if node_id not in self.config.zones:
             return
+        self.reference.add(node_id, t, now, reboot=reboot)
         zone = self._zones.setdefault(node_id, _Zone())
         for window in t.audio:
             zone.audio.append((now, window.prob_pct))
@@ -217,11 +262,53 @@ class FusionEngine:
         zone.co2 = t.co2_ppm if p.Valid.CO2 in t.valid_flags else None
         zone.temp_hum = ((t.temperature_c, t.humidity_pct)
                          if p.Valid.TEMP_HUM in t.valid_flags else None)
+        self._collect_reference_results()
+
+    def _collect_reference_results(self) -> None:
+        results = self.reference.drain_results()
+        known = (ReferenceState.QUIET, ReferenceState.PENDING, ReferenceState.TALKING)
+        for node, name in self.config.zones.items():
+            if name not in results or node not in self._zones:
+                continue
+            zone = self._zones[node]
+            revision = self.reference.revision(name)
+            if revision != zone.reference_revision:
+                zone.reference.clear()
+                zone.reference_revision = revision
+            for time, state in results[name]:
+                if state in known:
+                    zone.reference.append((time, state == ReferenceState.TALKING))
+
+    def _reference_summary(self, node: int) -> dict:
+        cfg = self.config
+        zone = self._zones[node]
+        _trim(zone.reference, self._now - cfg.audio_smooth_s)
+        count = len(zone.reference)
+        fraction = sum(value for _, value in zone.reference) / count if count else None
+        # Brief UNKNOWN window results are excluded, not negative votes. The
+        # ROLLING result is UNKNOWN when evidence is insufficient/expired or a
+        # node is unavailable; only then do activity rules use probabilities.
+        available = (self.reference.calibrated(cfg.zones[node])
+                     and node in self._online and self.reference.reference_node in self._online
+                     and count >= cfg.reference_min_known_windows
+                     and self._now - zone.reference[-1][0] <= cfg.reference_max_age_s)
+        state = ("TALKING" if fraction >= cfg.reference_talking_fraction else "QUIET") if available else "UNKNOWN"
+        return {"smoothed_state": state, "talking_fraction": fraction,
+                "known_windows": count, "required_known_windows": cfg.reference_min_known_windows,
+                "talking_fraction_threshold": cfg.reference_talking_fraction,
+                "decision_source": "reference" if available else "probabilities"}
 
     def set_mode(self, mode: p.Mode, now: float) -> None:
         if mode != self.mode:
             self._event(now, "mode", self.mode.name, mode.name, "operator")
             self.mode = mode
+
+    def calibrate(self, now: float, zone: Optional[str] = None) -> None:
+        """Start/restart lecturer-only calibration for all students or one zone."""
+        self.reference.calibrate(now, zone)
+
+    def reset_reference(self, zone: Optional[str] = None) -> None:
+        self.reference.reset(zone)
 
     # ---- Evaluation ----------------------------------------------------------
 
@@ -229,6 +316,9 @@ class FusionEngine:
         """Re-run the rules. `online` and `stale` are the node IDs the gateway
         reports in those states; OFFLINE nodes are simply absent."""
         cfg = self.config
+        self._now, self._online = now, set(online - stale)
+        self.reference.evaluate(now, online - stale)
+        self._collect_reference_results()
         self._views = [self._view(node_id, now, node_id in stale)
                        for node_id in sorted(self._zones)
                        if node_id in online or node_id in stale]
@@ -292,8 +382,15 @@ class FusionEngine:
                          else cfg.conversation_enter_pct)
 
         audio_views = [v for v in views if v.probs]
-        talking = [v.zone for v in audio_views
-                   if v.prob(p.AudioClass.STUDENT_CONVERSATION) >= threshold]
+        talking = []
+        for view in audio_views:
+            reference = self._reference_summary(view.node_id)
+            if reference["smoothed_state"] == "UNKNOWN":
+                conversation = view.prob(p.AudioClass.STUDENT_CONVERSATION) >= threshold
+            else:
+                conversation = reference["smoothed_state"] == "TALKING"
+            if conversation:
+                talking.append(view.zone)
         widespread = bool(audio_views) and (
             len(talking) / len(audio_views) >= cfg.widespread_fraction)
         rear_talking = [z for z in talking if z not in cfg.front_zones]
@@ -383,6 +480,10 @@ class FusionEngine:
 
     def state(self) -> dict:
         """JSON-ready summary for the dashboard."""
+        reference = self.reference.state()
+        for node, name in self.config.zones.items():
+            if name in reference["zones"] and node in self._zones:
+                reference["zones"][name].update(self._reference_summary(node))
         return {
             "mode": self.mode.name,
             "activity": self.activity.state.value,
@@ -391,11 +492,13 @@ class FusionEngine:
             "comfort": self.comfort.state.value,
             "comfort_reasons": list(self.comfort_reasons),
             "confidence": round(self._confidence, 2),
+            "reference": reference,
             "zones": [{
                 "zone": v.zone, "node_id": v.node_id, "stale": v.stale,
                 "probs": [round(x) for x in v.probs] if v.probs else None,
                 "motion_pct": None if v.motion_pct is None else round(v.motion_pct),
                 "co2_ppm": v.co2_ppm,
+                "reference": reference["zones"].get(v.zone),
             } for v in self._views],
         }
 

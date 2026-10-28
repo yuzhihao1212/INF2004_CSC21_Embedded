@@ -12,7 +12,7 @@ import urllib.request
 
 from mosaic import protocol as p
 from mosaic.dashboard import Dashboard, start_http
-from mosaic.fusion import FusionEngine
+from mosaic.fusion import FusionConfig, FusionEngine
 from mosaic.gateway import GatewayServer
 
 NODE_ADDR = ("192.168.1.21", p.PORT_CONFIG)
@@ -207,6 +207,82 @@ class ModeApi(unittest.TestCase):
                 self.assertEqual(status, 400)
                 self.assertIn("error", reply)
         self.assertEqual(self.server.fusion.mode, p.Mode.LECTURE)
+
+
+class CalibrationApi(unittest.TestCase):
+    def setUp(self):
+        self.server = GatewayServer(bind=("127.0.0.1", 0), out=io.StringIO(), fusion=FusionEngine())
+        self.dashboard = Dashboard(self.server)
+        self.httpd = start_http(self.dashboard, "127.0.0.1", 0)
+        self.addCleanup(self.server.close)
+        self.addCleanup(self.httpd.server_close)
+        self.addCleanup(self.httpd.shutdown)
+        self.base = f"http://127.0.0.1:{self.httpd.server_address[1]}"
+
+    def post(self, body=b"{}", path="/api/calibrate"):
+        data = body if isinstance(body, bytes) else json.dumps(body).encode()
+        try:
+            with urllib.request.urlopen(self.base + path, data=data, timeout=2) as r:
+                return r.status, json.loads(r.read())
+        except urllib.error.HTTPError as e:
+            with e:
+                return e.code, json.loads(e.read())
+
+    def test_calibrate_all_restart_one_and_reset(self):
+        code, reply = self.post()
+        self.assertEqual(code, 202)
+        zones = reply["reference"]["zones"]
+        self.assertEqual(set(zones), {"B", "C", "D"})
+        self.assertTrue(all(z["state"] == "CALIBRATING" for z in zones.values()))
+        self.assertEqual(self.post({"zone": "C"})[0], 202)
+        code, reply = self.post({"zone": "C"}, "/api/calibrate/reset")
+        self.assertEqual(code, 202)
+        self.assertEqual(reply["reference"]["zones"]["C"]["state"], "UNCALIBRATED")
+        self.assertEqual(reply["reference"]["zones"]["B"]["state"], "CALIBRATING")
+        self.assertEqual(self.post(path="/api/calibrate/reset")[0], 202)
+        self.assertEqual(self.server.gateway.nodes, {})  # No node commands or relays.
+
+    def test_invalid_requests_and_unknown_zone(self):
+        for body in (b"not json", b"\xff", [], {"zone": None}, {"zone": 3}, {"extra": 1}):
+            with self.subTest(body=body):
+                code, reply = self.post(body)
+                self.assertEqual(code, 400)
+                self.assertIn("error", reply)
+        for zone in ("A", "missing"):
+            self.assertEqual(self.post({"zone": zone})[0], 404)
+        self.assertEqual(self.post(b"x" * 4097)[0], 413)
+
+    def test_disabled_or_absent_fusion(self):
+        for fusion in (None, FusionEngine(FusionConfig(reference_zone=None)),
+                       FusionEngine(FusionConfig(zones={3: "C"}))):
+            self.server.fusion = fusion
+            self.assertEqual(self.post()[0], 409)
+
+    def test_state_contains_per_zone_reference_status_and_levels(self):
+        now = time.monotonic()
+        self.server.fusion.calibrate(now - 20)
+        for i in range(20):
+            received = now - 9.5 + i * 0.5
+            for node in (1, 2, 3, 4):
+                level = (20 + 4 * i) * (1 if node == 1 else 0.5)
+                data = telemetry(node_id=node, seq=i, audio_window_seq=i + 1,
+                                 audio=(p.AudioWindow(round(level * 16), p.AudioClass.UNKNOWN,
+                                                      (5, 85, 5, 5)),))
+                self.server._received(data, NODE_ADDR, received)
+        self.server.fusion.evaluate(now, {1, 2, 3, 4})
+        with urllib.request.urlopen(self.base + "/api/state", timeout=2) as r:
+            state = json.loads(r.read())["classroom"]
+        c = state["reference"]["zones"]["C"]
+        self.assertEqual(c["state"], "QUIET")
+        self.assertEqual(c["pairs_collected"], 20)
+        self.assertAlmostEqual(c["gain"], 0.25)
+        self.assertEqual(c["expected_rms"], c["student_rms"])
+        self.assertGreater(c["threshold"], c["student_rms"])
+        self.assertEqual(c["smoothed_state"], "UNKNOWN")  # Only the baseline-ready window so far.
+        self.assertEqual(c["known_windows"], 1)
+        self.assertEqual(c["talking_fraction"], 0)
+        self.assertEqual(c["decision_source"], "probabilities")
+        self.assertEqual(next(z for z in state["zones"] if z["zone"] == "C")["reference"], c)
 
 
 if __name__ == "__main__":

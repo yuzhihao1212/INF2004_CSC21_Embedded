@@ -79,6 +79,11 @@ class Dashboard:
             now = time.monotonic()
             gateway = self.server.gateway
             nodes = [self._node(n, now) for _, n in sorted(gateway.nodes.items())]
+            if self.server.fusion:
+                self.server.fusion.evaluate(
+                    now, {n.node_id for n in gateway.nodes.values()
+                          if n.status(now).value == "ONLINE"},
+                    {n.node_id for n in gateway.nodes.values() if n.status(now).value == "STALE"})
             simulated = {n["simulated"] for n in nodes}
             return {
                 "time_ms": int(time.time() * 1000),
@@ -192,6 +197,8 @@ def make_handler(dashboard: Dashboard) -> type[BaseHTTPRequestHandler]:
             path = self.path.split("?", 1)[0]
             if path == "/api/mode":
                 return self._post_mode()
+            if path in ("/api/calibrate", "/api/calibrate/reset"):
+                return self._post_calibrate(reset=path.endswith("/reset"))
             match = _CONFIG_PATH.fullmatch(path)
             if not match:
                 return self._send(404, "text/plain; charset=utf-8", b"Not found")
@@ -220,6 +227,32 @@ def make_handler(dashboard: Dashboard) -> type[BaseHTTPRequestHandler]:
             except ValueError as e:
                 return self._json(400, {"error": str(e)})
             self._json(202, {"mode": mode.name, "nodes": nodes})
+
+        def _post_calibrate(self, *, reset: bool) -> None:
+            try:
+                length = int(self.headers.get("Content-Length") or 0)
+                if length > _MAX_BODY:
+                    return self._json(413, {"error": "request too large"})
+                if length < 0:
+                    raise ValueError("invalid request length")
+                body = json.loads(self.rfile.read(length) or b"{}")
+                if (not isinstance(body, dict) or set(body) - {"zone"}
+                        or ("zone" in body and not isinstance(body["zone"], str))):
+                    raise ValueError('expected {} or {"zone": "student zone"}')
+            except (ValueError, UnicodeError) as e:
+                return self._json(400, {"error": str(e)})
+            with dashboard.server.lock:
+                fusion = dashboard.server.fusion
+                if fusion is None or not fusion.reference.enabled:
+                    return self._json(409, {"error": "reference comparison is disabled or unmapped"})
+                try:
+                    if reset:
+                        fusion.reset_reference(body.get("zone"))
+                    else:
+                        fusion.calibrate(time.monotonic(), body.get("zone"))
+                except KeyError:
+                    return self._json(404, {"error": "unknown student zone"})
+                self._json(202, {"reference": fusion.reference.state()})
 
         def _json(self, code: int, value: dict) -> None:
             self._send(code, "application/json", json.dumps(value).encode())
@@ -258,6 +291,7 @@ def main(argv: Optional[list[str]] = None) -> None:
     parser.add_argument("--simulate", type=int, default=0, metavar="N",
                         help="also run N simulated nodes in this process")
     simulator.add_scenario_argument(parser)
+    simulator.add_timing_arguments(parser)
     parser.add_argument("--verbose", action="store_true", help="print every packet")
     add_fusion_argument(parser)
     args = parser.parse_args(argv)
@@ -281,6 +315,9 @@ def main(argv: Optional[list[str]] = None) -> None:
                     "--pc-port", str(args.port), "--listen-port", str(args.node_port)]
         if args.scenario:
             sim_args += ["--scenario", args.scenario]
+        if args.aligned:
+            sim_args += ["--aligned"]
+        sim_args += ["--receive-jitter-ms", str(args.receive_jitter_ms)]
         threading.Thread(target=simulator.main, args=(sim_args,), daemon=True).start()
 
     try:
