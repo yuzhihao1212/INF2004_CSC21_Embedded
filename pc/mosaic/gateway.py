@@ -29,6 +29,7 @@ from datetime import datetime
 from typing import Callable, Optional, TextIO
 
 from mosaic import protocol as p
+from mosaic.eventlog import EventLog
 from mosaic.fusion import FusionConfig, FusionEngine, format_event
 
 OFFLINE_AFTER_S = 10.0
@@ -116,6 +117,7 @@ class Gateway:
         self.dropped: Counter[str] = Counter()  # by source IP
         self.seq = 0  # The PC's own seq for datagrams it sends
         self._reported: dict[int, NodeStatus] = {}
+        self.config_events: list[dict] = []
         self.messages: list[str] = []  # Config events for the console; caller drains it
 
     def handle(self, data: bytes, address: Address,
@@ -130,14 +132,7 @@ class Gateway:
             self.dropped[address[0]] += 1
             return None
 
-        node = self.nodes.get(header.node_id)
-        if node is None:
-            node = self.nodes[header.node_id] = NodeState(
-                header.node_id, address, now, header.seq, received=1)
-        else:
-            self._track_seq(node, header)
-        node.address = address
-        node.last_seen = now
+        node = self.track_header(header, address, now)
 
         if isinstance(payload, p.Telemetry):
             node.telemetry = payload
@@ -148,6 +143,23 @@ class Gateway:
         else:  # PONG: pc_time_us is our own clock from when the PING left
             node.rtt_ms = (now * 1e6 - payload.pc_time_us) / 1000
         return header, payload
+
+    def track_header(self, header: p.Header, address: Address, now: float) -> NodeState:
+        """Shared live/offline sequence tracking for an already-validated header.
+
+        Evaluation replays ALL received message headers here when events exist.
+        Telemetry-only CSVs cannot distinguish omitted PONG/ACKs from lost packets.
+        """
+        node = self.nodes.get(header.node_id)
+        if node is None:
+            node = self.nodes[header.node_id] = NodeState(
+                header.node_id, address, now, header.seq, received=1)
+        else:
+            self._track_seq(node, header)
+        node.address = address
+        node.last_seen = now
+
+        return node
 
     def _track_seq(self, node: NodeState, header: p.Header) -> None:
         gap = (header.seq - node.last_seq) % _SEQ_MOD
@@ -200,7 +212,13 @@ class Gateway:
             raise ValueError(f"value out of range: {fields}")
         node.config = ConfigDelivery(config, next_send=now)
         self.messages.append(f"node {node_id}: sending CONFIG {config.config_version}")
+        self._config_event(node, now, "sending", reason="operator")
         return config
+
+    def _config_event(self, node: NodeState, now: float, state: str, **details) -> None:
+        d = node.config
+        self.config_events.append(dict(now=now, node=node.node_id, state=state,
+            config_version=d.config.config_version, report_interval_ms=d.config.report_interval_ms, **details))
 
     @staticmethod
     def _next_version(node: NodeState) -> int:
@@ -225,9 +243,11 @@ class Gateway:
                 d.state, d.next_send = ConfigState.FAILED, now + CONFIG_FAILED_WAIT_S
                 self.messages.append(f"node {node_id}: CONFIG {d.config.config_version} "
                                      f"not acknowledged after {d.sends} sends")
+                self._config_event(node, now, "failed", attempts=d.sends)
                 continue
             d.sends += 1
             d.next_send = now + CONFIG_RETRY_S
+            self._config_event(node, now, "sending", attempt=d.sends)
             header = self._header(p.MsgType.CONFIG, node_id, now)
             out.append((p.encode(header, d.config), (node.address[0], port)))
         return out
@@ -241,22 +261,26 @@ class Gateway:
         if d.state != ConfigState.SENDING:
             return  # Duplicate ACK from a retry
         if ack.status == p.AckStatus.OK:
-            self._applied(node, header.seq)
+            self._applied(node, header.seq, now)
         elif ack.status == p.AckStatus.STALE_VERSION:
+            self._config_event(node, now, "stale", ack_status=ack.status.name)
             # The node has a newer version than we know of (the PC restarted
             # before it reported). Jump past it and send again.
             d.config.config_version = self._next_version(node)
             d.sends, d.next_send = 0, now
             self.messages.append(f"node {node.node_id}: stale version, resending as "
                                  f"CONFIG {d.config.config_version}")
+            self._config_event(node, now, "sending", reason="stale_version")
         else:
             d.state = ConfigState.REJECTED
+            self._config_event(node, now, "rejected", ack_status=ack.status.name)
             self.messages.append(f"node {node.node_id}: CONFIG {ack.config_version} "
                                  f"rejected ({ack.status.name})")
 
-    def _applied(self, node: NodeState, seq: int) -> None:
+    def _applied(self, node: NodeState, seq: int, now: float) -> None:
         d = node.config
         if d.state != ConfigState.APPLIED:
+            self._config_event(node, now, "applied")
             self.messages.append(f"node {node.node_id}: CONFIG {d.config.config_version} applied")
         d.state, d.confirmed_seq = ConfigState.APPLIED, seq
         node.report_interval_ms = d.config.report_interval_ms
@@ -269,7 +293,7 @@ class Gateway:
             return
         if t.config_version == d.config.config_version:
             if d.state != ConfigState.APPLIED:  # Applied, but the ACK was lost
-                self._applied(node, header.seq)
+                self._applied(node, header.seq, now)
             return
         if d.state == ConfigState.SENDING:
             return
@@ -280,6 +304,7 @@ class Gateway:
         if t.config_version > d.config.config_version:
             d.config.config_version = self._next_version(node)
         d.state, d.sends, d.next_send, d.confirmed_seq = ConfigState.SENDING, 0, now, None
+        self._config_event(node, now, "sending", reason="self_healing")
         self.messages.append(f"node {node.node_id} runs config {t.config_version}: "
                              f"resending CONFIG {d.config.config_version}")
 
@@ -333,9 +358,9 @@ CSV_FIELDS = [
 ]
 
 
-def csv_row(header: p.Header, t: p.Telemetry) -> list:
+def csv_row(header: p.Header, t: p.Telemetry, pc_time: Optional[str] = None) -> list:
     return [
-        datetime.now().isoformat(timespec="milliseconds"), header.node_id, header.seq,
+        pc_time or datetime.now().isoformat(timespec="milliseconds"), header.node_id, header.seq,
         header.sender_time_ms, header.flags, f"{t.temperature_c:.1f}",
         f"{t.humidity_pct:.1f}", t.dsp_time_us, t.inference_time_us,
         t.free_heap_bytes, t.co2_ppm, t.config_version, t.audio_overruns, t.audio_window_seq,
@@ -355,8 +380,15 @@ class GatewayServer:
                  summary_interval: float = SUMMARY_INTERVAL_S,
                  csv_file: Optional[TextIO] = None, out: TextIO = sys.stdout,
                  fusion: Optional[FusionEngine] = None,
-                 fusion_out: Optional[TextIO] = None) -> None:
+                 fusion_out: Optional[TextIO] = None,
+                 events_file: Optional[TextIO] = None) -> None:
         self.gateway = Gateway()
+        self.event_log = EventLog(events_file) if events_file is not None else None
+        self._event_statuses = {}
+        self._event_zones = {}
+        self._event_reference = {}
+        self._event_reference_revisions = {}
+        self._closed = False
         self.fusion = fusion  # Classroom states; None to only receive
         self._fusion_reboots: dict[int, int] = {}
         self.fusion_out = fusion_out or out  # Where classroom state changes are printed
@@ -378,6 +410,16 @@ class GatewayServer:
         self.lock = threading.Lock()
         # Called as listener(header, telemetry, now) for every TELEMETRY.
         self.telemetry_listeners: list[Callable[[p.Header, p.Telemetry, float], None]] = []
+        self._log("run_start", now, nodes=self.fusion.config.zones if self.fusion else {})
+        if self.fusion and self.event_log:
+            for node in self.fusion.config.zones:
+                self._log("node_status", now, node=node, old=None, new="OFFLINE")
+                self._event_statuses[node] = "OFFLINE"
+            for region in ('activity', 'air', 'comfort', 'mode'):
+                self._log("fusion", now, region=region, old=None,
+                          new=self.fusion.state()[region], reason="initial state")
+            self._observe_fusion(now)
+
 
     def poll(self, timeout: float = 0.2) -> None:
         readable, _, _ = select.select([self.sock], [], [], timeout)
@@ -399,6 +441,8 @@ class GatewayServer:
                 self.send_pings()
                 self._next_ping = now + self.ping_interval
             self._send_all(self.gateway.config_sends(now, self.config_port), "CONFIG")
+            self._flush_config_events()
+            self._log_statuses(now)
             if self.fusion:
                 self._evaluate_fusion(now)
             for message in self.gateway.messages:
@@ -409,14 +453,25 @@ class GatewayServer:
                 self._next_summary = now + self.summary_interval
 
     def _received(self, data: bytes, address: Address, now: float) -> None:
+        # Observe expiry before this datagram refreshes last_seen, so a return
+        # across a status boundary cannot erase the observed outage transition.
+        self._log_statuses(now)
         result = self.gateway.handle(data, address, now)
         if result is None:
+            self._log("drop", now, source_ip=address[0], bytes=len(data))
             return
         header, payload = result
+        self._flush_config_events()
+        self._log_statuses(now)
+        pc_time = datetime.now().isoformat(timespec="milliseconds")
+        self._log("datagram", now, node=header.node_id, source_ip=address[0],
+                  msg_type=header.msg_type.name, seq=header.seq, flags=header.flags,
+                  sender_time_ms=header.sender_time_ms,
+                  csv_pc_time=pc_time if isinstance(payload, p.Telemetry) else None)
         if isinstance(payload, p.Telemetry):
             self._print(format_telemetry(header, payload))
             if self.csv:
-                self.csv.writerow(csv_row(header, payload))
+                self.csv.writerow(csv_row(header, payload, pc_time))
                 self._csv_file.flush()
             if self.fusion:
                 reboots = self.gateway.nodes[header.node_id].reboots
@@ -427,6 +482,8 @@ class GatewayServer:
                                 report_interval_ms=self.gateway.nodes[header.node_id].report_interval_ms)
             for listener in self.telemetry_listeners:
                 listener(header, payload, now)
+        elif isinstance(payload, p.Ping):
+            self._log("pong", now, node=header.node_id, rtt_ms=self.gateway.nodes[header.node_id].rtt_ms)
         elif isinstance(payload, p.ConfigAck):
             self._print(f"node {header.node_id} CONFIG_ACK version "
                         f"{payload.config_version}: {payload.status.name}")
@@ -439,6 +496,66 @@ class GatewayServer:
             stale={n for n, s in statuses.items() if s == NodeStatus.STALE})
         for event in self.fusion.drain_events():
             print("classroom " + format_event(event), file=self.fusion_out, flush=True)
+            self._log("fusion", event.time_ms / 1000, region=event.region,
+                      old=event.old, new=event.new, reason=event.reason)
+        self._observe_fusion(now)
+
+    def _log(self, event: str, now: float, **fields) -> None:
+        if self.event_log:
+            self.event_log.write(event, now, **fields)
+
+    def _flush_config_events(self) -> None:
+        pending, self.gateway.config_events = self.gateway.config_events, []
+        for event in pending:
+            now = event.pop('now')
+            self._log('config', now, **event)
+
+    def _log_statuses(self, now: float) -> None:
+        for node, status in self.gateway.nodes.items():
+            current = status.status(now).value
+            previous = self._event_statuses.get(node)
+            if previous != current:
+                self._log('node_status', now, node=node, old=previous, new=current)
+                self._event_statuses[node] = current
+
+    def _observe_fusion(self, now: float) -> None:
+        if not self.fusion or not self.event_log:
+            return
+        state = self.fusion.state()
+        for zone in state['zones']:
+            for region, key in (('activity', 'state'), ('air', 'air'), ('comfort', 'comfort')):
+                identity = (zone['zone'], region)
+                previous = self._event_zones.get(identity)
+                if previous != zone[key]:
+                    self._log('zone_state', now, zone=zone['zone'], node=zone['node_id'],
+                              region=region, old=previous, new=zone[key])
+                    self._event_zones[identity] = zone[key]
+        for zone, status in state['reference']['zones'].items():
+            previous = self._event_reference.get(zone, {})
+            revision = self.fusion.reference.revision(zone)
+            changed = revision != self._event_reference_revisions.get(zone, 0)
+            if previous.get('gain_q16') is None and status['gain_q16'] is not None:
+                self._log('reference', now, zone=zone, action='ready',
+                          pairs=status['pairs_collected'], gain_q16=status['gain_q16'])
+            elif changed and self.fusion.reference.students[zone].calibrating:
+                self._log('reference', now, zone=zone, action='start')
+            elif changed and status['gain_q16'] is None:
+                self._log('reference', now, zone=zone, action='reset')
+            self._event_reference[zone] = status
+            self._event_reference_revisions[zone] = revision
+
+    def reference_operation(self, action: str, zone: Optional[str], now: float) -> None:
+        """Log operator requests, including restarting an existing calibration.
+
+        Dashboard calls this while holding lock, immediately after the operation.
+        """
+        targets = [zone] if zone is not None else list(self.fusion.reference.students)
+        for target in targets:
+            self._log('reference', now, zone=target, action=action)
+        # Seed the snapshot to avoid logging the same request again at next poll.
+        for target in targets:
+            self._event_reference[target] = self.fusion.reference.state()['zones'][target]
+            self._event_reference_revisions[target] = self.fusion.reference.revision(target)
 
     def set_mode(self, mode: p.Mode) -> list[int]:
         """Change the classroom mode: fusion rules switch at once, and every
@@ -450,6 +567,7 @@ class GatewayServer:
             nodes = sorted(self.gateway.nodes)
             for node_id in nodes:
                 self.gateway.set_config(node_id, now, mode=mode)
+            self._flush_config_events()
             return nodes
 
     def send_pings(self) -> None:
@@ -458,7 +576,9 @@ class GatewayServer:
     def set_config(self, node_id: int, **fields) -> p.Config:
         """Thread-safe Gateway.set_config(); the next poll() sends it."""
         with self.lock:
-            return self.gateway.set_config(node_id, time.monotonic(), **fields)
+            result = self.gateway.set_config(node_id, time.monotonic(), **fields)
+            self._flush_config_events()
+            return result
 
     def _send_all(self, datagrams: list[tuple[bytes, Address]], what: str) -> None:
         for data, address in datagrams:
@@ -477,7 +597,16 @@ class GatewayServer:
             self._print("\n" + format_summary(self.gateway, time.monotonic()))
 
     def close(self) -> None:
-        self.sock.close()
+        with self.lock:
+            if not self._closed:
+                now = time.monotonic()
+                if self.fusion:
+                    self._evaluate_fusion(now)
+                self._log_statuses(now)
+                self._flush_config_events()
+                self._log('run_end', now)
+                self.sock.close()
+                self._closed = True
 
     def _print(self, text: str) -> None:
         print(text, file=self.out, flush=True)
@@ -503,19 +632,23 @@ def main(argv: Optional[list[str]] = None) -> None:
                         help="port nodes listen on for PING/CONFIG")
     parser.add_argument("--ping-interval", type=float, default=PING_INTERVAL_S)
     parser.add_argument("--csv", metavar="FILE", help="append every TELEMETRY to this CSV")
+    parser.add_argument("--events", metavar="FILE", help="append JSON Lines evaluation events")
     add_fusion_argument(parser)
     args = parser.parse_args(argv)
 
     fusion = FusionEngine(load_fusion_config(parser, args.fusion_config))
     csv_file = open(args.csv, "a", newline="") if args.csv else None
+    events_file = open(args.events, "a") if args.events else None
     server = GatewayServer((args.host, args.port), args.node_port, args.ping_interval,
-                           csv_file=csv_file, fusion=fusion)
+                           csv_file=csv_file, fusion=fusion, events_file=events_file)
     try:
         server.run()
     finally:
         server.close()
         if csv_file:
             csv_file.close()
+        if events_file:
+            events_file.close()
 
 
 if __name__ == "__main__":
