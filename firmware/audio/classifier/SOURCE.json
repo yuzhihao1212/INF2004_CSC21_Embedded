@@ -1,0 +1,14 @@
+{
+  "model": "ml\\candidates\\dsp_int8_cough_tuned\\model.json",
+  "model_sha256": "c6d9dc98cb5b5304fea59249b2c15d11de603123836274b8d410ac9aa5453495",
+  "classes": [
+    "background",
+    "speech",
+    "transient"
+  ],
+  "probability_method": "Q15 lookup softmax, exp step 1/32, logit delta clamp 16",
+  "weights": "int8",
+  "activations": "int8",
+  "class_timing": "classifier_timing.c",
+  "note": "Own trained model; no pretrained PulseVAD inference in audio_talking."
+}
