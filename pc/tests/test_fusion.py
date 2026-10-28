@@ -59,7 +59,7 @@ class Scenario(unittest.TestCase):
             self.assertEqual(self.engine.comfort.state, comfort)
 
     def change_time(self, region, new):
-        return next(e.time for e in self.engine.events if e.region == region and e.new == new)
+        return next(e.time_ms / 1000 for e in self.engine.events if e.region == region and e.new == new)
 
 
 class Occupancy(Scenario):
@@ -97,9 +97,9 @@ class Occupancy(Scenario):
 
     def test_offline_zones(self):
         self.run_for(30)
-        self.assertEqual(self.engine.state()["confidence"], 1.0)
+        self.assertEqual(self.engine.state()["confidence_pct"], 100)
         self.engine.evaluate(self.now, online={1, 2}, stale={3})
-        self.assertEqual(self.engine.state()["confidence"], 0.62)  # (2 + 0.5) / 4
+        self.assertEqual(self.engine.state()["confidence_pct"], 63)  # (2 + 0.5) / 4
         self.engine.evaluate(self.now, online=set())
         self.assert_states(Activity.UNKNOWN, Air.UNKNOWN, Comfort.UNKNOWN)
 
@@ -196,7 +196,7 @@ class Environment(Scenario):
         self.run_for(30)
         self.run_for(61, **self.every(temp=29.0))
         self.assert_states(comfort=Comfort.OUT_OF_RANGE)
-        self.assertEqual(self.engine.state()["comfort_reasons"], ["too warm (29.0 °C)"])
+        self.assertEqual(self.engine.state()["comfort_reasons"], ["too warm"])
         self.run_for(120, **self.every(temp=27.8))  # Inside, but within the hysteresis
         self.assert_states(comfort=Comfort.OUT_OF_RANGE)
         self.run_for(61, **self.every(temp=26.0))
@@ -239,7 +239,7 @@ class Configuration(unittest.TestCase):
         engine = FusionEngine()
         engine.add(7, telemetry(probs=SPEECH), 1.0)
         engine.evaluate(1.0, online={7})
-        self.assertEqual(engine.state()["zones"], [])
+        self.assertTrue(all(z["state"] == "NO_DATA" for z in engine.state()["zones"]))
 
 
 if __name__ == "__main__":
