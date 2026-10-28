@@ -298,7 +298,7 @@ class ConfigDelivery(unittest.TestCase):
 
 class Simulated(unittest.TestCase):
     def test_simulator_telemetry_decodes(self):
-        sim = Simulator(nodes=2, seed=1)
+        sim = Simulator(nodes=2, seed=1, aligned=True)
         datagrams = sim.telemetry(now=0.0)
         self.assertEqual(len(datagrams), 2)
         for node_id, data in enumerate(datagrams, start=1):
@@ -310,7 +310,7 @@ class Simulated(unittest.TestCase):
         self.assertEqual((header.seq, header.flags), (1, 0))
 
     def test_simulator_reports_both_audio_windows(self):
-        sim = Simulator(nodes=1, seed=1)
+        sim = Simulator(nodes=1, seed=1, aligned=True)
         _, first = p.decode(sim.telemetry(now=0.0)[0])
         _, second = p.decode(sim.telemetry(now=1.0)[0])
         self.assertEqual(len(first.audio), p.AUDIO_WINDOWS_PER_REPORT)
@@ -318,7 +318,7 @@ class Simulated(unittest.TestCase):
                          p.AUDIO_WINDOWS_PER_REPORT)
 
     def test_simulated_node_checks_config(self):
-        sim = Simulator(nodes=2, seed=1)
+        sim = Simulator(nodes=2, seed=1, aligned=True)
 
         def send(node_id, version):
             data = p.encode(p.Header(p.MsgType.CONFIG, node_id, 0, 0), p.Config(version))
@@ -333,7 +333,7 @@ class Simulated(unittest.TestCase):
         self.assertEqual(send(0, 6), [])  # No node 0
 
     def test_simulator_loss_consumes_seq(self):
-        sim = Simulator(nodes=1, seed=1, loss=1.0)
+        sim = Simulator(nodes=1, seed=1, loss=1.0, aligned=True)
         self.assertEqual(sim.telemetry(now=0.0), [])
         sim.loss = 0.0
         header, _ = p.decode(sim.telemetry(now=1.0)[0])
@@ -349,7 +349,7 @@ class Simulated(unittest.TestCase):
         server.config_port = node_sock.getsockname()[1]
         gateway_addr = server.sock.getsockname()
 
-        sim = Simulator(nodes=3, seed=2)
+        sim = Simulator(nodes=3, seed=2, aligned=True)
         for step in range(4):
             for data in sim.telemetry(now=float(step)):
                 node_sock.sendto(data, gateway_addr)

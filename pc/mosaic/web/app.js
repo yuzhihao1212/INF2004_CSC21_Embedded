@@ -333,6 +333,45 @@
     $("#c-reason").textContent = c.comfort_reasons.join(", ");
     document.querySelectorAll("#modes .chip-btn").forEach((b) =>
       b.setAttribute("aria-pressed", String(b.dataset.mode === c.mode)));
+    const reference = c.reference;
+    $("#c-reference").hidden = !reference || !reference.enabled;
+    if (reference && reference.enabled) {
+      $("#reference-label").textContent = `Reference (${reference.zone})`;
+      $("#reference-status").replaceChildren(...Object.entries(reference.zones).map(([zone, status]) => {
+        const item = document.createElement("span");
+        const shown = status.gain == null ? status.state : (status.smoothed_state || "UNKNOWN");
+        const label = shown === "CALIBRATING"
+          ? `Calibrating ${status.pairs_collected}/${status.required_pairs}`
+          : shown.charAt(0) + shown.slice(1).toLowerCase();
+        const share = status.talking_fraction == null ? "" : ` (${Math.round(status.talking_fraction * 100)}%)`;
+        item.textContent = `${zone}: ${label}${status.gain == null ? "" : share}`;
+        item.title = `${status.reason}. Latest window: ${status.state}${status.hold ? " (hold)" : ""}; ${status.known_windows || 0} known windows; rule: ${status.decision_source || "probabilities"}. RMS ${fmt(status.student_rms, 1)}, expected ${fmt(status.expected_rms, 1)}, threshold ${fmt(status.threshold, 1)}, gain ${fmt(status.gain, 3)}`;
+        return item;
+      }));
+    }
+  }
+
+  for (const [id, path] of [["#calibrate", "/api/calibrate"], ["#calibrate-reset", "/api/calibrate/reset"]]) {
+    $(id).addEventListener("click", async () => {
+      const error = $("#reference-error");
+      error.hidden = true;
+      $("#calibrate").disabled = $("#calibrate-reset").disabled = true;
+      try {
+        const res = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
+        const reply = await res.json();
+        if (!res.ok) throw new Error(reply.error || "Reference request failed");
+        if (state && state.classroom) {
+          state.classroom.reference = reply.reference;
+          renderClassroom(state.classroom);
+        }
+        el.announcer.textContent = id === "#calibrate" ? "Calibration started. Let only the lecturer speak." : "Reference calibration reset.";
+      } catch (e) {
+        error.textContent = e.message;
+        error.hidden = false;
+      } finally {
+        $("#calibrate").disabled = $("#calibrate-reset").disabled = false;
+      }
+    });
   }
 
   document.querySelectorAll("#modes .chip-btn").forEach((b) => b.addEventListener("click", async () => {
