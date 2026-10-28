@@ -9,7 +9,8 @@ import time
 import unittest
 
 from mosaic import protocol as p
-from mosaic.gateway import Gateway, GatewayServer, NodeStatus
+from mosaic.gateway import (CONFIG_FAILED_WAIT_S, CONFIG_MAX_SENDS, ConfigState, Gateway,
+                            GatewayServer, NodeStatus)
 from mosaic.simulator import Simulator
 
 NODE_ADDR = ("192.168.1.21", p.PORT_CONFIG)
@@ -149,23 +150,150 @@ class Latency(unittest.TestCase):
         data, address = pings[0]
         self.assertEqual(address, (NODE_ADDR[0], p.PORT_CONFIG))
         header, ping = p.decode(data)
-        self.assertEqual((header.msg_type, header.node_id), (p.MsgType.PING, 0))
+        self.assertEqual((header.msg_type, header.node_id), (p.MsgType.PING, 1))  # Destination
         gw.handle(datagram(p.MsgType.PONG, ping, seq=1), NODE_ADDR, now=50.012)
         self.assertAlmostEqual(gw.nodes[1].rtt_ms, 12.0, places=3)
 
-    def test_one_ping_per_address_and_none_to_offline(self):
+    def test_one_ping_per_node_and_none_to_offline(self):
         gw = Gateway()
         gw.handle(telemetry(node_id=1), ("10.0.0.1", 5006), now=0.0)
         gw.handle(telemetry(node_id=2), ("10.0.0.1", 5006), now=0.0)
         gw.handle(telemetry(node_id=3), ("10.0.0.3", 5006), now=0.0)
         gw.handle(telemetry(node_id=1, seq=1), ("10.0.0.1", 5006), now=20.0)
-        self.assertEqual([addr for _, addr in gw.pings(now=20.0)], [("10.0.0.1", p.PORT_CONFIG)])
+        gw.handle(telemetry(node_id=2, seq=1), ("10.0.0.1", 5006), now=20.0)
+        pings = [(p.decode(data)[0].node_id, addr) for data, addr in gw.pings(now=20.0)]
+        self.assertEqual(pings, [(1, ("10.0.0.1", p.PORT_CONFIG)),
+                                 (2, ("10.0.0.1", p.PORT_CONFIG))])
 
     def test_pc_seq_increments(self):
         gw = Gateway()
         gw.handle(telemetry(), NODE_ADDR, now=0.0)
         seqs = [p.decode(gw.pings(now=0.0)[0][0])[0].seq for _ in range(3)]
         self.assertEqual(seqs, [0, 1, 2])
+
+
+class ConfigDelivery(unittest.TestCase):
+    """docs/protocol.md section 5, Configuration delivery."""
+
+    def setUp(self):
+        self.gw = Gateway()
+        self.node_seq = 0
+        self.receive(telemetry())
+
+    def receive(self, data, now=0.0):
+        self.gw.handle(data, NODE_ADDR, now)
+
+    def from_node(self, msg_type, payload, flags=0, now=0.0):
+        self.node_seq += 1
+        self.receive(datagram(msg_type, payload, seq=self.node_seq, flags=flags), now)
+
+    def ack(self, version, status=p.AckStatus.OK, now=0.0):
+        self.from_node(p.MsgType.CONFIG_ACK, p.ConfigAck(version, status), now=now)
+
+    def report(self, config_version, now=0.0):
+        self.from_node(p.MsgType.TELEMETRY, p.Telemetry(config_version=config_version), now=now)
+
+    def sent(self, now):
+        return [p.decode(data) for data, _ in self.gw.config_sends(now)]
+
+    @property
+    def delivery(self):
+        return self.gw.nodes[1].config
+
+    def test_sends_to_node_and_applies_on_ack(self):
+        config = self.gw.set_config(1, now=0.0, report_interval_ms=500)
+        self.assertEqual(config.config_version, 1)
+        [(header, sent)] = self.sent(0.0)
+        self.assertEqual((header.msg_type, header.node_id), (p.MsgType.CONFIG, 1))
+        self.assertEqual(sent, config)
+        self.assertEqual(self.sent(0.4), [])  # Next retry not due until 0.5 s
+        self.ack(1)
+        self.assertEqual(self.delivery.state, ConfigState.APPLIED)
+        self.assertEqual(self.gw.nodes[1].report_interval_ms, 500)  # Used for STALE timing
+        self.assertEqual(self.sent(5.0), [])
+
+    def test_retries_then_fails(self):
+        self.gw.set_config(1, now=0.0, mode=p.Mode.QUIET_WORK)
+        times = [t / 10 for t in range(0, 40)]  # Poll every 100 ms for 4 s
+        sends = [t for t in times if self.sent(t)]
+        self.assertEqual(sends, [0.0, 0.5, 1.0, 1.5, 2.0])
+        self.assertEqual(len(sends), CONFIG_MAX_SENDS)
+        self.assertEqual(self.delivery.state, ConfigState.FAILED)
+        self.assertIn("not acknowledged", self.gw.messages[-1])
+
+    def test_lost_ack_but_telemetry_shows_version(self):
+        self.gw.set_config(1, now=0.0, mode=p.Mode.DISCUSSION)
+        self.sent(0.0)
+        self.report(1, now=0.3)
+        self.assertEqual(self.delivery.state, ConfigState.APPLIED)
+        self.assertEqual(self.sent(0.5), [])
+
+    def test_resends_after_reboot(self):
+        self.gw.set_config(1, now=0.0, mode=p.Mode.DISCUSSION)
+        self.sent(0.0)
+        self.ack(1)
+        self.node_seq = -1  # Reboot: seq restarts, config back to defaults
+        self.from_node(p.MsgType.TELEMETRY, p.Telemetry(config_version=0),
+                       flags=p.FLAG_FIRST_SINCE_BOOT, now=10.0)
+        self.assertEqual(self.gw.nodes[1].reboots, 1)
+        [(_, sent)] = self.sent(10.0)
+        self.assertEqual((sent.config_version, sent.mode), (1, p.Mode.DISCUSSION))
+
+    def test_telemetry_sent_before_ack_does_not_resend(self):
+        self.gw.set_config(1, now=0.0, mode=p.Mode.DISCUSSION)
+        self.sent(0.0)
+        self.ack(1)
+        # A TELEMETRY the node sent before applying arrives late (lower seq).
+        self.receive(datagram(p.MsgType.TELEMETRY, p.Telemetry(config_version=0), seq=1))
+        self.assertEqual(self.delivery.state, ConfigState.APPLIED)
+        self.assertEqual(self.sent(1.0), [])
+
+    def test_stale_version_jumps_past_node(self):
+        # PC restarted: it counts from 1, but the node already runs version 7.
+        self.gw.set_config(1, now=0.0, mode=p.Mode.DISCUSSION)  # No TELEMETRY with 7 yet
+        self.sent(0.0)
+        self.report(7)
+        self.ack(1, p.AckStatus.STALE_VERSION)
+        [(_, sent)] = self.sent(0.1)
+        self.assertEqual(sent.config_version, 8)
+        self.ack(8)
+        self.assertEqual(self.delivery.state, ConfigState.APPLIED)
+
+    def test_next_version_above_reported(self):
+        self.report(41)
+        self.assertEqual(self.gw.set_config(1, now=0.0).config_version, 42)
+
+    def test_rejected_is_not_retried(self):
+        self.gw.set_config(1, now=0.0)
+        self.sent(0.0)
+        self.ack(1, p.AckStatus.INVALID_VALUE)
+        self.assertEqual(self.delivery.state, ConfigState.REJECTED)
+        self.report(0, now=1.0)
+        self.assertEqual(self.sent(1.0), [])
+
+    def test_failed_retries_after_wait(self):
+        self.gw.set_config(1, now=0.0)
+        for t in range(30):
+            self.sent(t / 10)
+        self.assertEqual(self.delivery.state, ConfigState.FAILED)
+        self.report(0, now=3.0)  # Too soon
+        self.assertEqual(self.delivery.state, ConfigState.FAILED)
+        self.report(0, now=3.0 + CONFIG_FAILED_WAIT_S)
+        self.assertEqual(self.delivery.state, ConfigState.SENDING)
+
+    def test_set_config_keeps_earlier_fields(self):
+        self.gw.set_config(1, now=0.0, report_interval_ms=500)
+        config = self.gw.set_config(1, now=1.0, mode=p.Mode.QUIET_WORK)
+        self.assertEqual((config.config_version, config.report_interval_ms, config.mode),
+                         (2, 500, p.Mode.QUIET_WORK))
+
+    def test_set_config_rejects_bad_requests(self):
+        with self.assertRaises(KeyError):
+            self.gw.set_config(5, now=0.0)
+        for fields in [dict(report_interval_ms=1), dict(config_version=3), dict(colour=1)]:
+            with self.subTest(**fields), self.assertRaises(ValueError):
+                self.gw.set_config(1, now=0.0, **fields)
+        self.assertIsNone(self.delivery)
 
 
 class Simulated(unittest.TestCase):
@@ -180,6 +308,29 @@ class Simulated(unittest.TestCase):
             self.assertNotIn(p.Valid.CO2, t.valid_flags)
         header, _ = p.decode(sim.telemetry(now=1.0)[0])
         self.assertEqual((header.seq, header.flags), (1, 0))
+
+    def test_simulator_reports_both_audio_windows(self):
+        sim = Simulator(nodes=1, seed=1)
+        _, first = p.decode(sim.telemetry(now=0.0)[0])
+        _, second = p.decode(sim.telemetry(now=1.0)[0])
+        self.assertEqual(len(first.audio), p.AUDIO_WINDOWS_PER_REPORT)
+        self.assertEqual(second.audio_window_seq - first.audio_window_seq,
+                         p.AUDIO_WINDOWS_PER_REPORT)
+
+    def test_simulated_node_checks_config(self):
+        sim = Simulator(nodes=2, seed=1)
+
+        def send(node_id, version):
+            data = p.encode(p.Header(p.MsgType.CONFIG, node_id, 0, 0), p.Config(version))
+            return [p.decode(r) for r in sim.handle(data, now=0.0)]
+
+        [(header, ack)] = send(2, 5)
+        self.assertEqual((header.node_id, ack), (2, p.ConfigAck(5, p.AckStatus.OK)))
+        self.assertEqual(sim.nodes[0].config_version, 0)  # Node 1 ignored it
+        [(_, ack)] = send(2, 4)
+        self.assertEqual(ack, p.ConfigAck(4, p.AckStatus.STALE_VERSION))
+        self.assertEqual(sim.nodes[1].config_version, 5)
+        self.assertEqual(send(0, 6), [])  # No node 0
 
     def test_simulator_loss_consumes_seq(self):
         sim = Simulator(nodes=1, seed=1, loss=1.0)
@@ -211,13 +362,26 @@ class Simulated(unittest.TestCase):
         self.assertEqual(server.gateway.dropped["127.0.0.1"], 1)
         self.assertIn("node 2", server.out.getvalue())
 
-        # PING reaches the simulated node, every node answers, all get an RTT.
+        # One PING per node; each simulated node answers its own, all get an RTT.
         server.send_pings()
-        data, source = node_sock.recvfrom(p.MAX_DATAGRAM)
-        for reply in sim.handle(data, now=5.0):
-            node_sock.sendto(reply, source)
+        for _ in range(3):
+            data, source = node_sock.recvfrom(p.MAX_DATAGRAM)
+            replies = sim.handle(data, now=5.0)
+            self.assertEqual(len(replies), 1)
+            node_sock.sendto(replies[0], source)
         self._poll_until(server, lambda: all(n.rtt_ms is not None
                                              for n in server.gateway.nodes.values()))
+
+        # CONFIG to node 2 only: delivered, acknowledged and applied.
+        server.set_config(2, report_interval_ms=500)
+        server.poll(timeout=0)
+        data, source = node_sock.recvfrom(p.MAX_DATAGRAM)
+        [reply] = sim.handle(data, now=6.0)
+        node_sock.sendto(reply, source)
+        self._poll_until(server, lambda: server.gateway.nodes[2].config.state
+                         == ConfigState.APPLIED)
+        self.assertEqual([n.config_version for n in sim.nodes], [0, 1, 0])
+        self.assertIn("node 2: CONFIG 1 applied", server.out.getvalue())
 
     def _poll_until(self, server, condition):
         deadline = time.monotonic() + 2.0
