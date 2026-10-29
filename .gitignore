@@ -1,5 +1,6 @@
 # Firmware build output (CMake/Ninja), anywhere in the tree
 build/
+firmware/build-node/
 
 # Python
 .venv/

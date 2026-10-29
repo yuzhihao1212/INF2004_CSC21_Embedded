@@ -32,7 +32,7 @@ target_link_libraries(mosaic_node
     mosaic_common
     mosaic_environment
     pico_stdlib
-    pico_cyw43_arch_lwip_poll
+    pico_cyw43_arch_lwip_threadsafe_background
 )
 target_compile_options(mosaic_node PRIVATE -Wall -Wextra)
 pico_enable_stdio_usb(mosaic_node 1)
