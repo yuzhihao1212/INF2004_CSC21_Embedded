@@ -146,7 +146,19 @@ TELEMETRY every second over Wi-Fi (audio not wired in yet).
    The node only accepts CONFIG from the PC IP it was built with.
 
 The onboard LED blinks once per packet sent. Wi-Fi status and the node's IP are printed on
-the USB serial port.
+the USB serial port. The node uses the SDK's interrupt-driven background Wi-Fi servicing
+(still no FreeRTOS). Receive callbacks validate and copy CONFIG/PING into a four-entry
+queue; the main loop applies configuration and sends replies. Foreground lwIP calls are
+locked. A full control queue drops the new packet without blocking, so CONFIG retries can
+recover. Serial health messages report telemetry send attempts and control-queue drops
+every 10 s; a successful send means lwIP accepted it, not that the PC received it.
+
+After flashing, leave the dashboard and USB serial monitor open for a 10-minute run, then
+repeat the CONFIG check above while the node is ONLINE. Confirm both the node's
+`CONFIG ... applied` message and the gateway's acknowledgement; an HTTP
+`config_version` response alone only confirms that the PC queued the update. Record any
+CYW43 timeouts or OFFLINE periods. A join or DHCP attempt stuck for 30 s restarts station
+mode, and RSSI is queried only while connected, at most once every 5 s.
 
 ## Contributing
 
