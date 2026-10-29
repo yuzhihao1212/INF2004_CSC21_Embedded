@@ -1,0 +1,69 @@
+{
+  "fixture": {
+    "reference_audio_phase_ms": 0,
+    "reference_report_phase_ms": 400,
+    "student_audio_phase_ms": 350,
+    "student_report_phase_ms": 650,
+    "receive_jitter_ms": [
+      0,
+      80
+    ],
+    "seed": 1,
+    "student_talking_duration_ms": 150000,
+    "sample_interval_ms": 50
+  },
+  "before_followup": {
+    "report_1000_ms": {
+      "noise_after_ms": 28750,
+      "talking_time_pct": 92.03,
+      "lecture_talking_time_pct": 1.77
+    },
+    "report_2000_ms": {
+      "noise_after_ms": null,
+      "talking_time_pct": 2.13,
+      "lecture_talking_time_pct": 0.0
+    }
+  },
+  "pending_only_2000_ms": {
+    "noise_after_ms": null,
+    "talking_time_pct": 60.53,
+    "lecture_talking_time_pct": 1.54
+  },
+  "after_followup": {
+    "report_1000_ms": {
+      "noise_after_ms": 25750,
+      "talking_time_pct": 96.17,
+      "lecture_talking_time_pct": 2.38,
+      "lecture_positive_window_pct": 0.26,
+      "lecture_noise_entries": 0
+    },
+    "report_2000_ms": {
+      "noise_after_ms": 26250,
+      "talking_time_pct": 95.83,
+      "lecture_talking_time_pct": 2.79,
+      "lecture_positive_window_pct": 0.61,
+      "lecture_noise_entries": 0
+    }
+  },
+  "notes": [
+    "Time shares include normal post-talking release tail in lecture-only time.",
+    "Raw paired-window positive share includes PENDING and TALKING, excluding calibration/UNKNOWN.",
+    "These are deterministic simulation results; physical classroom performance is unverified."
+  ],
+  "verification": {
+    "unittest_count": 170,
+    "result": "PASS",
+    "float_comparison_max_delta_ms": {
+      "activity": 500,
+      "air": 100,
+      "comfort": 0.417
+    },
+    "float_comparison_same_state_sequences": true,
+    "boundary_allow_list": {
+      "reference.py": [
+        "seconds_to_ms"
+      ],
+      "fusion.py": []
+    }
+  }
+}

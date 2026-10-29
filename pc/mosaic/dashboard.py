@@ -22,6 +22,7 @@ from __future__ import annotations
 import argparse
 import ipaddress
 import json
+import math
 import os
 import re
 import sys
@@ -79,6 +80,11 @@ class Dashboard:
             now = time.monotonic()
             gateway = self.server.gateway
             nodes = [self._node(n, now) for _, n in sorted(gateway.nodes.items())]
+            if self.server.fusion:
+                self.server.fusion.evaluate(
+                    now, {n.node_id for n in gateway.nodes.values()
+                          if n.status(now).value == "ONLINE"},
+                    {n.node_id for n in gateway.nodes.values() if n.status(now).value == "STALE"})
             simulated = {n["simulated"] for n in nodes}
             return {
                 "time_ms": int(time.time() * 1000),
@@ -89,7 +95,7 @@ class Dashboard:
                 "source": ("none" if not nodes else "mixed" if len(simulated) == 2
                            else "simulated" if True in simulated else "sensors"),
                 "nodes": nodes,
-                "classroom": self.server.fusion.state() if self.server.fusion else None,
+                "classroom": present_classroom(self.server.fusion) if self.server.fusion else None,
             }
 
     def _node(self, n: NodeState, now: float) -> dict:
@@ -137,6 +143,41 @@ def _telemetry(t: p.Telemetry) -> dict:
         "rssi_dbm": t.wifi_rssi_dbm,
         "config_version": t.config_version,
     }
+
+
+def present_reference(reference: dict, fusion: FusionEngine) -> dict:
+    """Presentation only: integer fusion quantities -> human decimal ADC units.
+
+    isqrt rounds display RMS down to Q12.4; the displayed threshold is also
+    rounded down to Q12.4. These values NEVER feed back into a decision.
+    Raw integer fields remain in the JSON for numeric evidence and clients.
+    """
+    cfg = fusion.reference.config
+    for status in reference["zones"].values():
+        for raw, shown, scale in (("gain_q16", "gain", 65536),
+                                  ("background_power_x256", "background_power", 256),
+                                  ("upper_residual_x256", "upper_residual", 256),
+                                  ("student_rms_x16", "student_rms", 16),
+                                  ("talking_pct", "talking_fraction", 100)):
+            value = status.get(raw)
+            status[shown] = value / scale if value is not None else None
+        expected = status["expected_power_x256"]
+        power = status["threshold_power_x256"]
+        status["expected_rms"] = math.isqrt(expected) / 16 if expected is not None else None
+        status["threshold"] = ((math.isqrt(power * (100 + cfg.relative_margin_pct) ** 2) // 100
+                                + cfg.abs_margin_x16) / 16 if power is not None else None)
+    return reference
+
+
+def present_classroom(fusion: FusionEngine) -> dict:
+    """Decimals belong to this display boundary, never fusion/reference.py."""
+    result = fusion.state()
+    result["confidence"] = result["confidence_pct"] / 100
+    present_reference(result["reference"], fusion)
+    for zone in result["zones"]:
+        for raw, shown in (("temperature_x10", "temperature_c"), ("humidity_x10", "humidity_pct")):
+            zone[shown] = zone[raw] / 10 if zone[raw] is not None else None
+    return result
 
 
 def _config(d: ConfigDelivery) -> dict:
@@ -192,6 +233,8 @@ def make_handler(dashboard: Dashboard) -> type[BaseHTTPRequestHandler]:
             path = self.path.split("?", 1)[0]
             if path == "/api/mode":
                 return self._post_mode()
+            if path in ("/api/calibrate", "/api/calibrate/reset"):
+                return self._post_calibrate(reset=path.endswith("/reset"))
             match = _CONFIG_PATH.fullmatch(path)
             if not match:
                 return self._send(404, "text/plain; charset=utf-8", b"Not found")
@@ -220,6 +263,32 @@ def make_handler(dashboard: Dashboard) -> type[BaseHTTPRequestHandler]:
             except ValueError as e:
                 return self._json(400, {"error": str(e)})
             self._json(202, {"mode": mode.name, "nodes": nodes})
+
+        def _post_calibrate(self, *, reset: bool) -> None:
+            try:
+                length = int(self.headers.get("Content-Length") or 0)
+                if length > _MAX_BODY:
+                    return self._json(413, {"error": "request too large"})
+                if length < 0:
+                    raise ValueError("invalid request length")
+                body = json.loads(self.rfile.read(length) or b"{}")
+                if (not isinstance(body, dict) or set(body) - {"zone"}
+                        or ("zone" in body and not isinstance(body["zone"], str))):
+                    raise ValueError('expected {} or {"zone": "student zone"}')
+            except (ValueError, UnicodeError) as e:
+                return self._json(400, {"error": str(e)})
+            with dashboard.server.lock:
+                fusion = dashboard.server.fusion
+                if fusion is None or not fusion.reference.enabled:
+                    return self._json(409, {"error": "reference comparison is disabled or unmapped"})
+                try:
+                    if reset:
+                        fusion.reset_reference(body.get("zone"))
+                    else:
+                        fusion.calibrate(time.monotonic(), body.get("zone"))
+                except KeyError:
+                    return self._json(404, {"error": "unknown student zone"})
+                self._json(202, {"reference": present_reference(fusion.reference.state(), fusion)})
 
         def _json(self, code: int, value: dict) -> None:
             self._send(code, "application/json", json.dumps(value).encode())
@@ -258,6 +327,7 @@ def main(argv: Optional[list[str]] = None) -> None:
     parser.add_argument("--simulate", type=int, default=0, metavar="N",
                         help="also run N simulated nodes in this process")
     simulator.add_scenario_argument(parser)
+    simulator.add_timing_arguments(parser)
     parser.add_argument("--verbose", action="store_true", help="print every packet")
     add_fusion_argument(parser)
     args = parser.parse_args(argv)
@@ -281,6 +351,9 @@ def main(argv: Optional[list[str]] = None) -> None:
                     "--pc-port", str(args.port), "--listen-port", str(args.node_port)]
         if args.scenario:
             sim_args += ["--scenario", args.scenario]
+        if args.aligned:
+            sim_args += ["--aligned"]
+        sim_args += ["--receive-jitter-ms", str(args.receive_jitter_ms)]
         threading.Thread(target=simulator.main, args=(sim_args,), daemon=True).start()
 
     try:

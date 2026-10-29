@@ -87,6 +87,28 @@
         <span class="minor" id="c-confidence" title="Share of zones reporting fresh data"></span>
       </div>
       <p class="minor" id="c-reason"></p>
+      <div class="reference-row" id="c-reference">
+        <strong id="reference-label">Reference</strong>
+        <span class="minor reference-summary" id="reference-status" aria-live="polite"></span>
+        <button class="chip-btn" id="calibrate" type="button" aria-describedby="reference-hint">Calibrate</button>
+        <button class="chip-btn" id="calibrate-reset" type="button">Reset</button>
+        <p class="minor reference-hint" id="reference-hint">During calibration, let only the lecturer speak. Recalibrate after moving nodes or changing gain.</p>
+        <p class="reference-error" id="reference-error" role="status" hidden></p>
+      </div>
+      <div class="floor-plan" aria-labelledby="zone-map-h">
+        <div class="map-head">
+          <h3 id="zone-map-h">Zone map</h3>
+          <div class="chips" id="map-metrics" role="group" aria-label="Zone map metric">
+            <button class="chip-btn" type="button" data-metric="activity" aria-pressed="true">Activity</button>
+            <button class="chip-btn" type="button" data-metric="co2" aria-pressed="false">CO₂</button>
+            <button class="chip-btn" type="button" data-metric="temperature" aria-pressed="false">Temperature</button>
+            <button class="chip-btn" type="button" data-metric="motion" aria-pressed="false">Motion</button>
+          </div>
+        </div>
+        <p class="map-front"><svg class="icon icon-sm" aria-hidden="true"><use href="#i-lecturer"/></svg>Lecturer’s desk · front of room</p>
+        <div class="zone-grid" id="zone-grid" role="list" aria-label="Classroom zones"></div>
+        <p class="minor">Each zone reacts after 10 seconds by default. Stripes mean offline; dimmed cells have stale readings.</p>
+      </div>
     </div>
   </section>
 

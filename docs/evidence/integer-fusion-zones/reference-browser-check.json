@@ -1,0 +1,31 @@
+{
+  "scenario": "reference",
+  "errors": [],
+  "phoneHorizontalOverflow": false,
+  "metrics": {
+    "co2": [
+      "743 ppm · Good",
+      "774 ppm · Good",
+      "738 ppm · Good",
+      "733 ppm · Good"
+    ],
+    "temperature": [
+      "24.0 °C · In range",
+      "23.8 °C · In range",
+      "24.1 °C · In range",
+      "23.9 °C · In range"
+    ],
+    "motion": [
+      "25% · Motion",
+      "5% · Still",
+      "5% · Still",
+      "5% · Still"
+    ],
+    "activity": [
+      "Lecturer",
+      "Lecturer",
+      "Talking",
+      "Still"
+    ]
+  }
+}
