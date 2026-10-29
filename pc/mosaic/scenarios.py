@@ -32,6 +32,7 @@ class Zone:
     co2_ppm: int = 550
     temperature_c: float = 24.0
     humidity_pct: float = 55.0
+    rms: Optional[float] = None  # ADC RMS level; None preserves the random range.
 
 
 @dataclass(frozen=True)
@@ -90,7 +91,29 @@ AIRCON_FAILS = _phase(180, "Air-conditioning fails", "comfort OUT_OF_RANGE (too 
 AIRCON_BACK = _phase(150, "Air-conditioning restored", "comfort back to COMFORTABLE",
                      **_lecture(temp=24.0, humidity=55.0))
 
+
+def _reference_lecture(student_talking: bool = False) -> dict:
+    # Identical speech-like probabilities throughout: only local levels differ.
+    return dict(default=Zone(SPEECH, pir_pct=5, co2_ppm=750, rms=35), zones={
+        1: Zone(SPEECH, pir_pct=25, co2_ppm=750, rms=100),
+        2: Zone(SPEECH, pir_pct=5, co2_ppm=750, rms=65),
+        3: Zone(SPEECH, pir_pct=5, co2_ppm=750, rms=95 if student_talking else 35),
+        4: Zone(SPEECH, pir_pct=5, co2_ppm=750, rms=30),
+    })
+
 SCENARIOS: dict[str, Scenario] = {
+    "reference": Scenario(
+        "Click Calibrate during lecturer-only speech. High speech probabilities everywhere; "
+        "only the rear level increase identifies additional student speech.",
+        (_phase(60, "Lecturer-only calibration: click Calibrate; keep students quiet",
+                "baseline ready, FOCUSED_LECTURE", **_reference_lecture()),
+         _phase(90, "Lecture heard at attenuated levels at student desks",
+                "FOCUSED_LECTURE, student zones QUIET", **_reference_lecture()),
+         _phase(200, "Students near node 3 talk; speech probabilities unchanged",
+                "NOISE_RISING, then SUSTAINED_CHATTER; zone C TALKING",
+                **_reference_lecture(student_talking=True)),
+         _phase(90, "Students stop; lecturer continues",
+                "FOCUSED_LECTURE, student zones QUIET", **_reference_lecture()))),
     "lecture": Scenario(
         "A lecture where the back rows start chatting, then settle.",
         (EMPTY, LECTURE, REAR_CHATTER, SETTLED)),

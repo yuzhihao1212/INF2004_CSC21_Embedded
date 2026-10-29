@@ -358,6 +358,7 @@ class GatewayServer:
                  fusion_out: Optional[TextIO] = None) -> None:
         self.gateway = Gateway()
         self.fusion = fusion  # Classroom states; None to only receive
+        self._fusion_reboots: dict[int, int] = {}
         self.fusion_out = fusion_out or out  # Where classroom state changes are printed
         self.config_port = config_port
         self.ping_interval = ping_interval
@@ -418,7 +419,12 @@ class GatewayServer:
                 self.csv.writerow(csv_row(header, payload))
                 self._csv_file.flush()
             if self.fusion:
-                self.fusion.add(header.node_id, payload, now)
+                reboots = self.gateway.nodes[header.node_id].reboots
+                reboot = (bool(header.flags & p.FLAG_FIRST_SINCE_BOOT)
+                          or reboots != self._fusion_reboots.get(header.node_id, reboots))
+                self._fusion_reboots[header.node_id] = reboots
+                self.fusion.add(header.node_id, payload, now, reboot=reboot,
+                                report_interval_ms=self.gateway.nodes[header.node_id].report_interval_ms)
             for listener in self.telemetry_listeners:
                 listener(header, payload, now)
         elif isinstance(payload, p.ConfigAck):

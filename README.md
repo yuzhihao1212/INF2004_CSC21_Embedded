@@ -123,6 +123,7 @@ should produce, and prints every classroom state change. Scenarios (defined in
 | `comfort` | air-conditioning fails → out of range → restored | 6 min |
 | `exam` | silent, motionless exam stays occupied (PIR is motion, not presence) | 6 min |
 | `demo` | all of the above in one run | 18 min |
+| `reference` | lecturer-only calibration → attenuated lecture → local speech at node 3 → lecture | 7 min |
 
 `pc/tests/test_scenarios.py` plays each one through the fusion engine and fails if a phase no
 longer reaches its state, for example after a threshold is changed.
@@ -159,6 +160,112 @@ repeat the CONFIG check above while the node is ONLINE. Confirm both the node's
 `config_version` response alone only confirms that the PC queued the update. Record any
 CYW43 timeouts or OFFLINE periods. A join or DHCP attempt stuck for 30 s restarts station
 mode, and RSSI is queried only while connected, at most once every 5 s.
+### Zone map and integer fusion
+
+The Classroom panel includes a floor-plan heatmap with Activity, CO₂, Temperature
+and Motion views. Buttons work with Tab and Enter/Space; icons and labels accompany
+colour. The front/lecturer's desk and reference zone are marked; stale cells dim,
+offline cells hatch. Each zone has its own 10-second dwell (configuration
+`zone_dwell_ms`), faster than the classroom activity dwell. Configure positions
+with `zone_layout`, for example `{"A":[0,0],"B":[0,1],"C":[1,0],"D":[1,1]}`;
+row 0 is at the front. Every configured zone must have a unique cell.
+
+Fusion decisions now use integer milliseconds, exact sums/counts, scaled wire
+values and Q16 reference gain. Configuration names use explicit units; old
+seconds/fraction/°C keys were renamed without a compatibility shim. See
+[the numeric representation and comparison evidence](docs/fusion_numeric_representation.md)
+for all ranges, rounding, renames and the AST enforcement allow-list. Saved
+reference baselines use integer JSON version 2: recalibrate old version 1 files.
+Dashboard decimal values are presentation only.
+
+### Lecturer-reference comparison
+
+Place reference node **1 / zone A** at the lecturer's desk. In *Classroom*, click
+**Calibrate** while only the lecturer speaks and student areas stay quiet. Vary the
+lecturer's level naturally: each student zone needs at least **20 usable paired
+500 ms windows** and enough level variation to fit its baseline. Recalibrate after
+moving microphones, changing gain or rebooting nodes. **Reset** discards the baseline
+without starting collection. The row shows each zone's progress/state; hover for RMS,
+expected lecturer level, threshold and gain. `/api/state` exposes the same values under
+`classroom.reference.zones` and each classroom zone's `reference` entry.
+
+The PC fits `student_power = gain * reference_power + background_power` and compares
+student RMS with `sqrt(expected_power + upper_residual) * 1.25 + 4`. The residual is
+the nearest-rank 95th percentile of nonnegative calibration errors. Speech evidence
+is `100 - background_probability - transient_probability`, independent of the reported
+lecturer/student class. Above-threshold speech needs two consecutive windows; one weak
+window is held, the second releases. As in Darius's C policy, RMS below 4 resets
+immediately. Missing, invalid or replayed audio and stale/offline nodes clear window
+persistence to **UNKNOWN**. Gaps reset onset/hold but the windows that did arrive are
+still processed; a 2-second report interval must not discard every report.
+
+For activity rules, fusion smooths each calibrated zone's actual paired-window results
+over `audio_smooth_ms` (10000 ms). PENDING and TALKING (including HOLD) both count as positive
+evidence: the 10-second smoother replaces the per-window onset gate. QUIET counts
+as a known negative window; UNKNOWN and calibration windows do not enter the denominator. At least
+`reference_min_known_windows` (default 4) are required, and the TALKING fraction must
+reach `reference_talking_pct` (default 50). A brief unknown window does not erase
+usable rolling evidence. When the rolling result is unknown, its evidence expires, or
+either node is stale/offline, fusion falls back to the existing conversation probability
+rule. It returns to reference comparison when usable known evidence returns.
+Fusion uses the applied CONFIG report intervals supplied by the gateway: rolling
+freshness is at least one report interval plus 500 ms batching age and pairing
+tolerance (2750 ms for 2-second reports at default tolerance). Strict per-window
+pairing/expiry stays unchanged. This allows asymmetric 2-second streams to use
+PENDING evidence without restarting classroom dwell between reports. Very sparse
+reports still need four known windows within the 10-second smoothing period;
+otherwise fusion falls back to probabilities. Direct Python integrations must
+pass the applied `report_interval_ms` keyword to `FusionEngine.add` (default 1000). Calibration,
+reset and JSON load clear old smoothing history. `/api/state` exposes `smoothed_state`,
+`talking_pct`, `known_windows` and `decision_source` beside the raw window `state`.
+
+All comparison runs on the PC, with no node-to-node relay or shared Pico clock. Window
+times are estimated from PC receive time, spacing the oldest-first windows by 0.5 s;
+pairs must be within 0.25 s. Small RTT alone is not enough: independent audio/report
+clocks can leave a window waiting about 0.5 s before transmission. Receive-time estimates
+therefore still misalign some pairs; smoothing stabilises the classroom decision without
+relaxing the per-window gates. Protocol v2 has no per-window clipping/quality flags, so the
+PC cannot reproduce the C service's clipping checks; empty/malformed audio, sequence
+gaps and changes to `audio_overruns` are used where observable. Invalid/overrun reports
+are discarded; skipped windows reset persistence while keeping the frozen baseline.
+
+Try from `pc/`:
+
+```
+python3 -m mosaic.dashboard --scenario reference
+python3 -m mosaic.dashboard --scenario reference --receive-jitter-ms 80
+```
+
+Click **Calibrate** during the first 60-second phase. Speech probabilities remain high
+in every zone during both lecture-only and student-speech phases; only node 3's higher
+RMS distinguishes them. Console announcements explain each phase. Tests start calibration
+explicitly and play all phases without sleeping; the application never auto-calibrates.
+Simulated nodes now have independent seeded audio/report phases and small audio-clock
+drift. RMS follows the true window completion time, before batching and optional receive
+jitter. Reports carry only the newest completed windows (0-2); skipped windows remain
+visible in `audio_window_seq`. Use `--aligned` for the old aligned fixture, or run the
+standalone simulator with `--seed N` for reproducibility. The timing regression includes
+reference phases 0.00/0.40 s, student phases 0.35/0.65 s and 0-80 ms receive jitter:
+
+```
+python3 -m unittest tests.test_reference_timing -v
+```
+
+`FusionConfig.reference_zone` defaults to `"A"`; JSON `{"reference_zone": null}` disables
+comparison. The `reference_*` settings in `pc/mosaic/fusion.py` configure pairing, age/gap
+limits, speech gates, margins and pair counts (20-64). An unmapped reference zone also
+disables comparison. Calibration requests accept `{}` for all student zones, or
+`{"zone": "C"}` for one:
+
+```
+curl -d '{}' http://localhost:8050/api/calibrate
+curl -d '{"zone":"C"}' http://localhost:8050/api/calibrate/reset
+```
+
+Python integrations can call `engine.reference.save("baseline.json")` and
+`engine.reference.load("baseline.json")`. Only frozen baselines are saved; load requires
+the same zone map/settings and waits for fresh pairs, never restoring a TALKING alert.
+These prototype margins are not validated classroom accuracy or speaker identification.
 
 ## Contributing
 
