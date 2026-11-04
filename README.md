@@ -128,6 +128,38 @@ should produce, and prints every classroom state change. Scenarios (defined in
 `pc/tests/test_scenarios.py` plays each one through the fusion engine and fails if a phase no
 longer reaches its state, for example after a threshold is changed.
 
+## Running a real node
+
+`firmware/node/` builds `mosaic_node.uf2`: DHT22, CO₂ and PIR readings sent as protocol v2
+TELEMETRY every second over Wi-Fi (audio not wired in yet).
+
+1. Copy `firmware/node/node_config.example.cmake` to `firmware/node/node_config.cmake` and set
+   the node ID, Wi-Fi name and password, and the PC's IP address (`ipconfig` on Windows,
+   `ipconfig getifaddr en0` on macOS). This file is git-ignored; never commit it.
+2. Reconfigure and build (VS Code: **CMake: Delete Cache and Reconfigure**, then build), and
+   flash `firmware/build/node/mosaic_node.uf2`.
+3. Start `python -m mosaic.dashboard` (or `python -m mosaic.gateway`) on the PC. The Pico
+   and PC must be on the same network, and the network must allow devices to talk to each
+   other (many campus and guest Wi-Fi networks don't; a phone hotspot works).
+4. Check the PC can reconfigure the node: run the dashboard with `--verbose`, then send
+   `curl -d '{"report_interval_ms": 500}' http://localhost:8050/api/nodes/1/config`
+   (use your node ID). The console prints `CONFIG 1 applied` once the node acknowledges.
+   The node only accepts CONFIG from the PC IP it was built with.
+
+The onboard LED blinks once per packet sent. Wi-Fi status and the node's IP are printed on
+the USB serial port. The node uses the SDK's interrupt-driven background Wi-Fi servicing
+(still no FreeRTOS). Receive callbacks validate and copy CONFIG/PING into a four-entry
+queue; the main loop applies configuration and sends replies. Foreground lwIP calls are
+locked. A full control queue drops the new packet without blocking, so CONFIG retries can
+recover. Serial health messages report telemetry send attempts and control-queue drops
+every 10 s; a successful send means lwIP accepted it, not that the PC received it.
+
+After flashing, leave the dashboard and USB serial monitor open for a 10-minute run, then
+repeat the CONFIG check above while the node is ONLINE. Confirm both the node's
+`CONFIG ... applied` message and the gateway's acknowledgement; an HTTP
+`config_version` response alone only confirms that the PC queued the update. Record any
+CYW43 timeouts or OFFLINE periods. A join or DHCP attempt stuck for 30 s restarts station
+mode, and RSSI is queried only while connected, at most once every 5 s.
 ### Zone map and integer fusion
 
 The Classroom panel includes a floor-plan heatmap with Activity, CO₂, Temperature

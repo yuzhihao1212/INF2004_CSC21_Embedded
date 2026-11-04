@@ -1,5 +1,6 @@
 # Firmware build output (CMake/Ninja), anywhere in the tree
 build/
+firmware/build-node/
 
 # Python
 .venv/
@@ -18,3 +19,6 @@ ml/models/*.pkl
 # OS files
 .DS_Store
 Thumbs.db
+
+# Per-node Wi-Fi settings (contain a password)
+firmware/node/node_config.cmake
