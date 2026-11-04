@@ -9,7 +9,7 @@ void environment_pir_read(environment_record_t *r, unsigned pin) {
     environment_apply_pir(r, gpio_get(pin), (uint32_t)now_ms());
 }
 void acd1100_init(acd1100_t *s, uart_inst_t *uart, unsigned tx, unsigned rx) {
-    *s = (acd1100_t){.uart = uart, .warmup_end_ms = now_ms() + 120000};
+    *s = (acd1100_t){.uart = uart, .warmup_end_ms = now_ms() + 120000, .interval_ms = 2000};
     s->next_request_ms = s->warmup_end_ms;
     uart_init(uart, 1200);
     gpio_set_function(tx, GPIO_FUNC_UART); gpio_set_function(rx, GPIO_FUNC_UART);
@@ -37,7 +37,7 @@ void acd1100_service(acd1100_t *s, environment_record_t *r) {
         return;
     }
     if (now < s->next_request_ms) return;
-    s->next_request_ms = now + 2000; s->received = 0;
+    s->next_request_ms = now + s->interval_ms; s->received = 0;
     for (unsigned i = 0; i < 32 && uart_is_readable(s->uart); ++i) (void)uart_getc(s->uart);
     if (uart_is_readable(s->uart)) {
         environment_apply_co2(r, SENSOR_PROTOCOL_ERROR, 0, (uint32_t)now); return;

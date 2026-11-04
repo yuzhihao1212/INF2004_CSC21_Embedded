@@ -27,3 +27,6 @@ add_subdirectory(common)
 add_subdirectory(environment)
 add_subdirectory(tests)
 add_subdirectory(audio)
+
+# The sensing node that sends telemetry to the PC gateway over Wi-Fi.
+add_subdirectory(node)
