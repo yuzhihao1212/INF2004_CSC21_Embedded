@@ -81,10 +81,7 @@ class Dashboard:
             gateway = self.server.gateway
             nodes = [self._node(n, now) for _, n in sorted(gateway.nodes.items())]
             if self.server.fusion:
-                self.server.fusion.evaluate(
-                    now, {n.node_id for n in gateway.nodes.values()
-                          if n.status(now).value == "ONLINE"},
-                    {n.node_id for n in gateway.nodes.values() if n.status(now).value == "STALE"})
+                self.server._evaluate_fusion(now)
             simulated = {n["simulated"] for n in nodes}
             return {
                 "time_ms": int(time.time() * 1000),
@@ -282,10 +279,12 @@ def make_handler(dashboard: Dashboard) -> type[BaseHTTPRequestHandler]:
                 if fusion is None or not fusion.reference.enabled:
                     return self._json(409, {"error": "reference comparison is disabled or unmapped"})
                 try:
+                    now = time.monotonic()
                     if reset:
                         fusion.reset_reference(body.get("zone"))
                     else:
-                        fusion.calibrate(time.monotonic(), body.get("zone"))
+                        fusion.calibrate(now, body.get("zone"))
+                    dashboard.server.reference_operation("reset" if reset else "start", body.get("zone"), now)
                 except KeyError:
                     return self._json(404, {"error": "unknown student zone"})
                 self._json(202, {"reference": present_reference(fusion.reference.state(), fusion)})
@@ -329,6 +328,7 @@ def main(argv: Optional[list[str]] = None) -> None:
     simulator.add_scenario_argument(parser)
     simulator.add_timing_arguments(parser)
     parser.add_argument("--verbose", action="store_true", help="print every packet")
+    parser.add_argument("--events", metavar="FILE", help="append JSON Lines evaluation events")
     add_fusion_argument(parser)
     args = parser.parse_args(argv)
     if args.scenario and not args.simulate:
@@ -336,10 +336,11 @@ def main(argv: Optional[list[str]] = None) -> None:
     fusion = FusionEngine(load_fusion_config(parser, args.fusion_config))
 
     csv_file = open(args.csv, "a", newline="") if args.csv else None
+    events_file = open(args.events, "a") if args.events else None
     quiet = None if args.verbose else open(os.devnull, "w")
     server = GatewayServer((args.host, args.port), args.node_port, args.ping_interval,
                            csv_file=csv_file, out=quiet or sys.stdout, fusion=fusion,
-                           fusion_out=sys.stdout)
+                           fusion_out=sys.stdout, events_file=events_file)
     dashboard = Dashboard(server)
     httpd = start_http(dashboard, args.http_host, args.http_port)
     url_host = "localhost" if args.http_host in ("127.0.0.1", "0.0.0.0") else args.http_host
@@ -361,7 +362,7 @@ def main(argv: Optional[list[str]] = None) -> None:
     finally:
         httpd.shutdown()
         server.close()
-        for f in (csv_file, quiet):
+        for f in (csv_file, events_file, quiet):
             if f:
                 f.close()
 

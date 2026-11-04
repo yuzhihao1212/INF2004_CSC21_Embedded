@@ -267,6 +267,29 @@ Python integrations can call `engine.reference.save("baseline.json")` and
 the same zone map/settings and waits for fresh pairs, never restoring a TALKING alert.
 These prototype margins are not validated classroom accuracy or speaker identification.
 
+## Evaluating a test run
+
+From `pc/`, record both telemetry and events, then stop with Ctrl+C:
+
+```sh
+python3 -m mosaic.dashboard --scenario lecture --csv /tmp/run.csv --events /tmp/run.jsonl
+# Hardware-only receiver: python3 -m mosaic.gateway --csv /tmp/run.csv --events /tmp/run.jsonl
+python3 -m mosaic.evaluate /tmp/run.csv --events /tmp/run.jsonl --out /tmp/report.md --json /tmp/summary.json --deadline-ms 400
+python3 -m mosaic.evaluate /tmp/run.csv --events /tmp/run.jsonl --expected ../docs/lecture_expected.csv --out /tmp/scored.md --json /tmp/scored.json
+```
+
+The lecture scenario lasts 450 s; shorter runs score only labels inside the
+capture. The example timeline labels stable scripted phases; replace it with
+human annotations for real accuracy measurements. Reports include delivery,
+receive jitter, processing percentiles, deadline bounds, audio skips/overruns,
+RTT, availability/recovery, warm-up, and classroom/zone state durations and
+transitions. Percentiles use `statistics.quantiles` with the inclusive method.
+Record events for accurate loss: telemetry CSV alone omits PONG/ACK sequence
+numbers. Exact positive per-window deadline misses cannot be inferred from the
+protocol's separate DSP/inference maxima. See [metric definitions and event
+schema](docs/evaluation.md) for units, scoring and limits. Existing CSVs remain
+readable; use separate file names for each labelled experiment.
+
 ## Contributing
 
 `main` is protected: all changes go through a pull request with passing CI and one approval.
