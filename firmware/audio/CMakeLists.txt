@@ -63,3 +63,16 @@ pico_enable_stdio_usb(audio_benchmark 1)
 pico_enable_stdio_uart(audio_benchmark 0)
 
 pico_add_extra_outputs(audio_benchmark)
+
+# Own trained three-class model; retains the existing benchmark target.
+add_executable(audio_talking
+    audio_talking.c classifier_timing.c
+    classifier/dsp_int8_candidate.c classifier/classifier_probabilities.c
+    audio_signal_quality.c
+)
+target_link_libraries(audio_talking PRIVATE pico_stdlib audio_capture audio_dsp m)
+target_compile_options(audio_talking PRIVATE -O2 -Wall -Wextra -Wno-array-parameter)
+target_compile_definitions(audio_talking PRIVATE PICO_STDIO_USB_STDOUT_TIMEOUT_US=2000 PICO_STACK_SIZE=4096)
+pico_enable_stdio_usb(audio_talking 1)
+pico_enable_stdio_uart(audio_talking 0)
+pico_add_extra_outputs(audio_talking)
