@@ -23,6 +23,7 @@
 #include "mosaic_protocol.h"
 #include "node_config.h"
 #include "sensors.h"
+#include "telemetry_retry.h"
 
 #define DHT_PIN 2
 #define PIR_PIN 16
@@ -34,6 +35,12 @@
 #define WIFI_JOIN_TIMEOUT_MS 30000
 #define CONTROL_QUEUE_DEPTH 4
 #define LED_ON_MS 50
+
+#if MOSAIC_WIFI_DISABLE_POWER_SAVE
+#define WIFI_PM_LABEL "NO-PS TEST"
+#else
+#define WIFI_PM_LABEL "DEFAULT-PS TEST"
+#endif
 
 static struct udp_pcb *pcb;
 static ip_addr_t pc_addr;
@@ -52,6 +59,9 @@ static control_packet_t control_queue[CONTROL_QUEUE_DEPTH];
 static critical_section_t control_lock;
 static unsigned control_read, control_write, control_count;
 static uint32_t control_drops, telemetry_sent, telemetry_failed;
+static int wifi_pm_result = -1;
+static mosaic_retry_queue_t telemetry_retries;
+static uint32_t retry_sent, retry_failed;
 
 static uint64_t now_ms(void) {
     return time_us_64() / 1000;
@@ -77,15 +87,30 @@ static const char *link_name(int status) {
     }
 }
 
+/* Select the radio power mode for a controlled delivery comparison.
+ * Default builds leave the SDK policy unchanged. The opt-in experiment
+ * keeps the radio awake and is reapplied after station restarts.
+ * Caller holds the CYW43/lwIP lock. */
+static int start_station(void) {
+    cyw43_arch_enable_sta_mode();
+#if MOSAIC_WIFI_DISABLE_POWER_SAVE
+    wifi_pm_result = cyw43_wifi_pm(&cyw43_state,
+                                 cyw43_pm_value(CYW43_NO_POWERSAVE_MODE, 10, 0, 0, 0));
+    return wifi_pm_result;
+#else
+    /* -1 in health output means no explicit power-mode request was made. */
+    return 0;
+#endif
+}
+
 /* Header seq is filled in here so a failed send doesn't use up a number. */
-static bool send_to_pc(void *packet, uint16_t len) {
+static bool transmit_to_pc(const void *packet, uint16_t len) {
     if (!network_ready) return false;
     cyw43_arch_lwip_begin();
     if (cyw43_tcpip_link_status(&cyw43_state, CYW43_ITF_STA) != CYW43_LINK_UP) {
         cyw43_arch_lwip_end();
         return false;
     }
-    ((mosaic_header_t *)packet)->seq = seq;
     struct pbuf *p = pbuf_alloc(PBUF_TRANSPORT, len, PBUF_RAM);
     if (!p) {
         cyw43_arch_lwip_end();
@@ -94,9 +119,16 @@ static bool send_to_pc(void *packet, uint16_t len) {
     memcpy(p->payload, packet, len);
     err_t err = udp_sendto(pcb, p, &pc_addr, MOSAIC_PORT_TELEMETRY);
     pbuf_free(p);
-    if (err == ERR_OK) seq++;
     cyw43_arch_lwip_end();
     return err == ERR_OK;
+}
+
+/* New messages get a new sequence; retries transmit their original bytes. */
+static bool send_to_pc(void *packet, uint16_t len) {
+    ((mosaic_header_t *)packet)->seq = seq;
+    if (!transmit_to_pc(packet, len)) return false;
+    seq++;
+    return true;
 }
 
 static void on_receive(void *arg, struct udp_pcb *upcb, struct pbuf *p,
@@ -209,8 +241,10 @@ static void wifi_service(uint64_t now) {
             puts("Wi-Fi: join/DHCP timed out; restarting station");
             cyw43_arch_lwip_begin();
             cyw43_arch_disable_sta_mode();
-            cyw43_arch_enable_sta_mode();
+            int pm_status = start_station();
             cyw43_arch_lwip_end();
+            if (pm_status != 0)
+                printf("Wi-Fi: power-mode setup failed (%d)\n", pm_status);
             join_deadline = 0;
             next_try = now_ms() + 1000;
         }
@@ -271,7 +305,9 @@ static bool send_telemetry(const environment_record_t *env, unsigned pir_samples
         next_rssi = now_ms() + 5000;
     }
     t.payload.wifi_rssi_dbm = cached_rssi;
-    return send_to_pc(&t, sizeof t);
+    if (!send_to_pc(&t, sizeof t)) return false;
+    (void)mosaic_retry_add(&telemetry_retries, &t, now_ms());
+    return true;
 }
 
 int main(void) {
@@ -286,6 +322,7 @@ int main(void) {
 
     printf("MOSAIC node %u (protocol v%u)\n", MOSAIC_NODE_ID, MOSAIC_PROTOCOL_VERSION);
     puts("Network: background servicing; queued CONFIG/PING");
+    puts("Telemetry: two bounded retries; update PC gateway for deduplication");
     if (!wifi_chip) {
         printf("Wi-Fi chip failed to start: sensors only\n");
     } else if (!WIFI_SSID[0] || !ipaddr_aton(MOSAIC_PC_IP, &pc_addr)) {
@@ -293,13 +330,22 @@ int main(void) {
                "See firmware/node/node_config.example.cmake\n");
     } else {
         cyw43_arch_lwip_begin();
-        cyw43_arch_enable_sta_mode();
+        int pm_status = start_station();
         pcb = udp_new_ip_type(IPADDR_TYPE_V4);
         if (pcb && udp_bind(pcb, IP_ANY_TYPE, MOSAIC_PORT_CONFIG) == ERR_OK) {
             udp_recv(pcb, on_receive, NULL);
             network_ready = true;
         }
         cyw43_arch_lwip_end();
+        if (pm_status == 0) {
+#if MOSAIC_WIFI_DISABLE_POWER_SAVE
+            puts("Wi-Fi power saving: disabled (packet-loss experiment)");
+#else
+            puts("Wi-Fi power saving: SDK default (comparison experiment)");
+#endif
+        } else {
+            printf("Wi-Fi: power-mode setup failed (%d)\n", pm_status);
+        }
         if (network_ready)
             printf("Joining \"%s\"...\n", WIFI_SSID);
         else
@@ -320,6 +366,12 @@ int main(void) {
         control_packet_t packet;
         for (unsigned i = 0; i < CONTROL_QUEUE_DEPTH && take_control(&packet); ++i)
             process_control(&packet);
+        mosaic_telemetry_packet_t retry;
+        for (unsigned i = 0; i < MOSAIC_RETRY_SLOTS &&
+                             mosaic_retry_take(&telemetry_retries, now_ms(), &retry); ++i) {
+            if (transmit_to_pc(&retry, sizeof retry)) retry_sent++;
+            else retry_failed++;
+        }
 
         if (now >= next_pir) {
             environment_pir_read(&env, PIR_PIN);
@@ -355,9 +407,11 @@ int main(void) {
             critical_section_enter_blocking(&control_lock);
             uint32_t dropped = control_drops;
             critical_section_exit(&control_lock);
-            printf("Node health: telemetry sent=%lu failed=%lu control drops=%lu\n",
+            printf("Node health [" WIFI_PM_LABEL "]: telemetry sent=%lu failed=%lu control drops=%lu pm_result=%d retry_sent=%lu retry_failed=%lu retry_overflow=%lu retry_expired=%lu\n",
                    (unsigned long)telemetry_sent, (unsigned long)telemetry_failed,
-                   (unsigned long)dropped);
+                   (unsigned long)dropped, wifi_pm_result, (unsigned long)retry_sent,
+                   (unsigned long)retry_failed, (unsigned long)telemetry_retries.overflow,
+                   (unsigned long)telemetry_retries.expired);
             next_health = now + 10000;
         }
         sleep_ms(1);
