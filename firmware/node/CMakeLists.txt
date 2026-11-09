@@ -27,6 +27,10 @@ endif()
 configure_file(node_config.h.in ${CMAKE_CURRENT_BINARY_DIR}/node_config.h @ONLY)
 
 add_executable(mosaic_node node_main.c)
+option(MOSAIC_WIFI_DISABLE_POWER_SAVE "Disable Wi-Fi power saving for delivery experiments" OFF)
+target_compile_definitions(mosaic_node PRIVATE
+    MOSAIC_WIFI_DISABLE_POWER_SAVE=$<BOOL:${MOSAIC_WIFI_DISABLE_POWER_SAVE}>
+)
 target_include_directories(mosaic_node PRIVATE ${CMAKE_CURRENT_LIST_DIR} ${CMAKE_CURRENT_BINARY_DIR})
 target_link_libraries(mosaic_node
     mosaic_common
