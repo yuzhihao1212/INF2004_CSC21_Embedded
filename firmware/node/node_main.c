@@ -3,8 +3,9 @@
  * TELEMETRY to the PC gateway over Wi-Fi (docs/protocol.md). Answers PING and
  * CONFIG from the PC. Audio is not wired in yet, so no audio windows are sent.
  *
- * One application loop, no RTOS. The SDK services Wi-Fi in background IRQs.
- * Receive callbacks only queue packets; CONFIG and logging run in main.
+ * Default: one application loop. Optional RTOS target splits sensors/network.
+ * The SDK services Wi-Fi in background IRQs in both builds.
+ * Receive callbacks only queue packets; the network loop processes CONFIG.
  * Foreground lwIP calls are protected by cyw43_arch_lwip_begin/end.
  * Pins match firmware/tests/mosaic_sensor_test.c.
  */
@@ -23,6 +24,15 @@
 #include "mosaic_protocol.h"
 #include "node_config.h"
 #include "sensors.h"
+#include "telemetry_retry.h"
+#include "audio_handoff.h"
+#include "node_audio.h"
+#ifdef MOSAIC_NODE_RTOS
+#include "FreeRTOS.h"
+#include "task.h"
+#include "hardware/watchdog.h"
+#include "task_health.h"
+#endif
 
 #define DHT_PIN 2
 #define PIR_PIN 16
@@ -34,6 +44,12 @@
 #define WIFI_JOIN_TIMEOUT_MS 30000
 #define CONTROL_QUEUE_DEPTH 4
 #define LED_ON_MS 50
+
+#if MOSAIC_WIFI_DISABLE_POWER_SAVE
+#define WIFI_PM_LABEL "NO-PS TEST"
+#else
+#define WIFI_PM_LABEL "DEFAULT-PS TEST"
+#endif
 
 static struct udp_pcb *pcb;
 static ip_addr_t pc_addr;
@@ -52,6 +68,39 @@ static control_packet_t control_queue[CONTROL_QUEUE_DEPTH];
 static critical_section_t control_lock;
 static unsigned control_read, control_write, control_count;
 static uint32_t control_drops, telemetry_sent, telemetry_failed;
+static int wifi_pm_result = -1;
+static mosaic_retry_queue_t telemetry_retries;
+static uint32_t retry_sent, retry_failed;
+static critical_section_t snapshot_lock;
+typedef struct {
+    environment_record_t env;
+    unsigned pir_samples, pir_active;
+} sensor_snapshot_t;
+static sensor_snapshot_t sensors;
+static dht22_t dht;
+static bool dht_ready;
+static mosaic_audio_handoff_t audio_handoff;
+
+bool mosaic_node_audio_publish(const mosaic_audio_window_t *window,
+                              uint32_t dsp_us, uint32_t inference_us) {
+    critical_section_enter_blocking(&snapshot_lock);
+    bool accepted = mosaic_audio_publish(&audio_handoff, window, dsp_us, inference_us);
+    critical_section_exit(&snapshot_lock);
+    return accepted;
+}
+
+void mosaic_node_audio_dropped(uint16_t windows) {
+    critical_section_enter_blocking(&snapshot_lock);
+    mosaic_audio_capture_dropped(&audio_handoff, windows);
+    critical_section_exit(&snapshot_lock);
+}
+
+mosaic_config_t mosaic_node_audio_config(void) {
+    critical_section_enter_blocking(&snapshot_lock);
+    mosaic_config_t current = config;
+    critical_section_exit(&snapshot_lock);
+    return current;
+}
 
 static uint64_t now_ms(void) {
     return time_us_64() / 1000;
@@ -77,15 +126,30 @@ static const char *link_name(int status) {
     }
 }
 
+/* Select the radio power mode for a controlled delivery comparison.
+ * Default builds leave the SDK policy unchanged. The opt-in experiment
+ * keeps the radio awake and is reapplied after station restarts.
+ * Caller holds the CYW43/lwIP lock. */
+static int start_station(void) {
+    cyw43_arch_enable_sta_mode();
+#if MOSAIC_WIFI_DISABLE_POWER_SAVE
+    wifi_pm_result = cyw43_wifi_pm(&cyw43_state,
+                                 cyw43_pm_value(CYW43_NO_POWERSAVE_MODE, 10, 0, 0, 0));
+    return wifi_pm_result;
+#else
+    /* -1 in health output means no explicit power-mode request was made. */
+    return 0;
+#endif
+}
+
 /* Header seq is filled in here so a failed send doesn't use up a number. */
-static bool send_to_pc(void *packet, uint16_t len) {
+static bool transmit_to_pc(const void *packet, uint16_t len) {
     if (!network_ready) return false;
     cyw43_arch_lwip_begin();
     if (cyw43_tcpip_link_status(&cyw43_state, CYW43_ITF_STA) != CYW43_LINK_UP) {
         cyw43_arch_lwip_end();
         return false;
     }
-    ((mosaic_header_t *)packet)->seq = seq;
     struct pbuf *p = pbuf_alloc(PBUF_TRANSPORT, len, PBUF_RAM);
     if (!p) {
         cyw43_arch_lwip_end();
@@ -94,9 +158,16 @@ static bool send_to_pc(void *packet, uint16_t len) {
     memcpy(p->payload, packet, len);
     err_t err = udp_sendto(pcb, p, &pc_addr, MOSAIC_PORT_TELEMETRY);
     pbuf_free(p);
-    if (err == ERR_OK) seq++;
     cyw43_arch_lwip_end();
     return err == ERR_OK;
+}
+
+/* New messages get a new sequence; retries transmit their original bytes. */
+static bool send_to_pc(void *packet, uint16_t len) {
+    ((mosaic_header_t *)packet)->seq = seq;
+    if (!transmit_to_pc(packet, len)) return false;
+    seq++;
+    return true;
 }
 
 static void on_receive(void *arg, struct udp_pcb *upcb, struct pbuf *p,
@@ -165,8 +236,9 @@ static void process_control(const control_packet_t *packet) {
         ack.payload.status = (uint8_t)mosaic_config_check(&c, config.config_version);
         if (ack.payload.status == MOSAIC_ACK_OK) {
             /* audio_gain, mode and threshold are stored for when audio is added. */
+            critical_section_enter_blocking(&snapshot_lock);
             config = c;
-            co2.interval_ms = c.co2_interval_ms;
+            critical_section_exit(&snapshot_lock);
             printf("CONFIG %u applied: report %u ms, DHT %u ms, CO2 %u ms\n",
                    c.config_version, c.report_interval_ms, c.dht_interval_ms,
                    c.co2_interval_ms);
@@ -209,8 +281,10 @@ static void wifi_service(uint64_t now) {
             puts("Wi-Fi: join/DHCP timed out; restarting station");
             cyw43_arch_lwip_begin();
             cyw43_arch_disable_sta_mode();
-            cyw43_arch_enable_sta_mode();
+            int pm_status = start_station();
             cyw43_arch_lwip_end();
+            if (pm_status != 0)
+                printf("Wi-Fi: power-mode setup failed (%d)\n", pm_status);
             join_deadline = 0;
             next_try = now_ms() + 1000;
         }
@@ -225,9 +299,13 @@ static void wifi_service(uint64_t now) {
 }
 
 static uint32_t free_heap_bytes(void) {
+#ifdef MOSAIC_NODE_RTOS
+    return (uint32_t)xPortGetFreeHeapSize();
+#else
     extern char __StackLimit, __bss_end__;  /* Heap bounds from the SDK linker script */
     struct mallinfo m = mallinfo();
     return (uint32_t)(&__StackLimit - &__bss_end__) - (uint32_t)m.uordblks;
+#endif
 }
 
 static bool send_telemetry(const environment_record_t *env, unsigned pir_samples,
@@ -257,7 +335,10 @@ static bool send_telemetry(const environment_record_t *env, unsigned pir_samples
         valid |= MOSAIC_VALID_PIR;
     }
     t.payload.valid_flags = valid;
-    /* audio_window_count stays 0 until the audio task is added. */
+    /* No producer means count 0; never fabricate audio for the dashboard. */
+    critical_section_enter_blocking(&snapshot_lock);
+    mosaic_audio_take(&audio_handoff, &t.payload);
+    critical_section_exit(&snapshot_lock);
     t.payload.config_version = config.config_version;
     t.payload.free_heap_bytes = free_heap_bytes();
     /* RSSI is a synchronous radio command, not a cheap cached field. */
@@ -271,21 +352,20 @@ static bool send_telemetry(const environment_record_t *env, unsigned pir_samples
         next_rssi = now_ms() + 5000;
     }
     t.payload.wifi_rssi_dbm = cached_rssi;
-    return send_to_pc(&t, sizeof t);
+    if (!send_to_pc(&t, sizeof t)) {
+        critical_section_enter_blocking(&snapshot_lock);
+        mosaic_audio_add_overruns(&audio_handoff, t.payload.audio_window_count);
+        critical_section_exit(&snapshot_lock);
+        return false;
+    }
+    (void)mosaic_retry_add(&telemetry_retries, &t, now_ms());
+    return true;
 }
 
-int main(void) {
-    stdio_init_all();
-    critical_section_init(&control_lock);
-    dht22_t dht;
-    bool dht_ready = dht22_init(&dht, DHT_PIN);
-    environment_pir_init(PIR_PIN);
-    acd1100_init(&co2, CO2_UART, CO2_TX_PIN, CO2_RX_PIN);
+static void network_init(void) {
     bool wifi_chip = cyw43_arch_init() == 0;
-    sleep_ms(2000);  /* USB enumeration and DHT22 power-up */
-
-    printf("MOSAIC node %u (protocol v%u)\n", MOSAIC_NODE_ID, MOSAIC_PROTOCOL_VERSION);
     puts("Network: background servicing; queued CONFIG/PING");
+    puts("Telemetry: two bounded retries; update PC gateway for deduplication");
     if (!wifi_chip) {
         printf("Wi-Fi chip failed to start: sensors only\n");
     } else if (!WIFI_SSID[0] || !ipaddr_aton(MOSAIC_PC_IP, &pc_addr)) {
@@ -293,74 +373,242 @@ int main(void) {
                "See firmware/node/node_config.example.cmake\n");
     } else {
         cyw43_arch_lwip_begin();
-        cyw43_arch_enable_sta_mode();
+        int pm_status = start_station();
         pcb = udp_new_ip_type(IPADDR_TYPE_V4);
         if (pcb && udp_bind(pcb, IP_ANY_TYPE, MOSAIC_PORT_CONFIG) == ERR_OK) {
             udp_recv(pcb, on_receive, NULL);
             network_ready = true;
         }
         cyw43_arch_lwip_end();
+        if (pm_status == 0) {
+#if MOSAIC_WIFI_DISABLE_POWER_SAVE
+            puts("Wi-Fi power saving: disabled (packet-loss experiment)");
+#else
+            puts("Wi-Fi power saving: SDK default (comparison experiment)");
+#endif
+        } else {
+            printf("Wi-Fi: power-mode setup failed (%d)\n", pm_status);
+        }
         if (network_ready)
             printf("Joining \"%s\"...\n", WIFI_SSID);
         else
             printf("Could not open UDP port %u: sensors only\n", MOSAIC_PORT_CONFIG);
     }
+}
 
-    environment_record_t env = {0};
+/* Only the environment task touches drivers. Publish a copy without holding a
+ * lock over UART/PIO service calls. CONFIG is copied under the same short lock. */
+static void sensor_step(uint64_t now) {
+    static environment_record_t env;
+    static uint64_t next_pir, next_dht;
+    static unsigned pir_samples, pir_active;
+    mosaic_config_t current;
+    critical_section_enter_blocking(&snapshot_lock);
+    current = config;
+    critical_section_exit(&snapshot_lock);
+    co2.interval_ms = current.co2_interval_ms;
     if (!dht_ready)
-        environment_apply_dht(&env, SENSOR_RESOURCE_ERROR, 0, 0, (uint32_t)now_ms());
-    uint64_t next_pir = 0, next_dht = 0, next_report = 0, led_off = 0;
-    unsigned pir_samples = 0, pir_active = 0;
-    bool first = true;
-    uint64_t next_health = 0;
+        environment_apply_dht(&env, SENSOR_RESOURCE_ERROR, 0, 0, (uint32_t)now);
+    if (now >= next_pir) {
+        environment_pir_read(&env, PIR_PIN);
+        pir_samples++;
+        pir_active += env.motion;
+        next_pir = now + PIR_INTERVAL_MS;
+    }
+    acd1100_service(&co2, &env);
+    dht22_service(&dht, &env);
+    if (dht_ready && !dht.active && now >= next_dht) {
+        (void)dht22_start(&dht);
+        next_dht = now + current.dht_interval_ms;
+    }
+    /* Sensor service may timestamp samples after the step-start time. */
+    environment_expire(&env, (uint32_t)now_ms());
+    critical_section_enter_blocking(&snapshot_lock);
+    sensors.env = env;
+    sensors.pir_samples += pir_samples;
+    sensors.pir_active += pir_active;
+    critical_section_exit(&snapshot_lock);
+    pir_samples = pir_active = 0;
+}
 
+/* Network task owns lwIP, configuration processing, sequence and retry state. */
+static void network_step(uint64_t now) {
+    static uint64_t next_report, led_off, next_health;
+    static bool first = true;
+    if (network_ready) wifi_service(now);
+    control_packet_t packet;
+    for (unsigned i = 0; i < CONTROL_QUEUE_DEPTH && take_control(&packet); ++i)
+        process_control(&packet);
+    mosaic_telemetry_packet_t retry;
+    for (unsigned i = 0; i < MOSAIC_RETRY_SLOTS &&
+                         mosaic_retry_take(&telemetry_retries, now_ms(), &retry); ++i) {
+        if (transmit_to_pc(&retry, sizeof retry)) retry_sent++;
+        else retry_failed++;
+    }
+
+    if (now >= next_report) {
+        sensor_snapshot_t snapshot;
+        critical_section_enter_blocking(&snapshot_lock);
+        snapshot = sensors;
+        sensors.pir_samples = sensors.pir_active = 0;
+        critical_section_exit(&snapshot_lock);
+        if (send_telemetry(&snapshot.env, snapshot.pir_samples, snapshot.pir_active, first)) {
+            telemetry_sent++;
+            first = false;
+            cyw43_arch_gpio_put(CYW43_WL_GPIO_LED_PIN, 1);  /* Blink per packet */
+            led_off = now + LED_ON_MS;
+        } else {
+            telemetry_failed++;
+        }
+        next_report = now + config.report_interval_ms;
+    }
+    if (led_off && now >= led_off) {
+        cyw43_arch_gpio_put(CYW43_WL_GPIO_LED_PIN, 0);
+        led_off = 0;
+    }
+    if (now >= next_health) {
+        critical_section_enter_blocking(&control_lock);
+        uint32_t dropped = control_drops;
+        critical_section_exit(&control_lock);
+        printf("Node health [" WIFI_PM_LABEL "]: telemetry sent=%lu failed=%lu control drops=%lu pm_result=%d retry_sent=%lu retry_failed=%lu retry_overflow=%lu retry_expired=%lu\n",
+               (unsigned long)telemetry_sent, (unsigned long)telemetry_failed,
+               (unsigned long)dropped, wifi_pm_result, (unsigned long)retry_sent,
+               (unsigned long)retry_failed, (unsigned long)telemetry_retries.overflow,
+               (unsigned long)telemetry_retries.expired);
+        next_health = now + 10000;
+    }
+}
+
+#ifdef MOSAIC_NODE_RTOS
+static critical_section_t health_lock;
+static mosaic_task_health_t task_health;
+static TaskHandle_t network_handle, environment_handle, health_handle;
+#ifdef MOSAIC_NODE_AUDIO_ENABLED
+static TaskHandle_t audio_handle;
+#endif
+static bool watchdog_reset;
+
+static void heartbeat(unsigned bit) {
+    critical_section_enter_blocking(&health_lock);
+    mosaic_task_health_mark(&task_health, bit);
+    critical_section_exit(&health_lock);
+}
+
+void mosaic_node_audio_progress(void) {
+    heartbeat(MOSAIC_HEALTH_AUDIO);
+}
+
+/* An opt-in suspension tests the real watchdog path after 30 s. Never enabled
+ * in the regular build; a failed task cannot continue feeding its heartbeat. */
+static void maybe_stall(unsigned bit) {
+    if (MOSAIC_HEALTH_STALL_TASK == bit && now_ms() >= 30000)
+        vTaskSuspend(NULL);
+}
+
+static void network_task(void *unused) {
+    (void)unused;
+    network_init();
+    TickType_t wake = xTaskGetTickCount();
     while (true) {
-        uint64_t now = now_ms();
-        if (network_ready) wifi_service(now);
-        control_packet_t packet;
-        for (unsigned i = 0; i < CONTROL_QUEUE_DEPTH && take_control(&packet); ++i)
-            process_control(&packet);
+        maybe_stall(MOSAIC_HEALTH_NETWORK);
+        network_step(now_ms());
+        heartbeat(MOSAIC_HEALTH_NETWORK); /* Progress, even if Wi-Fi is down. */
+        vTaskDelayUntil(&wake, pdMS_TO_TICKS(10));
+    }
+}
 
-        if (now >= next_pir) {
-            environment_pir_read(&env, PIR_PIN);
-            pir_samples++;
-            pir_active += env.motion;
-            next_pir = now + PIR_INTERVAL_MS;
-        }
-        acd1100_service(&co2, &env);
-        dht22_service(&dht, &env);
-        if (dht_ready && !dht.active && now >= next_dht) {
-            (void)dht22_start(&dht);
-            next_dht = now + config.dht_interval_ms;
-        }
-        /* Sensor service may timestamp samples after the loop-start time. */
-        environment_expire(&env, (uint32_t)now_ms());
+static void environment_task(void *unused) {
+    (void)unused;
+    TickType_t wake = xTaskGetTickCount();
+    while (true) {
+        maybe_stall(MOSAIC_HEALTH_ENVIRONMENT);
+        sensor_step(now_ms());
+        heartbeat(MOSAIC_HEALTH_ENVIRONMENT); /* Sensor errors still count as progress. */
+        vTaskDelayUntil(&wake, pdMS_TO_TICKS(2));
+    }
+}
 
-        if (now >= next_report) {
-            if (send_telemetry(&env, pir_samples, pir_active, first)) {
-                telemetry_sent++;
-                first = false;
-                cyw43_arch_gpio_put(CYW43_WL_GPIO_LED_PIN, 1);  /* Blink per packet */
-                led_off = now + LED_ON_MS;
-            } else {
-                telemetry_failed++;
-            }
-            pir_samples = pir_active = 0;
-            next_report = now + config.report_interval_ms;
+static void health_task(void *unused) {
+    (void)unused;
+    watchdog_enable(8000, false); /* Keep supervising even without a debugger. */
+    TickType_t wake = xTaskGetTickCount();
+    unsigned iterations = 0;
+    while (true) {
+        critical_section_enter_blocking(&health_lock);
+        bool healthy = mosaic_task_health_take(&task_health);
+        unsigned pending = task_health.seen;
+        critical_section_exit(&health_lock);
+        if (healthy) watchdog_update(); /* No other task may feed the watchdog. */
+        if (++iterations % 40 == 0) {
+            printf("RTOS health: pending=0x%x heap=%lu min_heap=%lu stack_words network=%lu environment=%lu health=%lu last_reset=%s\n",
+                   pending, (unsigned long)xPortGetFreeHeapSize(),
+                   (unsigned long)xPortGetMinimumEverFreeHeapSize(),
+                   (unsigned long)uxTaskGetStackHighWaterMark(network_handle),
+                   (unsigned long)uxTaskGetStackHighWaterMark(environment_handle),
+                   (unsigned long)uxTaskGetStackHighWaterMark(NULL),
+                   watchdog_reset ? "watchdog" : "power/run/other");
+#ifdef MOSAIC_NODE_AUDIO_ENABLED
+            printf("RTOS audio: stack_words=%lu required_mask=0x%x\n",
+                   (unsigned long)uxTaskGetStackHighWaterMark(audio_handle),
+                   MOSAIC_HEALTH_REQUIRED);
+#endif
         }
-        if (led_off && now >= led_off) {
-            cyw43_arch_gpio_put(CYW43_WL_GPIO_LED_PIN, 0);
-            led_off = 0;
-        }
-        if (now >= next_health) {
-            critical_section_enter_blocking(&control_lock);
-            uint32_t dropped = control_drops;
-            critical_section_exit(&control_lock);
-            printf("Node health: telemetry sent=%lu failed=%lu control drops=%lu\n",
-                   (unsigned long)telemetry_sent, (unsigned long)telemetry_failed,
-                   (unsigned long)dropped);
-            next_health = now + 10000;
-        }
+        vTaskDelayUntil(&wake, pdMS_TO_TICKS(250));
+    }
+}
+
+void mosaic_rtos_panic(void) {
+    /* Interrupts off prevents further supervisor feeds. Avoid stdio locks in
+     * an allocation/stack failure; hardware reset is the bounded fallback. */
+    watchdog_enable(1000, false);
+    taskDISABLE_INTERRUPTS();
+    while (true) tight_loop_contents();
+}
+void vApplicationMallocFailedHook(void) { mosaic_rtos_panic(); }
+void vApplicationStackOverflowHook(TaskHandle_t task, char *name) {
+    (void)task; (void)name;
+    mosaic_rtos_panic();
+}
+#endif
+
+int main(void) {
+    stdio_init_all();
+    critical_section_init(&control_lock);
+    critical_section_init(&snapshot_lock);
+    dht_ready = dht22_init(&dht, DHT_PIN);
+    environment_pir_init(PIR_PIN);
+    acd1100_init(&co2, CO2_UART, CO2_TX_PIN, CO2_RX_PIN);
+    sleep_ms(2000); /* USB enumeration and DHT22 power-up. */
+    printf("MOSAIC node %u (protocol v%u)\n", MOSAIC_NODE_ID, MOSAIC_PROTOCOL_VERSION);
+#ifdef MOSAIC_NODE_RTOS
+    watchdog_reset = watchdog_caused_reboot();
+    printf("RTOS: cores=%u; reset=%s; watchdog=8000 ms; stall_test=%u\n",
+           (unsigned)MOSAIC_RTOS_CORES,
+           watchdog_reset ? "watchdog" : "power/run/other",
+           (unsigned)MOSAIC_HEALTH_STALL_TASK);
+    critical_section_init(&health_lock);
+    if (xTaskCreate(network_task, "network", 2048, NULL, 2, &network_handle) != pdPASS ||
+        xTaskCreate(environment_task, "environment", 1024, NULL, 2, &environment_handle) != pdPASS ||
+        xTaskCreate(health_task, "health", 1024, NULL, 3, &health_handle) != pdPASS)
+        mosaic_rtos_panic();
+#if MOSAIC_RTOS_CORES > 1
+    vTaskCoreAffinitySet(network_handle, 1u << 0);
+    vTaskCoreAffinitySet(environment_handle, 1u << 0);
+    vTaskCoreAffinitySet(health_handle, 1u << 0);
+#endif
+#ifdef MOSAIC_NODE_AUDIO_ENABLED
+    if (xTaskCreate(mosaic_node_audio_task, "audio", 4096, NULL, 2, &audio_handle) != pdPASS)
+        mosaic_rtos_panic();
+    vTaskCoreAffinitySet(audio_handle, 1u << 1);
+#endif
+    vTaskStartScheduler();
+    mosaic_rtos_panic();
+#else
+    network_init();
+    while (true) {
+        sensor_step(now_ms());
+        network_step(now_ms());
         sleep_ms(1);
     }
+#endif
 }

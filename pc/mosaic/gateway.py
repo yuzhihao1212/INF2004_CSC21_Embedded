@@ -24,7 +24,7 @@ import sys
 import threading
 import time
 from collections import Counter
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Callable, Optional, TextIO
 
@@ -42,6 +42,8 @@ CONFIG_MAX_SENDS = 5
 CONFIG_FAILED_WAIT_S = 10.0  # After 5 unanswered sends, before self-healing tries again
 
 _SEQ_MOD = 1 << 32
+_REORDER_WINDOW = 256
+_BOOT_RETRY_S = 1.0
 _NODE_TYPES = (p.MsgType.TELEMETRY, p.MsgType.CONFIG_ACK, p.MsgType.PONG)
 Address = tuple[str, int]
 
@@ -88,12 +90,20 @@ class NodeState:
     lost: int = 0
     duplicates: int = 0
     reboots: int = 0
+    recovered: int = 0
+    gaps_detected: int = 0
     telemetry: Optional[p.Telemetry] = None
     last_ack: Optional[p.ConfigAck] = None
     rtt_ms: Optional[float] = None
     # The PC knows this from the CONFIG it sent; default until then.
     report_interval_ms: int = DEFAULT_REPORT_INTERVAL_MS
     config: Optional[ConfigDelivery] = None
+    latest_telemetry_seq: Optional[int] = None
+    _accepted: bool = True
+    _sender_time_ms: int = 0
+    _seen: dict = field(default_factory=dict, repr=False)
+    _missing: set = field(default_factory=set, repr=False)
+    _awaiting_boot_telemetry: bool = False
 
     @property
     def loss_pct(self) -> float:
@@ -133,10 +143,13 @@ class Gateway:
             return None
 
         node = self.track_header(header, address, now)
+        if not node._accepted:
+            return None
 
         if isinstance(payload, p.Telemetry):
-            node.telemetry = payload
-            self._check_config(node, header, payload, now)
+            if header.seq == node.latest_telemetry_seq:
+                node.telemetry = payload
+                self._check_config(node, header, payload, now)
         elif isinstance(payload, p.ConfigAck):
             node.last_ack = payload
             self._config_acked(node, header, payload, now)
@@ -145,39 +158,93 @@ class Gateway:
         return header, payload
 
     def track_header(self, header: p.Header, address: Address, now: float) -> NodeState:
-        """Shared live/offline sequence tracking for an already-validated header.
-
-        Evaluation replays ALL received message headers here when events exist.
-        Telemetry-only CSVs cannot distinguish omitted PONG/ACKs from lost packets.
-        """
+        """Shared live/offline tracker, including duplicate and retry handling."""
         node = self.nodes.get(header.node_id)
         if node is None:
             node = self.nodes[header.node_id] = NodeState(
                 header.node_id, address, now, header.seq, received=1)
+            node._seen[header.seq] = (header.sender_time_ms, now)
+            node._sender_time_ms = header.sender_time_ms
+            node._awaiting_boot_telemetry = header.msg_type != p.MsgType.TELEMETRY
+            node._accepted = True
         else:
-            self._track_seq(node, header)
+            node._accepted = self._track_seq(node, header, now)
+        if not node._accepted:
+            return node
         node.address = address
-        node.last_seen = now
-
+        if header.msg_type == p.MsgType.TELEMETRY:
+            node._awaiting_boot_telemetry = False
+            if node.latest_telemetry_seq is None or _seq_after(header.seq, node.latest_telemetry_seq):
+                node.latest_telemetry_seq = header.seq
+                age_ms = (node._sender_time_ms - header.sender_time_ms) % _SEQ_MOD
+                node.last_seen = max(node.last_seen, now - age_ms / 1000)
         return node
 
-    def _track_seq(self, node: NodeState, header: p.Header) -> None:
+    def _track_seq(self, node: NodeState, header: p.Header, now: float) -> bool:
+        """Count unique messages, repairing bounded gaps when retries arrive."""
+
         gap = (header.seq - node.last_seq) % _SEQ_MOD
         backwards = gap >= _SEQ_MOD // 2
-        # gap == 1 means a PONG/ACK from the new boot already got here first.
+        seen = node._seen.get(header.seq)
+        same = seen is not None and seen[0] == header.sender_time_ms
+        clock_back = (node._sender_time_ms - header.sender_time_ms) % _SEQ_MOD
+        frontier_at = node._seen.get(node.last_seq, (0, now))[1]
+        late_boot_copy = (backwards and not same and clock_back <= 1000
+                          and now - frontier_at <= _BOOT_RETRY_S)
         flagged = (header.flags & p.FLAG_FIRST_SINCE_BOOT
-                   and header.msg_type == p.MsgType.TELEMETRY and gap != 1)
-        if backwards or flagged:
+                   and header.msg_type == p.MsgType.TELEMETRY
+                   and not node._awaiting_boot_telemetry
+                   and not late_boot_copy
+                   and not (same and now - seen[1] <= _BOOT_RETRY_S))
+        if same and not flagged:
+            node.duplicates += 1
+            return False
+        # A lower sequence on its own is reordering, not evidence of a reboot.
+        # Unflagged reboot detection is retained for a PONG arriving first,
+        # using a substantial sender-clock rollback as corroboration.
+        reboot = flagged or (backwards and header.seq not in node._missing
+                             and header.sender_time_ms < 30000
+                             and 1000 < clock_back < _SEQ_MOD // 2)
+        if reboot:
             node.reboots += 1
             node.lost += header.seq  # seq 0 .. seq-1 of the new boot never arrived
+            node.gaps_detected += header.seq
+            node._seen.clear()
+            node._missing = set(range(max(0, header.seq - _REORDER_WINDOW + 1), header.seq))
+            node.latest_telemetry_seq = None
+            node._awaiting_boot_telemetry = header.msg_type != p.MsgType.TELEMETRY
             if node.config:  # The confirmation was from before the reboot
                 node.config.confirmed_seq = None
+        elif backwards:
+            if header.seq in node._missing:
+                node._missing.remove(header.seq)
+                node.lost -= 1
+                node.recovered += 1
+            elif not ((node._awaiting_boot_telemetry or late_boot_copy)
+                      and header.flags & p.FLAG_FIRST_SINCE_BOOT
+                      and (_SEQ_MOD - gap) < _REORDER_WINDOW):
+                return False  # Outside tracked history, not a recoverable gap.
+            node._seen[header.seq] = (header.sender_time_ms, now)
+            node.received += 1
+            return True
         elif gap == 0:
             node.duplicates += 1
+            return False
         else:
             node.lost += gap - 1
+            node.gaps_detected += gap - 1
+            # Bound memory and runtime even for a corrupt/huge sequence jump.
+            for distance in range(1, min(gap, _REORDER_WINDOW)):
+                node._missing.add((header.seq - distance) % _SEQ_MOD)
         node.received += 1
         node.last_seq = header.seq
+        node._sender_time_ms = header.sender_time_ms
+        node._seen[header.seq] = (header.sender_time_ms, now)
+        node._seen = {seq: stamp for seq, stamp in node._seen.items()
+                      if (node.last_seq - seq) % _SEQ_MOD < _REORDER_WINDOW}
+        node._missing = {seq for seq in node._missing
+                         if (node.last_seq - seq) % _SEQ_MOD < _REORDER_WINDOW}
+        return True
 
     def pings(self, now: float, port: int = p.PORT_CONFIG) -> list[tuple[bytes, Address]]:
         """One PING per node that isn't OFFLINE, addressed by node_id. A node
@@ -338,11 +405,12 @@ def format_telemetry(header: p.Header, t: p.Telemetry) -> str:
 
 
 def format_summary(gateway: Gateway, now: float) -> str:
-    lines = ["node  status   recv   lost  loss%  dup  reboots  rtt_ms"]
+    lines = ["node  status   recv   lost  loss%  dup  recovered  gaps  reboots  rtt_ms"]
     for node_id, n in sorted(gateway.nodes.items()):
         rtt = f"{n.rtt_ms:.1f}" if n.rtt_ms is not None else "--"
         lines.append(f"{node_id:>4}  {n.status(now).value:<7} {n.received:>5} {n.lost:>6} "
-                     f"{n.loss_pct:>6.1f} {n.duplicates:>4} {n.reboots:>8}  {rtt:>6}")
+                     f"{n.loss_pct:>6.1f} {n.duplicates:>4} {n.recovered:>9} "
+                     f"{n.gaps_detected:>5} {n.reboots:>8}  {rtt:>6}")
     if gateway.dropped:
         drops = ", ".join(f"{ip}: {count}" for ip, count in gateway.dropped.items())
         lines.append(f"dropped datagrams: {drops}")
@@ -458,7 +526,16 @@ class GatewayServer:
         self._log_statuses(now)
         result = self.gateway.handle(data, address, now)
         if result is None:
-            self._log("drop", now, source_ip=address[0], bytes=len(data))
+            try:
+                h, _ = p.decode(data)
+            except p.ProtocolError:
+                h = None
+            if h is not None and h.msg_type in _NODE_TYPES and 1 <= h.node_id <= p.MAX_NODES:
+                self._log("datagram", now, node=h.node_id, source_ip=address[0],
+                          msg_type=h.msg_type.name, seq=h.seq, flags=h.flags,
+                          sender_time_ms=h.sender_time_ms, csv_pc_time=None, accepted=False)
+            else:
+                self._log("drop", now, source_ip=address[0], bytes=len(data))
             return
         header, payload = result
         self._flush_config_events()
@@ -466,13 +543,15 @@ class GatewayServer:
         pc_time = datetime.now().isoformat(timespec="milliseconds")
         self._log("datagram", now, node=header.node_id, source_ip=address[0],
                   msg_type=header.msg_type.name, seq=header.seq, flags=header.flags,
-                  sender_time_ms=header.sender_time_ms,
+                  sender_time_ms=header.sender_time_ms, accepted=True,
                   csv_pc_time=pc_time if isinstance(payload, p.Telemetry) else None)
         if isinstance(payload, p.Telemetry):
             self._print(format_telemetry(header, payload))
             if self.csv:
                 self.csv.writerow(csv_row(header, payload, pc_time))
                 self._csv_file.flush()
+            if header.seq != self.gateway.nodes[header.node_id].latest_telemetry_seq:
+                return  # Log recovered history, but never rewind live fusion/UI.
             if self.fusion:
                 reboots = self.gateway.nodes[header.node_id].reboots
                 reboot = (bool(header.flags & p.FLAG_FIRST_SINCE_BOOT)

@@ -20,6 +20,12 @@ jobs:
           path: pico-sdk
           submodules: true
 
+      - uses: actions/checkout@v4
+        with:
+          repository: FreeRTOS/FreeRTOS-Kernel
+          ref: 0adc196d4bd52a2d91102b525b0aafc1e14a2386 # V11.2.0
+          path: FreeRTOS-Kernel
+
       # Arm's official GNU toolchain 10.3-2021.10: the same compiler the Pico SDK
       # 1.5.1 Windows installer bundles. Ubuntu's packaged newlib lacks the
       # PRIu64 family of macros that our firmware uses.
@@ -44,7 +50,7 @@ jobs:
           echo "$GITHUB_WORKSPACE/arm-toolchain/bin" >> "$GITHUB_PATH"
 
       - name: Configure
-        run: cmake -S firmware -B firmware/build -G Ninja -DPICO_SDK_PATH="$GITHUB_WORKSPACE/pico-sdk"
+        run: cmake -S firmware -B firmware/build -G Ninja -DPICO_SDK_PATH="$GITHUB_WORKSPACE/pico-sdk" -DMOSAIC_BUILD_RTOS=ON -DFREERTOS_KERNEL_PATH="$GITHUB_WORKSPACE/FreeRTOS-Kernel"
 
       - name: Build
         run: ninja -C firmware/build
@@ -52,7 +58,9 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: firmware-uf2
-          path: firmware/build/tests/*.uf2
+          path: |
+            firmware/build/tests/*.uf2
+            firmware/build/node/*.uf2
 
   python:
     name: Python syntax check
