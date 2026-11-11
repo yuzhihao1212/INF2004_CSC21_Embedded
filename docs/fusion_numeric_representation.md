@@ -42,7 +42,7 @@ Enums and booleans represent discrete state, validity and persistence flags.
 | `audio_overruns` | 0..65535 windows | uint16 represented as int | Invalid rejected; changed count resets persistence and discards report |
 | Audio window count, `new_count` | 0..2 windows/report | int | Protocol cap; skipped windows reset persistence but newest received windows continue |
 | `rms_x16`, `_Window.rms_x16`, `student_rms_x16` | 0..65535 (0..4095.9375 ADC RMS) | Q12.4, multiply ADC RMS by 16 | Raw wire integer; invalid audio rejected, not silently clipped |
-| `prob_pct`, `_Window.speech_pct` | 0..100 percent | int, 1% | Each class must be integer 0..100; sum must be 1..100; invalid audio rejected; speech = 100 - background - transient |
+| `prob_pct`, `_Window.speech_pct` | 0..100 percent | int, 1% | Each slot must be integer 0..100; slot 3 must be zero; sum must be 1..100 for fusion. Level comparison uses speech evidence = 100 - background - transient; probability fallback uses slot 2 directly |
 | `temperature_x10` | -32768..32767 (-3276.8..3276.7 °C wire range) | Signed int, tenths °C | Direct callers clamped to wire range; validity bit required |
 | `humidity_x10` | 0..1000 (0..100% RH physical range) | int, tenths %RH | Direct callers clamped to physical range within uint16; validity bit required |
 | `co2_ppm` | 0..65535 ppm | int, 1 ppm | Direct callers clamped to uint16; warmup/invalid yields null |
@@ -90,10 +90,10 @@ Defaults below preserve the original thresholds and time intervals.
 | `motion_min_pct`, `voice_min_pct` | 10, 40 | %, 0..100 | int; inclusive comparisons of sums |
 | `co2_occupied_ppm` | 800 | ppm, 0..65535 | int; only retains occupancy |
 | `occupied_after_ms`, `empty_after_ms` | 20000, 600000 | ms, >=0 | int dwell |
-| `lecture_speech_pct` | 50 | %, 0..100 | int; inclusive |
+| `lecturer_zone_speech_pct` | 50 | %, 0..100 | int; inclusive, reference zone only; legacy JSON key `lecture_speech_pct` is deprecated |
 | `conversation_enter_pct`, `conversation_exit_pct` | 40, 25 | %, 0..100 | int; inclusive; quieter exit hysteresis |
 | `quiet_work_conversation_enter_pct`, `quiet_work_conversation_exit_pct` | 25, 15 | %, 0..100 | int; inclusive |
-| `widespread_pct` | 50 | %, 0..100 | int; talking zones *100 >= threshold * audio zones |
+| `widespread_pct` | 50 | %, 0..100 | int; talking student zones *100 >= threshold * student zones with audio |
 | `activity_dwell_ms`, `chatter_after_ms` | 20000, 120000 | ms, >=0 | int dwell |
 | `co2_poor_ppm`, `co2_recovered_ppm` | 1200, 1000 | ppm, 0..65535 | int; enters >= poor, recovers < recovered |
 | `air_dwell_ms`, `comfort_dwell_ms` | 60000, 60000 | ms, >=0 | int dwell; initial valid environment state immediate |
@@ -104,7 +104,9 @@ Defaults below preserve the original thresholds and time intervals.
 
 `ReferenceConfig` uses the corresponding field names without `reference_`.
 Its nonnumeric keys are configured through `FusionConfig`: `zones`, `front_zones`,
-`mode`, `reference_zone` (null disables) and `zone_layout`. If layout is omitted,
+`mode`, `reference_zone` (null disables comparison) and `zone_layout`. The legacy
+`front_zones` key is accepted; only `reference_zone` determines the lecturer role.
+If layout is omitted,
 configured zones are placed in mapping order on a two-column grid; the default
 map is A [0,0], B [0,1], C [1,0], D [1,1]. Explicit layouts must place all zones.
 
@@ -228,7 +230,9 @@ RMS powers and environment saturation. It is not a general Python security proof
 The frozen float implementation lives only in `tests/float_reference/`, never in
 `mosaic` imports. It is the committed pre-integer implementation from `965d1a8`;
 only its reference import changes to be package-relative. SHA-256 hashes of the
-original files are checked in `tests/test_integer_accuracy.py`.
+original files are checked in `tests/test_integer_accuracy.py`. A test-only
+adapter applies the current location-based speech rules to the baseline's float
+means and dwell. The frozen files retain their original class names and logic.
 
 The accuracy test feeds **all seven simulator scenarios**, seeds **1, 2, 7**,
 default 1000 ms reports, independent audio/report phases, +/-100 ppm audio drift and uniform **0–80 ms**
@@ -241,15 +245,15 @@ same order in each region, with **every transition within 1000 ms**.
 | Region | States in same order in every run? | Transitions compared | Maximum absolute time difference |
 |---|---|---:|---:|
 | Activity | Yes | 93 | 500.000 ms |
-| Air | Yes | 36 | 100.000 ms |
+| Air | Yes | 36 | 0.391 ms |
 | Comfort | Yes | 36 | 0.417 ms |
 
 The maximum activity difference is one audio window (500 ms), including the
 team's requested change to count PENDING as positive evidence; the frozen float
-oracle retains its original TALKING-only policy. Air differences are within one
-evaluation tick (100 ms): rounding receive times to ms can move an inclusive
-history cutoff across a tick. The 0.417 ms difference is timestamp quantisation. No classroom state sequence
-changed in these runs. This bounds tested scenarios, not every possible acoustic
+oracle retains its original TALKING-only policy. Air and comfort differences
+are below 1 ms because the integer engine rounds timestamps to the nearest ms.
+No classroom state sequence differed between engines in these runs. This bounds
+tested scenarios, not every possible acoustic
 signal: Q16 coefficient quantisation can change a result extremely near a gate.
 
 Browser evidence is saved under `docs/evidence/integer-fusion-zones/` for the live

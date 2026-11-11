@@ -6,8 +6,7 @@
   const SVG_NS = "http://www.w3.org/2000/svg";
   const AUDIO = {
     background_noise: ["Background", "i-background"],
-    lecturer_speech: ["Lecturer", "i-lecturer"],
-    student_conversation: ["Discussion", "i-discussion"],
+    speech: ["Speech", "i-discussion"],
     transient_noise: ["Transient", "i-transient"],
     unknown: ["Unsure", "i-unsure"],
   };
@@ -158,7 +157,7 @@
     $(".audio-class", audio).textContent = name;
     setIcon($(".audio-icon", audio), icon);
     $(".audio-conf", audio).textContent = a && a.class !== "unknown" ? `${a.confidence}%` : "";
-    const probs = a ? a.probs : [0, 0, 0, 0];
+    const probs = a ? [a.probs[0], a.probs[1], a.probs[3]] : [0, 0, 0];
     const top = probs.indexOf(Math.max(...probs));
     audio.querySelectorAll(".probs span").forEach((s, i) => {
       s.querySelector("i").style.setProperty("--p", `${probs[i]}%`);

@@ -3,7 +3,7 @@
 Each scenario is a list of phases. A phase lasts some seconds and sets, per
 zone, what the nodes should sense: the audio class mix, PIR motion, and the
 CO2 / temperature / humidity the room drifts towards. Nodes 1-2 are the
-front zones (lecturer area) and 3-4 the rear, as in FusionConfig.
+front zones (node 1 is the lecturer) and 3-4 the rear, as in FusionConfig.
 
     python -m mosaic.dashboard --scenario lecture
     python -m mosaic.simulator --scenario demo --nodes 4
@@ -18,11 +18,17 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Optional
 
-# Audio class mix, % for (background, lecturer speech, student conversation, transient)
-SILENT = (90, 4, 3, 3)
-SPEECH = (8, 75, 12, 5)
-CHAT = (8, 15, 72, 5)
-SETTLING = (55, 20, 20, 5)  # People arriving: some voices, nothing dominant
+# Audio class mix, % for (background, speech, reserved, transient)
+SILENT = (90, 7, 0, 3)
+SPEECH = (8, 87, 0, 5)
+SETTLING = (60, 35, 0, 5)  # People arriving: some voices, nothing dominant
+
+# ADC RMS levels: lecturer at node 1, the same voice heard further away, and
+# students talking next to a node (louder there than the far-away lecturer).
+LECTURER_RMS = 100
+FRONT_BLEED_RMS = 60
+REAR_BLEED_RMS = 35
+STUDENT_TALK_RMS = 95
 
 
 @dataclass(frozen=True)
@@ -67,10 +73,13 @@ class Scenario:
 
 def _lecture(co2: int = 750, temp: float = 24.0, humidity: float = 55.0,
              rear: Optional[Zone] = None) -> dict:
-    """Phase zones for a lecture: speech at the front, seated students at the back."""
-    front = Zone(SPEECH, pir_pct=25, co2_ppm=co2, temperature_c=temp, humidity_pct=humidity)
-    rear = rear or Zone(SILENT, pir_pct=5, co2_ppm=co2, temperature_c=temp, humidity_pct=humidity)
-    return dict(default=rear, zones={1: front, 2: front})
+    """Phase zones for a lecture. As in a real room, every node hears the
+    lecturer as SPEECH; only the level drops with distance (ADC RMS)."""
+    env = dict(co2_ppm=co2, temperature_c=temp, humidity_pct=humidity)
+    lecturer = Zone(SPEECH, pir_pct=25, rms=LECTURER_RMS, **env)
+    front = Zone(SPEECH, pir_pct=5, rms=FRONT_BLEED_RMS, **env)
+    seated = Zone(SPEECH, pir_pct=5, rms=REAR_BLEED_RMS, **env)
+    return dict(default=rear or seated, zones={1: lecturer, 2: front})
 
 
 def _phase(seconds: float, label: str, expect: str, **zones) -> Phase:
@@ -81,7 +90,7 @@ EMPTY = _phase(40, "Empty classroom", "EMPTY", default=Zone())
 LECTURE = _phase(120, "Lecturer teaching, students seated", "QUIET, then FOCUSED_LECTURE",
                  **_lecture())
 REAR_CHATTER = _phase(200, "Rear students start chatting", "NOISE_RISING, then SUSTAINED_CHATTER",
-                      **_lecture(co2=850, rear=Zone(CHAT, pir_pct=20, co2_ppm=850)))
+                      **_lecture(co2=850, rear=Zone(SPEECH, pir_pct=20, co2_ppm=850, rms=STUDENT_TALK_RMS)))
 SETTLED = _phase(90, "Class settles down", "FOCUSED_LECTURE", **_lecture())
 CO2_BUILDS = _phase(180, "Door and windows closed: CO2 builds up", "air POOR_VENTILATION",
                     **_lecture(co2=1450))
@@ -122,7 +131,7 @@ SCENARIOS: dict[str, Scenario] = {
         "NOISE_RISING and SUSTAINED_CHATTER; click Discussion on the dashboard to see DISCUSSION.",
         (LECTURE,
          _phase(180, "Group work: every zone talking", "DISCUSSION in Discussion mode, "
-                "otherwise NOISE_RISING", default=Zone(CHAT, pir_pct=30, co2_ppm=800)),
+                "otherwise NOISE_RISING", default=Zone(SPEECH, pir_pct=30, co2_ppm=800, rms=STUDENT_TALK_RMS)),
          _phase(90, "Back to the lecture", "FOCUSED_LECTURE", **_lecture()))),
     "ventilation": Scenario(
         "CO2 builds up during a lecture until the window is opened.",

@@ -68,16 +68,16 @@ typedef struct {
 
 /* ---- TELEMETRY (48-byte payload) ------------------------------------- */
 
-/* Audio classes. Must match the labels the ML model is trained on. */
+/* Wire IDs for the three classifier outputs; ID 3 is reserved. */
 typedef enum {
     MOSAIC_AUDIO_UNKNOWN              = 0,  /* Audio invalid, or best class below confidence threshold */
     MOSAIC_AUDIO_BACKGROUND_NOISE     = 1,
-    MOSAIC_AUDIO_LECTURER_SPEECH      = 2,
-    MOSAIC_AUDIO_STUDENT_CONVERSATION = 3,
+    MOSAIC_AUDIO_SPEECH               = 2,
+    MOSAIC_AUDIO_RESERVED             = 3,  /* Never report as audio_class */
     MOSAIC_AUDIO_TRANSIENT_NOISE      = 4,
 } mosaic_audio_class_t;
 
-#define MOSAIC_AUDIO_CLASS_COUNT 4u  /* Classes 1..4; probability array index = class - 1 */
+#define MOSAIC_AUDIO_CLASS_COUNT 4u  /* Wire slots 1..4; index = class - 1 */
 
 /* TELEMETRY valid_flags: a value is only meaningful when its bit is set. */
 #define MOSAIC_VALID_TEMP_HUM   (1u << 0)  /* DHT22 read and checksum OK */
@@ -90,7 +90,7 @@ typedef enum {
 typedef struct {
     uint16_t rms_x16;                /* Mean RMS in ADC units, Q12.4 (16 = 1.0) */
     uint8_t  audio_class;            /* mosaic_audio_class_t */
-    uint8_t  prob_pct[MOSAIC_AUDIO_CLASS_COUNT]; /* Per-class probability, 0..100 */
+    uint8_t  prob_pct[MOSAIC_AUDIO_CLASS_COUNT]; /* 0..100; prob_pct[2] must be 0 */
     uint8_t  reserved;               /* Send 0 */
 } mosaic_audio_window_t;
 
