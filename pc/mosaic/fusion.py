@@ -1,21 +1,30 @@
 """Integer MOSAIC fusion: independent classroom and per-zone statecharts.
 
-The classroom Activity/Air/Comfort rules preserve the float baseline's smoothing,
-occupancy evidence, dwell and hysteresis, with PENDING counting as positive
-reference evidence as requested by the team. All decisions compare integer sums and
-counts by cross multiplication; rounded means never feed back into decisions.
+Classroom Activity/Air/Comfort use smoothing, occupancy evidence, dwell and
+hysteresis. PENDING counts as positive reference evidence. All decisions compare
+integer sums and counts by cross multiplication; rounded means never feed back.
 Public now arguments are seconds and pass ONCE through reference.seconds_to_ms.
 Internal timestamps, histories and durations are integer ms. Sensors retain wire
 units (percent, ppm, signed tenths C, tenths RH, Q12.4 ADC RMS); gain is Q16.
 Python integers do not overflow. State outputs are integers; dashboard.py alone
 creates human decimal values/roots. See docs/fusion_numeric_representation.md.
 
+Speech is attributed by zone. The configured reference zone is the lecturer
+zone: dominant SPEECH at or above lecturer_zone_speech_pct gives it LECTURER.
+Other zones use known calibrated reference results (PENDING and TALKING/HOLD
+are positive windows). When unknown (not calibrated), SPEECH above the
+conversation threshold counts only if it is not lecturer bleed-through: while
+the lecturer zone speaks, the zone's mean level must reach
+uncalibrated_local_rms_pct of the lecturer zone's.
+FOCUSED_LECTURE needs lecturer speech and no detected student talk. In Discussion
+mode the widespread gate is the share of student zones with audio that are
+talking. In other modes any student talk can raise NOISE_RISING and sustain it.
+With no mapped reference zone, all zones are student zones and FOCUSED_LECTURE
+is unavailable; without a lecturer location, speech cannot identify a lecture.
+
 Per-zone activity (10 s configurable dwell): offline or no recent audio ->
-NO_DATA immediately; otherwise known calibrated rolling TALKING wins (PENDING and TALKING/HOLD are
-positive windows; QUIET is negative), with the
-existing conversation probability threshold/hysteresis as fallback when unknown.
-Next, a front-zone dominant lecturer probability above lecture_speech_pct ->
-LECTURER; remaining zones are MOTION when motion meets motion_min_pct, else STILL.
+NO_DATA immediately; otherwise apply the zone's role above, then MOTION when
+motion meets motion_min_pct, else STILL.
 STILL means no detected local talking/lecturer evidence or motion: attenuated
 lecturer speech at student desks does not imply local talking. Voice-only evidence
 below these classification gates also maps to STILL, rather than inventing a
@@ -30,6 +39,7 @@ from __future__ import annotations
 
 import enum
 import json
+import warnings
 from collections import deque
 from dataclasses import dataclass, field, fields
 from pathlib import Path
@@ -74,7 +84,8 @@ class Comfort(enum.Enum):
 @dataclass
 class FusionConfig:
     """Default profile. Values are design defaults to be tuned (assumption A5)."""
-    # node_id -> zone label. Front zones are the lecturer area.
+    # node_id -> zone label. front_zones is accepted for legacy configs;
+    # reference_zone alone assigns the lecturer role.
     zones: dict[int, str] = field(default_factory=lambda: {1: "A", 2: "B", 3: "C", 4: "D"})
     front_zones: tuple[str, ...] = ("A", "B")
     mode: p.Mode = p.Mode.LECTURE
@@ -102,7 +113,11 @@ class FusionConfig:
     co2_occupied_ppm: int = 800
     occupied_after_ms: int = 20000
     empty_after_ms: int = 600000
-    lecture_speech_pct: int = 50
+    lecturer_zone_speech_pct: int = 50
+    # Without calibration, while the lecturer zone speaks, a student zone's
+    # speech counts as local talking only if its mean level is at least this
+    # percent of the lecturer zone's: quieter speech is lecturer bleed-through.
+    uncalibrated_local_rms_pct: int = 75
     conversation_enter_pct: int = 40
     conversation_exit_pct: int = 25
     quiet_work_conversation_enter_pct: int = 25
@@ -156,7 +171,9 @@ class FusionConfig:
                 or not 0 <= self.humidity_hysteresis_x10 * 2 <= self.humidity_max_x10 - self.humidity_min_x10):
             raise ValueError("comfort hysteresis must fit inside its range")
         if self.zone_layout is None:
-            self.zone_layout = {name: [i // 2, i % 2] for i, name in enumerate(self.zones.values())}
+            # Display only: one band per zone from the front (row 0, the
+            # lecturer's area) to the back. Columns split a band door/window side.
+            self.zone_layout = {name: [i, 0] for i, name in enumerate(self.zones.values())}
         if not isinstance(self.zone_layout, dict) or set(self.zone_layout) != set(self.zones.values()):
             raise ValueError("zone_layout must place every configured zone exactly once")
         cells = []
@@ -174,6 +191,10 @@ class FusionConfig:
         """Defaults overridden by the keys in a JSON object. Unknown keys
         are an error, so a typo doesn't silently keep the default."""
         data = json.loads(Path(path).read_text())
+        if "lecture_speech_pct" in data:
+            warnings.warn("lecture_speech_pct is deprecated; use lecturer_zone_speech_pct",
+                          DeprecationWarning, stacklevel=2)
+            data.setdefault("lecturer_zone_speech_pct", data.pop("lecture_speech_pct"))
         known = {f.name for f in fields(cls)}
         unknown = set(data) - known
         if unknown:
@@ -215,6 +236,7 @@ class ZoneView:
     temperature_x10: Optional[int]
     humidity_x10: Optional[int]
     stale: bool
+    rms_sum: int = 0  # Sum of rms_x16 over the same audio windows as prob_sums
 
     def prob_sum(self, audio_class: p.AudioClass) -> int:
         return self.prob_sums[audio_class - 1]
@@ -223,8 +245,7 @@ class ZoneView:
         return self.audio_count > 0 and self.prob_sum(audio_class) >= threshold_pct * self.audio_count
 
     def voices(self, threshold_pct: int) -> bool:
-        return self.audio_count > 0 and (self.prob_sum(p.AudioClass.LECTURER_SPEECH)
-            + self.prob_sum(p.AudioClass.STUDENT_CONVERSATION)) >= threshold_pct * self.audio_count
+        return self.prob_at_least(p.AudioClass.SPEECH, threshold_pct)
 
     def motion(self, threshold_pct: int) -> bool:
         return self.motion_count > 0 and self.motion_sum >= threshold_pct * self.motion_count
@@ -241,7 +262,7 @@ class Event:
 
 class _Zone:
     def __init__(self) -> None:
-        self.audio: deque[tuple[int, tuple[int, ...]]] = deque()
+        self.audio: deque[tuple[int, tuple[int, ...], int]] = deque()
         self.reference: deque[tuple[int, bool]] = deque()
         self.reference_revision = -1
         self.motion: deque[tuple[int, int]] = deque()
@@ -319,8 +340,9 @@ class FusionEngine:
         for window in t.audio:
             if (len(window.prob_pct) == p.AUDIO_CLASS_COUNT
                     and all(type(x) is int and 0 <= x <= 100 for x in window.prob_pct)
+                    and not window.uses_reserved_class()
                     and 0 < sum(window.prob_pct) <= 100):
-                zone.audio.append((now_ms, window.prob_pct))
+                zone.audio.append((now_ms, window.prob_pct, window.rms_x16))
                 zone.latest_audio_valid = True
         if p.Valid.PIR in t.valid_flags:
             zone.motion.append((now_ms, clamp_int(t.pir_active_pct, 0, 100)))
@@ -419,7 +441,8 @@ class FusionEngine:
         sums = tuple(sum(w[1][i] for w in zone.audio) for i in range(p.AUDIO_CLASS_COUNT))
         temp, hum = zone.temp_hum or (None, None)
         return ZoneView(cfg.zones[node_id], node_id, sums, len(zone.audio),
-                        sum(m for _, m in zone.motion), len(zone.motion), zone.co2, temp, hum, stale)
+                        sum(m for _, m in zone.motion), len(zone.motion), zone.co2, temp, hum, stale,
+                        sum(w[2] for w in zone.audio))
 
     def _step_activity(self, now_ms: int) -> None:
         cfg, views = self.config, self._views
@@ -453,31 +476,16 @@ class FusionEngine:
 
     def _occupied_candidate(self, state: Activity, now_ms: int) -> tuple[Activity, str]:
         cfg, views = self.config, self._views
-        quiet_work = self.mode == p.Mode.QUIET_WORK
-        if state in _NOISY:  # Lower bar to stay than to enter
-            threshold = cfg.quiet_work_conversation_exit_pct if quiet_work else cfg.conversation_exit_pct
-        else:
-            threshold = (cfg.quiet_work_conversation_enter_pct if quiet_work
-                         else cfg.conversation_enter_pct)
-
+        threshold = self._conversation_threshold(state in _NOISY)
         audio_views = [v for v in views if v.audio_count]
-        talking = []
-        for view in audio_views:
-            reference = self._reference_summary(view.node_id)
-            if reference["smoothed_state"] == "UNKNOWN":
-                conversation = view.prob_at_least(p.AudioClass.STUDENT_CONVERSATION, threshold)
-            else:
-                conversation = reference["smoothed_state"] == "TALKING"
-            if conversation:
-                talking.append(view.zone)
-        widespread = bool(audio_views) and (
-            len(talking) * 100 >= cfg.widespread_pct * len(audio_views))
-        rear_talking = [z for z in talking if z not in cfg.front_zones]
+        students = [v for v in audio_views if v.zone != cfg.reference_zone]
+        talking = [v.zone for v in students if self._student_talking(v, threshold)]
+        widespread = bool(talking) and len(talking) * 100 >= cfg.widespread_pct * len(students)
 
         if self.mode == p.Mode.DISCUSSION:
             if widespread:
                 return Activity.DISCUSSION, f"conversation in {', '.join(talking)}"
-        elif widespread or rear_talking:
+        elif talking:
             reason = f"conversation in {', '.join(talking)}"
             if state == Activity.SUSTAINED_CHATTER:
                 return Activity.SUSTAINED_CHATTER, reason
@@ -485,11 +493,10 @@ class FusionEngine:
                 return Activity.SUSTAINED_CHATTER, f"{reason} for {cfg.chatter_after_ms} ms"
             return Activity.NOISE_RISING, reason
 
-        front = [v for v in audio_views if v.zone in cfg.front_zones] or audio_views
-        lecturer = [v.zone for v in front
-                    if v.prob_at_least(p.AudioClass.LECTURER_SPEECH, cfg.lecture_speech_pct)]
-        if lecturer:
-            return Activity.FOCUSED_LECTURE, f"lecturer speech in {', '.join(lecturer)}"
+        if not talking:
+            for view in audio_views:
+                if self._lecturer_speaking(view):
+                    return Activity.FOCUSED_LECTURE, f"lecturer speech in {view.zone}"
         return Activity.QUIET, "no dominant activity"
 
     def _step_air(self, now_ms: int) -> None:
@@ -538,22 +545,36 @@ class FusionEngine:
             return cfg.quiet_work_conversation_exit_pct if noisy else cfg.quiet_work_conversation_enter_pct
         return cfg.conversation_exit_pct if noisy else cfg.conversation_enter_pct
 
+    def _lecturer_speaking(self, view: ZoneView) -> bool:
+        return (view.zone == self.config.reference_zone
+                and view.voices(self.config.lecturer_zone_speech_pct)
+                and view.prob_sum(p.AudioClass.SPEECH) == max(view.prob_sums))
+
+    def _student_talking(self, view: ZoneView, threshold_pct: int) -> bool:
+        reference = self._reference_summary(view.node_id)["smoothed_state"]
+        if reference != "UNKNOWN":
+            return reference == "TALKING"
+        return view.voices(threshold_pct) and not self._lecturer_bleed(view)
+
+    def _lecturer_bleed(self, view: ZoneView) -> bool:
+        """Uncalibrated fallback: while the lecturer zone speaks, speech that is
+        quieter here than uncalibrated_local_rms_pct of the lecturer zone's level
+        is attributed to the lecturer. Compares mean levels by cross-multiplying."""
+        lecturer = next((v for v in self._views if self._lecturer_speaking(v)), None)
+        if lecturer is None or not view.audio_count:
+            return False
+        return (view.rms_sum * 100 * lecturer.audio_count
+                < self.config.uncalibrated_local_rms_pct * lecturer.rms_sum * view.audio_count)
+
     def _zone_candidate(self, view: ZoneView, previous: ZoneActivity) -> ZoneActivity:
         if not view.audio_count:
             return ZoneActivity.NO_DATA
-        reference = self._reference_summary(view.node_id)
-        threshold = self._conversation_threshold(previous == ZoneActivity.TALKING)
-        talking = (reference['smoothed_state'] == 'TALKING' if reference['smoothed_state'] != 'UNKNOWN'
-                   else view.prob_at_least(p.AudioClass.STUDENT_CONVERSATION, threshold))
-        if talking:
-            return ZoneActivity.TALKING
-        # In front zones lecturer probability must exceed the lecture gate and
-        # dominate other classes; these comparisons retain exact integer sums.
-        lecturer = view.prob_sum(p.AudioClass.LECTURER_SPEECH)
-        if (view.zone in self.config.front_zones
-                and view.prob_at_least(p.AudioClass.LECTURER_SPEECH, self.config.lecture_speech_pct)
-                and lecturer == max(view.prob_sums)):
+        if self._lecturer_speaking(view):
             return ZoneActivity.LECTURER
+        if view.zone != self.config.reference_zone:
+            threshold = self._conversation_threshold(previous == ZoneActivity.TALKING)
+            if self._student_talking(view, threshold):
+                return ZoneActivity.TALKING
         return ZoneActivity.MOTION if view.motion(self.config.motion_min_pct) else ZoneActivity.STILL
 
     def _step_zones(self, now_ms: int, online: set[int], stale: set[int]) -> None:
@@ -608,8 +629,11 @@ class FusionEngine:
             if name in reference["zones"] and node in self._zones:
                 reference["zones"][name].update(self._reference_summary(node))
         return {
+            "now_ms": self._now_ms,
             "mode": self.mode.name,
             "activity": self.activity.state.value,
+            "activity_since_ms": self.activity.since_ms,
+            "air_since_ms": self.air.since_ms,
             "occupied": self.activity.state.occupied,
             "air": self.air.state.value,
             "comfort": self.comfort.state.value,

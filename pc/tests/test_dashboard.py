@@ -51,11 +51,11 @@ class DashboardState(unittest.TestCase):
 
     def test_latest_audio_window_shown(self):
         self.receive(telemetry(audio=(
-            p.AudioWindow(100, p.AudioClass.BACKGROUND_NOISE, (90, 5, 3, 2)),
-            p.AudioWindow(100, p.AudioClass.LECTURER_SPEECH, (5, 80, 10, 5)))))
+            p.AudioWindow(100, p.AudioClass.BACKGROUND_NOISE, (90, 8, 0, 2)),
+            p.AudioWindow(100, p.AudioClass.SPEECH, (5, 90, 0, 5)))))
         audio = self.dashboard.state()["nodes"][0]["telemetry"]["audio"]
-        self.assertEqual(audio, {"class": "lecturer_speech", "confidence": 80,
-                                 "probs": [5, 80, 10, 5]})
+        self.assertEqual(audio, {"class": "speech", "confidence": 90,
+                                 "probs": [5, 90, 0, 5]})
 
     def test_history_keeps_window(self):
         dashboard = Dashboard(self.server, history_s=0.05)
@@ -215,10 +215,10 @@ class ModeApi(unittest.TestCase):
         self.server._received(telemetry(node_id=1, seq=1, temperature_x10=245,
             humidity_x10=615, co2_ppm=900, pir_active_pct=20,
             valid_flags=p.Valid.TEMP_HUM | p.Valid.CO2 | p.Valid.PIR,
-            audio=(p.AudioWindow(160, p.AudioClass.LECTURER_SPEECH, (5, 85, 5, 5)),)), NODE_ADDR, now)
+            audio=(p.AudioWindow(160, p.AudioClass.SPEECH, (5, 90, 0, 5)),)), NODE_ADDR, now)
         with urllib.request.urlopen(self.url.replace('/api/mode', '/api/state'), timeout=2) as response:
             classroom = json.load(response)['classroom']
-        self.assertEqual(classroom['zone_layout'], {'A': [0, 0], 'B': [0, 1], 'C': [1, 0], 'D': [1, 1]})
+        self.assertEqual(classroom['zone_layout'], {'A': [0, 0], 'B': [1, 0], 'C': [2, 0], 'D': [3, 0]})
         a, _, c, _ = classroom['zones']
         self.assertEqual((a['state'], a['air'], a['comfort']), ('LECTURER', 'FAIR', 'COMFORTABLE'))
         self.assertEqual((a['temperature_x10'], a['temperature_c'], a['humidity_pct']), (245, 24.5, 61.5))
@@ -281,7 +281,7 @@ class CalibrationApi(unittest.TestCase):
         self.server._received(telemetry(node_id=3), NODE_ADDR, now)
         config = self.server.set_config(3, report_interval_ms=2000)
         self.server._received(telemetry(node_id=3, seq=1, config_version=config.config_version,
-            audio=(p.AudioWindow(160, p.AudioClass.UNKNOWN, (5, 85, 5, 5)),)), NODE_ADDR, now + 1)
+            audio=(p.AudioWindow(160, p.AudioClass.UNKNOWN, (5, 90, 0, 5)),)), NODE_ADDR, now + 1)
         self.assertEqual(self.server.gateway.nodes[3].report_interval_ms, 2000)
         self.assertEqual(self.server.fusion.state()['zones'][2]['report_interval_ms'], 2000)
         self.assertEqual(self.server.fusion.state()['reference']['zones']['C']['freshness_ms'], 2750)
@@ -295,7 +295,7 @@ class CalibrationApi(unittest.TestCase):
                 level = (20 + 4 * i) * (1 if node == 1 else 0.5)
                 data = telemetry(node_id=node, seq=i, audio_window_seq=i + 1,
                                  audio=(p.AudioWindow(round(level * 16), p.AudioClass.UNKNOWN,
-                                                      (5, 85, 5, 5)),))
+                                                      (5, 90, 0, 5)),))
                 self.server._received(data, NODE_ADDR, received)
         self.server.fusion.evaluate(now, {1, 2, 3, 4})
         with urllib.request.urlopen(self.base + "/api/state", timeout=2) as r:
