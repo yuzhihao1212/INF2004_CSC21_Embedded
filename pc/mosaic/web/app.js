@@ -401,7 +401,49 @@
     container.replaceChildren(...nodes);
   }
 
+  /* Simulation strip: which scripted phase the simulator is playing (dashboard.py "simulation") */
+  const mmss = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
+  function renderSim() {
+    const sim = state.simulation;
+    const strip = $("#sim-strip");
+    strip.hidden = !sim;
+    if (!sim) return;
+    const bar = $("#sim-bar");
+    if (!sim.scenario) {
+      $("#sim-name").textContent = "Simulated";
+      $("#sim-phase").textContent = `${sim.nodes} sensors with random readings, no script`;
+      $("#sim-left").textContent = "";
+      bar.hidden = true;
+      $("#sim-tech").textContent = "";
+      return;
+    }
+    $("#sim-name").textContent = `Simulated · ${sim.scenario[0].toUpperCase()}${sim.scenario.slice(1)}`;
+    const n = sim.phases.length;
+    $("#sim-phase").textContent = sim.finished ? `Script finished, holding: ${sim.label}`
+      : `Phase ${sim.phase + 1} of ${n}: ${sim.label}`;
+    $("#sim-left").textContent = sim.finished ? "" : `${mmss(sim.left_s)} left`;
+    bar.hidden = false;
+    if (bar.dataset.scenario !== sim.scenario) {
+      bar.dataset.scenario = sim.scenario;
+      bar.replaceChildren(...sim.phases.map((ph) => {
+        const seg = make("i", "");
+        seg.style.setProperty("--s", ph.seconds);
+        seg.title = ph.label;
+        return seg;
+      }));
+    }
+    [...bar.children].forEach((seg, i) => {
+      seg.toggleAttribute("data-done", i < sim.phase || sim.finished);
+      seg.toggleAttribute("data-now", i === sim.phase && !sim.finished);
+    });
+    const cur = sim.phases[sim.phase];
+    bar.children[sim.phase].style.setProperty("--p", `${clamp((cur.seconds - sim.left_s) / cur.seconds, 0, 1) * 100}%`);
+    const c = state.classroom;
+    $("#sim-tech").textContent = `expected ${sim.expect} · now activity ${c ? c.activity : "—"}, air ${c ? c.air : "—"}, comfort ${c ? c.comfort : "—"}`;
+  }
+
   function renderMapPage() {
+    renderSim();
     const f = fb();
     if (!f) return;
     const rank = { act_now: 3, heads_up: 2, fine: 1, none: 0 };

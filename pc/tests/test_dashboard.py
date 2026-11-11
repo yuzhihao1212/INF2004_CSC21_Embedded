@@ -74,6 +74,19 @@ class DashboardState(unittest.TestCase):
         self.assertEqual(state["source"], "mixed")
         self.assertEqual([n["simulated"] for n in state["nodes"]], [False, True])
 
+    def test_simulation_phase(self):
+        self.assertIsNone(self.dashboard.state()["simulation"])  # Real sensors only: no strip
+        self.dashboard.simulating(2, None, 100.0)
+        self.assertEqual(self.dashboard.simulation(105.0), {"nodes": 2, "scenario": None})
+
+        self.dashboard.simulating(4, "lecture", 100.0)  # Phases: 40 s, 120 s, 200 s, 90 s
+        sim = self.dashboard.simulation(100.0 + 40 + 30)
+        self.assertEqual((sim["phase"], sim["left_s"], sim["finished"]), (1, 90.0, False))
+        self.assertEqual(sim["label"], "Lecturer teaching, students seated")
+        self.assertEqual([ph["seconds"] for ph in sim["phases"]], [40, 120, 200, 90])
+        done = self.dashboard.simulation(100.0 + 450 + 10)  # Past the end: last phase holds
+        self.assertEqual((done["phase"], done["left_s"], done["finished"]), (3, 0.0, True))
+
     def test_state_is_json(self):
         self.receive(telemetry(valid_flags=p.Valid.TEMP_HUM, temperature_x10=200))
         json.dumps(self.dashboard.state())

@@ -182,6 +182,15 @@
         <label><input type="radio" name="map-metric" value="motion"><span>Movement</span></label>
       </fieldset>
     </div>
+    <section class="sim-strip" id="sim-strip" aria-label="Simulation" hidden>
+      <div class="sim-line">
+        <span class="sim-chip"><svg class="icon icon-xs" aria-hidden="true"><use href="#i-flask"/></svg><span id="sim-name">Simulated</span></span>
+        <span class="sim-phase" id="sim-phase"></span>
+        <span class="sim-left" id="sim-left"></span>
+      </div>
+      <div class="sim-bar" id="sim-bar" aria-hidden="true"></div>
+      <p class="tech sim-tech" id="sim-tech"></p>
+    </section>
     <div class="plan" id="zone-map" role="group"></div>
     <section class="card zone-detail" id="zone-detail" aria-labelledby="zone-detail-h">
       <h2 id="zone-detail-h">Select an area</h2>

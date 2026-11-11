@@ -226,6 +226,17 @@ main.wrap { padding-top: var(--space-6); padding-bottom: var(--space-10); }  /* 
 .tile-why { font-size: 15px; }
 .overview-split { display: grid; grid-template-columns: 3fr 2fr; gap: var(--space-4); align-items: start; }
 
+/* Simulation strip above the room map: neutral greys, it is information, not status */
+.sim-strip { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: var(--space-3) var(--space-4); display: grid; gap: var(--space-2); }
+.sim-line { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-3); }
+.sim-phase { font-weight: 600; }
+.sim-left { margin-left: auto; color: var(--muted); font-size: 14px; font-variant-numeric: tabular-nums; }
+.sim-bar { display: flex; gap: 3px; height: 6px; }
+.sim-bar i { flex: var(--s) 1 0; border-radius: 999px; background: var(--border); position: relative; overflow: hidden; }
+.sim-bar i[data-done] { background: var(--muted); }
+.sim-bar i[data-now]::after { content: ""; position: absolute; inset: 0; width: var(--p, 0%); background: var(--text); border-radius: inherit; }
+.sim-tech { margin: 0; }
+
 /* Room map: floor plan drawn from the zone layout, zones as buttons on top */
 .plan { position: relative; width: 100%; aspect-ratio: var(--ratio, 5 / 3); }
 .plan.compact[data-portrait="true"] { max-width: 360px; margin: 0 auto; }
@@ -368,7 +379,7 @@ main.wrap { padding-top: var(--space-6); padding-bottom: var(--space-10); }  /* 
 
 /* Windows high contrast: keep the shapes and outlines */
 @media (forced-colors: active) {
-  .live-dot, .chip::before, .sw, .bar::after { forced-color-adjust: none; background: CanvasText; }
+  .live-dot, .chip::before, .sw, .bar::after, .sim-bar i[data-done], .sim-bar i[data-now]::after { forced-color-adjust: none; background: CanvasText; }
   .series-line { stroke: CanvasText; }
   .status, .chip, .pill, .plan-zone, .plan-chip, .tile, .hero, .banner { border: 1px solid CanvasText; }
   .pages a[aria-current="page"] { outline: 2px solid Highlight; }
