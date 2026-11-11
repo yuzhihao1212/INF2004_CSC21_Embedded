@@ -636,7 +636,10 @@
     const bars = !rssi ? 0 : rssi >= -55 ? 4 : rssi >= -65 ? 3 : rssi >= -75 ? 2 : rssi >= -85 ? 1 : 0;
     link("rssi", rssi ? `${["Very weak", "Weak", "Fair", "Good", "Strong"][bars]} (${rssi} dBm)` : "—", rssi && bars < 2)
       .querySelectorAll(".bars i").forEach((b, i) => b.toggleAttribute("data-on", i < bars));
-    link("loss", `${fmt(n.loss_pct, 1)}% lost`, n.loss_pct > 5);
+    link("loss", `${fmt(n.loss_pct, 1)}% lost`, n.loss_pct > 5).title =
+      `Unrecovered message loss: ${n.lost}; recovered late: ${n.recovered || 0}; ` +
+      `sequence gaps first detected: ${n.gaps_detected || 0}; duplicates: ${n.duplicates || 0}. ` +
+      "Retries can recover data; this is not raw Wi-Fi transmission loss.";
     link("rtt", n.rtt_ms == null ? "—" : `${fmt(n.rtt_ms, 0)} ms`, n.rtt_ms > 100);
     link("age", n.age_s < 1.5 ? "now" : `${Math.round(n.age_s)} s ago`, n.status !== "online");
   }
