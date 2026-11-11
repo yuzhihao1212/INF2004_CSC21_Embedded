@@ -160,6 +160,15 @@ repeat the CONFIG check above while the node is ONLINE. Confirm both the node's
 `config_version` response alone only confirms that the PC queued the update. Record any
 CYW43 timeouts or OFFLINE periods. A join or DHCP attempt stuck for 30 s restarts station
 mode, and RSSI is queried only while connected, at most once every 5 s.
+
+For unreliable Wi-Fi, each telemetry report has up to two short, bounded retry
+copies. The updated gateway deduplicates them and repairs tracked gaps without
+counting late copies as reboots or rewinding live readings. Flash and run the
+updated node and PC code together. The gateway summary/API exposes recovered
+messages, first-observed gaps and duplicates separately. Dashboard loss means
+**unrecovered unique messages**, not raw radio loss; raw packet-loss evidence
+and the N10 result must still be retained separately. There is no delivery
+guarantee during an outage: retry storage is fixed and expires after 600 ms.
 ### Zone map and integer fusion
 
 The Classroom panel includes a floor-plan heatmap with Activity, CO₂, Temperature

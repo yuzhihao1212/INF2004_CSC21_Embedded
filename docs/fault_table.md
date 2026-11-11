@@ -44,7 +44,7 @@ clears the value's `valid_flags` bit, and the PC ignores invalid fields and offl
 
 | ID | Fault | Detected by | Response | PC shows | Recovery | Status | Evidence / plan |
 |----|-------|-------------|----------|----------|----------|--------|-----------------|
-| N1 | A task hangs | Hardware watchdog (8 s), fed only when every task has reported alive | Reset | Node reboots (see N2) | Reboot | 🔴 | Planned with FreeRTOS. The alive rule must not reset the node while Wi-Fi is rejoining (Week 6 feedback). |
+| N1 | A task hangs | Opt-in RTOS node: hardware watchdog (8 s), fed only after all required tasks progress | Reset | Node reboots; serial retains `last_reset=watchdog` | Reboot | 🟡 | Supplied 9 November logs demonstrate watchdog recovery after deliberate environment-task suspension. Normal image restored. Exact latency and Wi-Fi outage behaviour are not measured; optional audio task requires separate integration validation. |
 | N2 | Node reboots or loses power | `FIRST_SINCE_BOOT` flag + `seq` restarting | PC counts a reboot (not packet loss) and re-sends the node's CONFIG | Reboot count; config re-applied | Automatic | ✅ | `gateway.py` `_track_seq`, `_check_config`; `test_gateway.py` reboot and `test_resends_after_reboot`; hardware check N8 |
 | N3 | Memory running low | `free_heap_bytes` in every TELEMETRY | Reported only | Logged in CSV | n/a | 🟡 | Monitoring only; no threshold or action yet |
 | N4 | Wi-Fi chip fails, or credentials/PC IP not built in | `cyw43_arch_init()` result; empty settings | Node runs sensors only and says why on serial | Node never appears | Fix config, rebuild | ✅ | `node_main.c` start-up |
@@ -87,7 +87,7 @@ clears the value's `valid_flags` bit, and the PC ignores invalid fields and offl
 
 | Gap | Owner | Plan |
 |-----|-------|------|
-| N1 Watchdog | Arif | With FreeRTOS. Alive bits per task; Wi-Fi rejoin must not starve the watchdog. |
+| N1 Watchdog | Arif | RTOS sensor-task fault exercised; retain evidence and measure latency. Verify long Wi-Fi outage does not starve progress. Audio task supervision is pending producer integration. |
 | A1/A2 Mic too weak / clipping | Darius, Moe | Bench check B1 now. Port `LOW_LEVEL` and `CLIPPED` checks from Darius's branch into the audio task. |
 | A3/A4 Overruns, unsure class on the node | Moe, Darius, Arif | Comes with wiring audio into the node |
 | W1, C4 Hardware confirmation | Arif, ZhiHao | Week 10 checks N7 and N9 |
