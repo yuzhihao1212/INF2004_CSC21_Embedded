@@ -195,8 +195,25 @@ The PC sends a PING (e.g. every 5 s), and **round-trip time** = PC time when the
   network loss can be told apart.
 
 ### PC-side liveness and loss tracking
-- **Packet loss** per node = gaps in `seq`. A `seq` that goes backwards, or the
-  `FIRST_SINCE_BOOT` flag, means the node rebooted: reset its counters, don't count it as loss.
+- **Unique-message loss** per node = sequence gaps still unrecovered. The node
+  sends up to two extra TELEMETRY copies (first due after 100 ms, second at least
+  200 ms later); copies retain the original sequence, timestamp and payload.
+  They expire after 600 ms and occupy at most four fixed node-side slots.
+  This adds no message types or bytes to the v2 layout. Update the gateway and
+  node together: older gateways do not safely handle delayed duplicate copies.
+- The PC tracks 256 sequence positions. A late arrival can repair a tracked
+  gap; duplicates are counted separately and do not inflate `received`, refresh
+  liveness, or enter fusion. Recovered older telemetry is saved in CSV but cannot
+  overwrite newer live data. PONG alone does not keep old telemetry fresh.
+- `gaps_detected` and `recovered` remain visible separately. A lower residual
+  loss after retries demonstrates recovered data, **not** improved raw Wi-Fi
+  transmission reliability. Keep raw-capture results and the original failed
+  N10 result; do not claim the original raw-loss target passed from this metric.
+- Backwards sequence numbers alone do not mean a reboot. Use the boot flag
+  (allowing its short-lived retry copies) or a backwards sequence corroborated
+  by sender-clock rollback near boot. Without a unique boot ID the legacy v2
+  header cannot perfectly distinguish arbitrary old-session replay from reboot.
+  Retain lifetime counters; reset bounded sequence history after a reboot.
 - **Node status:** `STALE` after 3 × `report_interval_ms` without TELEMETRY, `OFFLINE` after
   10 s. Fusion ignores OFFLINE nodes and lowers its confidence while any are STALE.
 
@@ -208,7 +225,8 @@ The PC sends a PING (e.g. every 5 s), and **round-trip time** = PC time when the
 - **Receiving:** `memcpy` the datagram into the packet struct. **Never cast the raw buffer
   pointer.** lwIP buffers may be unaligned, and unaligned access hard-faults on the Cortex-M0+.
 - **Before sending:** zero the struct (`memset`) so reserved bytes are 0.
-- `seq` increments for every datagram the node sends (TELEMETRY, CONFIG_ACK, PONG).
+- `seq` increments for each new message (TELEMETRY, CONFIG_ACK, PONG). A bounded
+  TELEMETRY retry reuses its original `seq` and bytes, and never advances it.
 
 ## 6. Changing the protocol
 

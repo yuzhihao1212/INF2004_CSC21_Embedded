@@ -33,7 +33,7 @@ random `session` identifier, UTC ISO `wall_time`, integer `monotonic_ms` and `ev
 | Event | Additional fields |
 |---|---|
 | `run_start`, `run_end` | Start also includes the configured node/zone map |
-| `datagram` | Every accepted TELEMETRY/PONG/CONFIG_ACK: node, source_ip, msg_type, seq, flags, sender_time_ms; telemetry includes csv_pc_time |
+| `datagram` | Every valid TELEMETRY/PONG/CONFIG_ACK, including retry copies: node, source_ip, msg_type, seq, flags, sender_time_ms, accepted. Suppressed duplicates have accepted=false and no CSV row; accepted telemetry includes csv_pc_time. |
 | `pong` | node, rtt_ms |
 | `node_status` | node, old, new (ONLINE/STALE/OFFLINE) |
 | `config` | node, state (sending/applied/failed/rejected/stale), config_version, report_interval_ms, optional attempt/ack_status/reason |
@@ -60,12 +60,14 @@ period. CSV/event mismatches, malformed rows and overlapping labels are errors.
 
 - **Packet counters** call the same `Gateway.track_header` / `_track_seq` logic as
   live reception, including uint32 sequence wrap, duplicates and reboot flags.
-  Reordering is interpreted as a reboot by that existing policy. No packets before
+  Bounded reordering repairs tracked gaps rather than implying a reboot. No packets before
   first observation or after the final observation are assumed missing; trailing
   silence is visible in availability rather than inferred packet counts. Delivery/loss percentages match
-  `NodeState.loss_pct`: received includes duplicates. JSON also provides
-  `unique_delivery_pct` / `unique_loss_pct`, excluding duplicates from received
-  and expected totals; Markdown shows these alongside the gateway loss metric.
+  `NodeState.loss_pct`: received excludes duplicates. `gaps_detected` and
+  `recovered` expose initial holes and subsequent recovery separately. JSON's
+  `unique_delivery_pct` / `unique_loss_pct` now match the corresponding gateway
+  ratios. These are residual message-delivery metrics, not raw radio transmission
+  loss; use the original capture evidence for the latter.
   Overall ratios use summed counters, not averages of percentages.
 - **CSV-only loss** is explicitly an estimate: omitted PONG/ACKs can look like
   gaps. RTT, availability, recovery and fusion occupancy need events and are shown
