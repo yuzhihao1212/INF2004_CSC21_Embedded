@@ -10,6 +10,9 @@
     if (saved === "light" || saved === "dark") document.documentElement.dataset.theme = saved;
     if (localStorage.getItem("mosaic-tech") === "1") document.documentElement.dataset.tech = "";
   } catch (e) {}
+  try {  // Intro plays once per browser tab (intro.js)
+    if (!sessionStorage.getItem("mosaic-intro")) document.documentElement.dataset.intro = "play";
+  } catch (e) {}
 </script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -19,6 +22,25 @@
 </head>
 <body>
 <a class="skip-link" href="#main">Skip to content</a>
+
+<div class="intro" id="intro" aria-hidden="true">
+  <div class="intro-bg"></div>
+  <div class="intro-brand">
+    <svg class="intro-mark" viewBox="0 0 100 100" focusable="false">
+      <circle class="intro-ring" cx="50" cy="50" r="42"/>
+      <g class="intro-thud"><g class="intro-spin">
+        <polygon class="intro-shard" fill="#D85A30" points="12,10 88,10 52.5,44.5 50,42 47.5,44.5"/>
+        <polygon class="intro-shard" fill="#1D9E75" points="90,12 90,88 55.5,52.5 58,50 55.5,47.5"/>
+        <polygon class="intro-shard" fill="#7F77DD" points="88,90 12,90 47.5,55.5 50,58 52.5,55.5"/>
+        <polygon class="intro-shard" fill="#EF9F27" points="10,88 10,12 44.5,47.5 42,50 44.5,52.5"/>
+      </g></g>
+    </svg>
+    <span class="intro-word"><span>m</span><span>o</span><span>s</span><span>a</span><span>i</span><span>c</span></span>
+  </div>
+  <p class="intro-tag">Classroom sensing, fused into one view</p>
+  <p class="intro-status" data-state="wait"><span class="intro-dot"></span><span id="intro-status-text">Connecting to the sensors…</span></p>
+  <p class="intro-skip">Click or press any key to skip</p>
+</div>
 
 <svg class="sprite" aria-hidden="true" focusable="false">
   <symbol id="i-home" viewBox="0 0 24 24"><path d="M4 11 12 4l8 7M6 9.5V20h12V9.5"/><path d="M10 20v-5h4v5"/></symbol>
@@ -281,6 +303,7 @@
           <label><input type="radio" name="theme" value="light"><span>Light</span></label>
           <label><input type="radio" name="theme" value="dark"><span>Dark</span></label>
         </fieldset>
+        <div class="actions"><button class="btn" type="button" id="intro-replay">Play the intro again</button></div>
       </section>
     </div>
   </section>
@@ -351,6 +374,7 @@
   </article>
 </template>
 
+<script src="intro.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

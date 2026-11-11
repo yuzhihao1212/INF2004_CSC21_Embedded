@@ -118,6 +118,26 @@ main:focus, .page-title:focus { outline: none; }
 @media (prefers-reduced-motion: reduce) {
   .bm-ring, .bm-thud, .bm-spin, .bm-shard, .wordmark > span { animation: none; }
 }
+/* Intro: the logo forms full screen, then flies into the header logo (intro.js).
+   Plays once per tab; html[data-intro] is "play" while it runs and "done" after. */
+.intro { display: none; }
+:root[data-intro="play"] .intro { position: fixed; inset: 0; z-index: 50; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--space-4); padding: var(--space-4); text-align: center; cursor: pointer; }
+:root[data-intro="play"] .brand { visibility: hidden; }
+:root[data-intro] .brand-mark *, :root[data-intro] .wordmark > span { animation: none; }
+.intro-bg { position: absolute; inset: 0; z-index: -1; background: var(--bg); }
+.intro-brand { display: flex; align-items: center; gap: var(--intro-gap, 26px); transform-origin: 0 0; color: var(--text); }
+.intro-mark { width: var(--intro-mark, 96px); height: var(--intro-mark, 96px); flex: none; overflow: visible; }
+.intro-mark * { transform-box: fill-box; transform-origin: center; }
+.intro-ring { fill: none; stroke: var(--accent); stroke-width: 3; opacity: 0; }
+.intro-word { font-size: var(--intro-word, 80px); font-weight: 600; letter-spacing: -.04em; line-height: 1; white-space: nowrap; }
+.intro-word > span { display: inline-block; }
+.intro-tag { font-size: 18px; color: var(--muted); margin-top: var(--space-4); text-wrap: balance; }
+.intro-status { display: inline-flex; align-items: center; gap: var(--space-2); font-size: 14px; font-weight: 600; padding: 4px 12px; border: 1px solid var(--border); border-radius: 999px; }
+.intro-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--control-border); }
+.intro-status[data-state="ok"] .intro-dot { background: var(--ok-text); }
+.intro-status[data-state="lost"] .intro-dot { background: var(--error); }
+.intro-skip { font-size: 13px; color: var(--muted); }
+
 /* Below 960 px: two rows, logo + status then the pages (five labelled pages and
    the status don't fit one line). From 960 px the bar becomes a side rail. */
 .topbar-inner { justify-content: space-between; }

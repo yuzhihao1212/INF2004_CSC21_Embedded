@@ -779,9 +779,10 @@
       failures = 0;
       setLive("live");
       render();
+      document.dispatchEvent(new CustomEvent("mosaic:state", { detail: state }));  // intro.js listens
     } catch (e) {
       failures += 1;
-      if (failures >= 2) setLive("lost");
+      if (failures >= 2) { setLive("lost"); document.dispatchEvent(new Event("mosaic:lost")); }
     } finally {
       if (once !== true && !timer) timer = setTimeout(poll, POLL_MS);
     }
