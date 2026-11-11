@@ -22,8 +22,9 @@ typedef enum {
  * co2_ppm: unsigned 1 ppm/LSB, protocol encoding 0..65535. No narrower
  * physical range is assumed without a verified module specification.
  * motion: 0/1, activity only; LOW is not evidence of an empty classroom.
- * timestamp_ms and sample times: modulo-2^32 milliseconds; elapsed unsigned
- * subtraction handles wrap, provided service gaps are less than one wrap.
+ * timestamp_ms and sample times: modulo-2^32 milliseconds. Expiry assumes
+ * sample ages and future offsets are less than 2^31 ms (half a wrap), so
+ * slightly future samples remain fresh and forward rollover still works.
  * Raw values are exact: no rounding, saturation, or physical-value clamping.
  * Failed reads preserve last values but clear the corresponding validity bits.
  * Consumers MUST check validity; status explains invalidity, including warm-up.
