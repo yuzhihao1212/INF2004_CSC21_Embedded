@@ -478,6 +478,8 @@ class GatewayServer:
         self.lock = threading.Lock()
         # Called as listener(header, telemetry, now) for every TELEMETRY.
         self.telemetry_listeners: list[Callable[[p.Header, p.Telemetry, float], None]] = []
+        # Called as listener(now) once per poll(), after fusion, with lock held.
+        self.tick_listeners: list[Callable[[float], None]] = []
         self._log("run_start", now, nodes=self.fusion.config.zones if self.fusion else {})
         if self.fusion and self.event_log:
             for node in self.fusion.config.zones:
@@ -513,6 +515,8 @@ class GatewayServer:
             self._log_statuses(now)
             if self.fusion:
                 self._evaluate_fusion(now)
+            for listener in self.tick_listeners:
+                listener(now)
             for message in self.gateway.messages:
                 self._print(message)
             self.gateway.messages.clear()

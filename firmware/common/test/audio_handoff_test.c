@@ -6,9 +6,9 @@ int main(void) {
     mosaic_audio_handoff_t s = {0};
     mosaic_telemetry_t t = {0};
     mosaic_audio_window_t a = {.rms_x16=160, .audio_class=MOSAIC_AUDIO_BACKGROUND_NOISE,
-                               .prob_pct={90,5,3,2}};
+                               .prob_pct={90,8,0,2}};
     mosaic_audio_window_t b = {.rms_x16=320, .audio_class=MOSAIC_AUDIO_TRANSIENT_NOISE,
-                               .prob_pct={5,3,2,90}};
+                               .prob_pct={5,5,0,90}};
     mosaic_audio_take(&s, &t);
     assert(t.audio_window_count == 0 && t.audio_window_seq == 0);
     assert(mosaic_audio_publish(&s, &a, 100, 30));
