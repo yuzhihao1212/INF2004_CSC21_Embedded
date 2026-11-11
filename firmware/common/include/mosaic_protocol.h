@@ -60,7 +60,7 @@ typedef struct {
     uint8_t  node_id;       /* Node -> PC: the sender. PC -> node: the destination. 1..MOSAIC_MAX_NODES */
     uint8_t  flags;         /* MOSAIC_FLAG_* */
     uint16_t payload_len;   /* Bytes after the header; must equal the type's payload size */
-    uint32_t seq;           /* Per-sender counter, +1 per datagram sent; starts at 0 on boot */
+    uint32_t seq;           /* +1 per new message; retry copies retain seq/time. Starts at 0 on boot. */
     uint32_t sender_time_ms;/* Sender's monotonic clock (ms since boot); not synchronised */
 } mosaic_header_t;
 

@@ -72,8 +72,8 @@ class Fixtures(unittest.TestCase):
                 row(4, 1, audio_window_seq=3, audio_overruns=1, dsp_time_us=500000, inference_time_us=100000)]
         result = self.capture(rows)['nodes']['1']
         self.assertEqual({k: result['packets'][k] for k in ('received', 'lost', 'duplicates', 'reboots')},
-                         dict(received=6, lost=2, duplicates=1, reboots=1))
-        self.assertEqual(result['packets']['loss_pct'], 25)
+                         dict(received=5, lost=2, duplicates=1, reboots=1))
+        self.assertAlmostEqual(result['packets']['loss_pct'], 200 / 7)
         self.assertAlmostEqual(result['packets']['unique_delivery_pct'], 500 / 7)
         self.assertEqual(result['audio'], dict(windows_received=9, skipped_windows=2, overruns_increase=4))
         self.assertEqual(result['interval_ms']['mean'], 1000)
@@ -102,9 +102,9 @@ class Fixtures(unittest.TestCase):
         records = [row(0, 2**32-2), row(1, 0), row(2, 1), row(3, 1), row(4, 0, flags=1)]
         actual = self.capture(records)['nodes']['1']['packets']
         live = Gateway()
-        for r in records:
-            live.handle(p.encode(p.Header(p.MsgType.TELEMETRY, 1, r['seq'], 0, r['flags']), p.Telemetry()),
-                        ('127.0.0.1', 0), 0)
+        for i, r in enumerate(records):
+            live.handle(p.encode(p.Header(p.MsgType.TELEMETRY, 1, r['seq'], r['sender_time_ms'], r['flags']), p.Telemetry()),
+                        ('127.0.0.1', 0), i)
         for key in ('received', 'lost', 'duplicates', 'reboots', 'loss_pct'):
             self.assertEqual(actual[key], getattr(live.nodes[1], key))
 
@@ -252,6 +252,31 @@ class EventCapture(unittest.TestCase):
     @property
     def records(self):
         return [json.loads(line) for line in self.events.getvalue().splitlines()]
+
+    def test_retry_events_and_csv_replay_match_live_counts(self):
+        data = p.encode(p.Header(p.MsgType.TELEMETRY, 1, 0, 0), p.Telemetry(co2_ppm=600))
+        self.server._received(data, ('127.0.0.1', 5006), 0)
+        self.now = 0.1
+        self.server._received(data, ('127.0.0.1', 5006), self.now)
+        self.now = 2
+        self.send(2, payload=p.Telemetry(co2_ppm=800))
+        self.now = 2.1
+        late = p.encode(p.Header(p.MsgType.TELEMETRY, 1, 1, 1000), p.Telemetry(co2_ppm=700))
+        self.server._received(late, ('127.0.0.1', 5006), self.now)
+        self.server.close()
+        self.assertEqual(self.server.gateway.nodes[1].telemetry.co2_ppm, 800)
+        packets = [e for e in self.records if e['event'] == 'datagram']
+        self.assertEqual(len(packets), 4)  # Duplicates remain in raw event evidence.
+        self.assertEqual(sum(e.get('accepted') is False for e in packets), 1)
+        self.assertEqual(len(list(csv.DictReader(io.StringIO(self.csv.getvalue())))), 3)
+        with tempfile.TemporaryDirectory() as d:
+            capture = Path(d) / 'capture.csv'
+            events = Path(d) / 'events.jsonl'
+            capture.write_text(self.csv.getvalue())
+            events.write_text(self.events.getvalue())
+            counts = evaluate(capture, events)['nodes']['1']['packets']
+        self.assertEqual((counts['received'], counts['lost'], counts['duplicates'],
+                          counts['recovered'], counts['gaps_detected']), (3, 0, 1, 1, 1))
 
     def test_all_event_envelopes_csv_compatibility_pong_drop_status(self):
         self.send(0)
