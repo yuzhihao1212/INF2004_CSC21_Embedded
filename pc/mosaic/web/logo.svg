@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" role="img">
+  <title>MOSAIC</title>
+  <!-- Four shards, one per sensing modality, fused into one square. -->
+  <polygon fill="#D85A30" points="12,10 88,10 52.5,44.5 50,42 47.5,44.5"/>
+  <polygon fill="#1D9E75" points="90,12 90,88 55.5,52.5 58,50 55.5,47.5"/>
+  <polygon fill="#7F77DD" points="88,90 12,90 47.5,55.5 50,58 52.5,55.5"/>
+  <polygon fill="#EF9F27" points="10,88 10,12 44.5,47.5 42,50 44.5,52.5"/>
+</svg>

@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-20 -20 140 140" role="img">
+  <title>MOSAIC</title>
+  <!-- Orbit and lock: the four shards spiral in, snap together and send out a ring.
+       Plays once, then holds the static mark. Same geometry as logo.svg. -->
+  <style>
+    * { transform-box: fill-box; transform-origin: center; }
+    .ring { fill: none; stroke: #888780; stroke-width: 2; opacity: 0; animation: ring .6s 1.1s ease-out; }
+    .thud { animation: thud .38s 1.1s ease-out; }
+    .spin { animation: spin 1.1s cubic-bezier(.3,0,.2,1); }
+    .shard { animation: shard 1.1s cubic-bezier(.6,0,.9,.6); }
+    @keyframes spin { from { transform: rotate(-540deg) scale(.6); } to { transform: none; } }
+    @keyframes shard { from { transform: translate(var(--dx), var(--dy)) scale(.5); opacity: 0; } 25% { opacity: 1; } to { transform: none; opacity: 1; } }
+    @keyframes thud { 0% { transform: scale(1); } 30% { transform: scale(.9); } 65% { transform: scale(1.06); } 100% { transform: scale(1); } }
+    @keyframes ring { from { transform: scale(.7); opacity: .8; } to { transform: scale(1.6); opacity: 0; } }
+    @media (prefers-reduced-motion: reduce) { .ring, .thud, .spin, .shard { animation: none; } }
+  </style>
+  <circle class="ring" cx="50" cy="50" r="42"/>
+  <g class="thud"><g class="spin">
+    <polygon class="shard" style="--dx:0px;--dy:-34px" fill="#D85A30" points="12,10 88,10 52.5,44.5 50,42 47.5,44.5"/>
+    <polygon class="shard" style="--dx:34px;--dy:0px" fill="#1D9E75" points="90,12 90,88 55.5,52.5 58,50 55.5,47.5"/>
+    <polygon class="shard" style="--dx:0px;--dy:34px" fill="#7F77DD" points="88,90 12,90 47.5,55.5 50,58 52.5,55.5"/>
+    <polygon class="shard" style="--dx:-34px;--dy:0px" fill="#EF9F27" points="10,88 10,12 44.5,47.5 42,50 44.5,52.5"/>
+  </g></g>
+</svg>
