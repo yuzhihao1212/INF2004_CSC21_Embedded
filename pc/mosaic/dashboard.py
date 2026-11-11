@@ -14,6 +14,7 @@ POST {"mode": "DISCUSSION"} to /api/mode to change the classroom mode: fusion
 switches rules and every node gets the new mode. /api/state includes the
 fusion engine's classroom states under "classroom", and their plain-language
 description, severity and alerts under "feedback" and "alerts" (feedback.py).
+With --simulate, "simulation" names the scenario and the phase being played.
 POST to /api/alerts/<id>/hide to keep an alert off the banner for 10 minutes.
 The CO2 bands are display colours only; fusion has its own thresholds.
 Standard library only, like the gateway.
@@ -36,7 +37,7 @@ from pathlib import Path
 from typing import Optional
 
 from mosaic import protocol as p
-from mosaic import simulator
+from mosaic import scenarios, simulator
 from mosaic.feedback import AlertLog, describe
 from mosaic.fusion import FusionEngine
 from mosaic.gateway import (PING_INTERVAL_S, ConfigDelivery, GatewayServer, NodeState,
@@ -64,8 +65,42 @@ class Dashboard:
         self.history: dict[int, deque[list]] = {}
         self.alerts = AlertLog(self._log_alert)
         self._next_tick = 0.0
+        self._simulation: Optional[tuple[int, Optional[str], float]] = None  # nodes, scenario, start
         server.telemetry_listeners.append(self._record)
         server.tick_listeners.append(self._tick)
+
+    def simulating(self, nodes: int, scenario: Optional[str], start: float) -> None:
+        """Record the in-process simulator run so the page can show its script."""
+        self._simulation = (nodes, scenario, start)
+
+    def simulation(self, now: float) -> Optional[dict]:
+        """Scenario and phase being played, or None when no simulator runs here.
+
+        The phase comes from the scenario's durations and the time the simulator
+        thread was started; the simulator starts its own clock on its first
+        poll a moment later, so phase changes can show up to about a second early.
+        """
+        if self._simulation is None:
+            return None
+        nodes, name, start = self._simulation
+        scenario = scenarios.get(name)
+        if scenario is None:
+            return {"nodes": nodes, "scenario": None}
+        elapsed = max(0.0, now - start)
+        index, phase = scenario.phase_at(elapsed)
+        phase_end = sum(ph.seconds for ph in scenario.phases[:index + 1])
+        return {
+            "nodes": nodes,
+            "scenario": name,
+            "description": scenario.description,
+            "phases": [{"label": ph.label, "seconds": ph.seconds} for ph in scenario.phases],
+            "phase": index,
+            "label": phase.label,
+            "expect": phase.expect,
+            "elapsed_s": round(elapsed, 1),
+            "left_s": round(max(0.0, phase_end - elapsed), 1),
+            "finished": elapsed >= scenario.seconds,
+        }
 
     def _log_alert(self, action: str, fields: dict) -> None:
         self.server._log("alert", time.monotonic(), action=action, **fields)
@@ -125,6 +160,7 @@ class Dashboard:
                 "classroom": classroom,
                 "feedback": feedback,
                 "alerts": self.alerts.view(int(time.time() * 1000)),
+                "simulation": self.simulation(now),
             }
 
     def _node(self, n: NodeState, now: float) -> dict:
@@ -392,6 +428,7 @@ def main(argv: Optional[list[str]] = None) -> None:
         if args.aligned:
             sim_args += ["--aligned"]
         sim_args += ["--receive-jitter-ms", str(args.receive_jitter_ms)]
+        dashboard.simulating(args.simulate, args.scenario, time.monotonic())
         threading.Thread(target=simulator.main, args=(sim_args,), daemon=True).start()
 
     try:
