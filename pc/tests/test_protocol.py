@@ -21,7 +21,7 @@ class RoundTrip(unittest.TestCase):
         header = p.Header(p.MsgType.TELEMETRY, node_id=2, seq=10, sender_time_ms=5000)
         payload = p.Telemetry(
             temperature_x10=245, humidity_x10=550, co2_ppm=650, audio_window_seq=9,
-            audio=(p.AudioWindow(48, p.AudioClass.STUDENT_CONVERSATION, (10, 5, 70, 15)),),
+            audio=(p.AudioWindow(48, p.AudioClass.SPEECH, (15, 70, 0, 15)),),
             pir_active_pct=40, valid_flags=p.Valid.TEMP_HUM, wifi_rssi_dbm=-61)
         data = p.encode(header, payload)
         self.assertEqual(len(data), 64)
@@ -35,6 +35,21 @@ class RoundTrip(unittest.TestCase):
         payload = p.Telemetry(temperature_x10=-400)
         self.assertEqual(p.decode(p.encode(header, payload)), (header, payload))
         self.assertIsNone(payload.latest_audio)
+
+    def test_reserved_slot_and_class_rejected(self):
+        header = p.Header(p.MsgType.TELEMETRY, 1, 0, 0)
+        valid = p.AudioWindow(160, p.AudioClass.SPEECH, (10, 80, 0, 10))
+        for invalid, field_offset, value in (
+            (p.AudioWindow(160, p.AudioClass.SPEECH, (10, 79, 1, 10)), 5, 1),
+            (p.AudioWindow(160, p.AudioClass.RESERVED, valid.prob_pct), 2, 3),
+        ):
+            with self.subTest(field_offset=field_offset):
+                with self.assertRaisesRegex(p.ProtocolError, "reserved"):
+                    p.encode(header, p.Telemetry(audio=(valid, invalid)))
+                data = bytearray(p.encode(header, p.Telemetry(audio=(valid, valid))))
+                data[16 + 24 + 8 + field_offset] = value  # Second declared window
+                with self.assertRaisesRegex(p.ProtocolError, "reserved"):
+                    p.decode(data)
 
     def test_too_many_audio_windows(self):
         header = p.Header(p.MsgType.TELEMETRY, 1, 0, 0)
@@ -153,8 +168,8 @@ class MatchesCHeader(unittest.TestCase):
             temperature_x10=-55, humidity_x10=612,
             dsp_time_us=81000, inference_time_us=950, free_heap_bytes=65536,
             co2_ppm=812, config_version=7, audio_overruns=2, audio_window_seq=301,
-            audio=(p.AudioWindow(200, p.AudioClass.LECTURER_SPEECH, (5, 80, 10, 5)),
-                   p.AudioWindow(0xFFFF, p.AudioClass.UNKNOWN, (30, 40, 20, 10))),
+            audio=(p.AudioWindow(200, p.AudioClass.SPEECH, (5, 90, 0, 5)),
+                   p.AudioWindow(0xFFFF, p.AudioClass.UNKNOWN, (30, 60, 0, 10))),
             pir_active_pct=35, valid_flags=p.Valid.TEMP_HUM | p.Valid.CO2 | p.Valid.PIR,
             cpu_load_pct=63, wifi_rssi_dbm=-58))
         self.assertEqual(t.temperature_c, -5.5)

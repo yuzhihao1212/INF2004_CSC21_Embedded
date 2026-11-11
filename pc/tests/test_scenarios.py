@@ -47,17 +47,22 @@ EXPECTED_ZONES = {
                   {'C': 'TALKING'}, {'C': 'STILL'}],
     'lecture': [{'A': 'STILL', 'C': 'STILL'}, {'A': 'LECTURER', 'C': 'STILL'},
                 {'A': 'LECTURER', 'C': 'TALKING', 'D': 'TALKING'}, {'C': 'STILL'}],
-    'discussion': [{'A': 'LECTURER', 'C': 'STILL'}, {'A': 'TALKING', 'C': 'TALKING'},
+    # Speech at A remains attributed to the lecturer, even during group work.
+    'discussion': [{'A': 'LECTURER', 'C': 'STILL'}, {'A': 'LECTURER', 'C': 'TALKING'},
                    {'A': 'LECTURER', 'C': 'STILL'}],
 }
 
 
-def play(scenario: scenarios.Scenario, mode: p.Mode, seed: int, *, aligned=False) -> list[tuple[str, str, str]]:
-    """Phase-end states with independent clocks and exact PC delivery times."""
+def play(scenario: scenarios.Scenario, mode: p.Mode, seed: int, *, aligned=False,
+         calibrate: bool | None = None) -> list[tuple[str, str, str]]:
+    """Phase-end states with independent clocks and exact PC delivery times.
+    calibrate defaults to True only for the reference scenario."""
     sim = Simulator(nodes=4, seed=seed, scenario=scenario, aligned=aligned,
                     receive_jitter_s=0 if aligned else 0.08)
     engine = FusionEngine()
-    if scenario is scenarios.SCENARIOS["reference"]:
+    if calibrate is None:
+        calibrate = scenario is scenarios.SCENARIOS["reference"]
+    if calibrate:
         engine.calibrate(0.0)  # Operator starts phase (a); production never auto-learns.
     engine.set_mode(mode, 0.0)
     ends = []
@@ -77,7 +82,7 @@ def play(scenario: scenarios.Scenario, mode: p.Mode, seed: int, *, aligned=False
                 actual = {z['zone']: z['state'] for z in s['zones']}
                 for zone, expected in EXPECTED_ZONES[name][boundaries[step]].items():
                     assert actual[zone] == expected, (name, boundaries[step], zone, actual)
-            if scenario is scenarios.SCENARIOS["reference"]:
+            if scenario is scenarios.SCENARIOS["reference"] and calibrate:
                 students = s["reference"]["zones"]
                 assert all(z["gain_q16"] is not None for z in students.values())
                 assert students["C"]["smoothed_state"] == ("TALKING" if boundaries[step] == 2 else "QUIET")
@@ -93,6 +98,18 @@ class Scenarios(unittest.TestCase):
             for seed in (1, 2):  # Different noise, same outcome
                 with self.subTest(scenario=name, mode=mode.name, seed=seed):
                     self.assertEqual(play(scenarios.SCENARIOS[name], mode, seed), expected)
+
+    def test_every_phase_without_voice_setup(self):
+        # Every node hears the lecturer as SPEECH; without calibration the
+        # loudness fallback must still tell lecture from student talk.
+        for (name, mode), expected in EXPECTED.items():
+            with self.subTest(scenario=name, mode=mode.name):
+                self.assertEqual(play(scenarios.SCENARIOS[name], mode, 3, calibrate=False), expected)
+
+    def test_every_phase_with_voice_setup(self):
+        for (name, mode), expected in EXPECTED.items():
+            with self.subTest(scenario=name, mode=mode.name):
+                self.assertEqual(play(scenarios.SCENARIOS[name], mode, 3, calibrate=True), expected)
 
     def test_last_phase_holds(self):
         scenario = scenarios.SCENARIOS["exam"]

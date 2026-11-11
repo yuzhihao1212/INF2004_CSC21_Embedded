@@ -28,8 +28,8 @@ def stamp(seconds):
 def row(seconds=0, seq=0, node=1, windows=2, **kwargs):
     header = p.Header(p.MsgType.TELEMETRY, node, seq, round(seconds * 1000))
     header.flags = kwargs.pop('flags', 0)
-    telemetry = p.Telemetry(audio=tuple(p.AudioWindow(160, p.AudioClass.LECTURER_SPEECH,
-        (5, 85, 5, 5)) for _ in range(windows)), **kwargs)
+    telemetry = p.Telemetry(audio=tuple(p.AudioWindow(160, p.AudioClass.SPEECH,
+        (5, 90, 0, 5)) for _ in range(windows)), **kwargs)
     return dict(zip(CSV_FIELDS, csv_row(header, telemetry, stamp(seconds))))
 
 
@@ -327,7 +327,7 @@ class EventCapture(unittest.TestCase):
             for node in (1,3):
                 level = (40 + i * 2) * (16 if node == 1 else 8)
                 self.send(i+1, node, payload=p.Telemetry(audio_window_seq=i+1,
-                    audio=(p.AudioWindow(level,p.AudioClass.LECTURER_SPEECH,(5,85,5,5)),)))
+                    audio=(p.AudioWindow(level,p.AudioClass.SPEECH,(5,90,0,5)),)))
             self.server._evaluate_fusion(self.now)
         self.server.fusion.calibrate(self.now, 'C')
         self.server.reference_operation('start','C',self.now)
@@ -344,7 +344,7 @@ class EventCapture(unittest.TestCase):
         self.now = .5
         for node in (1,3):
             self.send(1, node, payload=p.Telemetry(audio_window_seq=1,
-                audio=(p.AudioWindow(640,p.AudioClass.UNKNOWN,(5,85,5,5)),)))
+                audio=(p.AudioWindow(640,p.AudioClass.UNKNOWN,(5,90,0,5)),)))
         self.server._evaluate_fusion(self.now)  # Raw CALIBRATING resumes, same revision.
         starts = [e for e in self.records if e['event']=='reference' and e['zone']=='C' and e['action']=='start']
         self.assertEqual(len(starts),1)

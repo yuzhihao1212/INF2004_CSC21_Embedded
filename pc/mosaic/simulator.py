@@ -206,14 +206,17 @@ class Simulator:
                       rms: Optional[float] = None) -> p.AudioWindow:
         """A classified window: random, or near the given class mix (%)."""
         rng = self.rng
+        classes = (p.AudioClass.BACKGROUND_NOISE, p.AudioClass.SPEECH, p.AudioClass.TRANSIENT_NOISE)
         if mix is None:
-            weights = [rng.random() for _ in range(p.AUDIO_CLASS_COUNT)]
-            weights[rng.randrange(p.AUDIO_CLASS_COUNT)] += 2.0  # One class usually dominates
+            weights = [rng.random() for _ in classes]
+            weights[rng.randrange(len(classes))] += 2.0  # One class usually dominates
         else:
-            weights = [max(0.5, rng.gauss(share, 5.0)) for share in mix]
-        probs = [int(100 * w / sum(weights)) for w in weights]
-        best = max(range(p.AUDIO_CLASS_COUNT), key=probs.__getitem__)
-        audio_class = p.AudioClass(best + 1) if probs[best] >= 60 else p.AudioClass.UNKNOWN
+            weights = [max(0.5, rng.gauss(mix[cls - 1], 5.0)) for cls in classes]
+        probs = [0] * p.AUDIO_CLASS_COUNT
+        for cls, weight in zip(classes, weights):
+            probs[cls - 1] = int(100 * weight / sum(weights))
+        best = max(classes, key=lambda cls: probs[cls - 1])
+        audio_class = best if probs[best - 1] >= 60 else p.AudioClass.UNKNOWN
         level = rng.randint(5 * 16, 60 * 16) if rms is None else round(rms * 16)
         return p.AudioWindow(level, audio_class, tuple(probs))
 

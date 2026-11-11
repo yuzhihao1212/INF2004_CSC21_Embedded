@@ -251,6 +251,7 @@ class ReferenceFusion:
             if (type(window.rms_x16) is not int or not 0 <= window.rms_x16 <= MAX_RMS_X16
                     or len(probs) != p.AUDIO_CLASS_COUNT
                     or any(type(x) is not int or not 0 <= x <= 100 for x in probs)
+                    or window.uses_reserved_class()
                     or not 0 < sum(probs) <= 100):
                 self._invalidate(node_id, "Invalid RMS or class probabilities")
                 return
