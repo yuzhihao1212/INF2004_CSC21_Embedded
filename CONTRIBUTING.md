@@ -102,6 +102,23 @@ Fix any conflicts VS Code shows, then `git add` the files, `git commit` and `git
 - **Changing a shared interface** (pins, packet format, ML feature order, config parameters)?
   Tag the affected teammates in the PR description.
 
+## Colour rules (dashboard)
+
+The dashboard (`pc/mosaic/web/`) uses four colour families. Each one has a single job, so a colour always means the same thing wherever it shows up. The tokens live at the top of `style.css` in both light and dark mode. Use the tokens and never write a hex value in a component rule.
+
+| Family | Tokens | Use it for | Never for |
+|---|---|---|---|
+| Neutral | `--text`, `--muted`, `--border`, `--surface`, `--bg`, `--header` | Everything by default: text, cards, labels, "Simulated", "Warming up", timestamps | — |
+| Brand purple | `--accent`, `--accent-text`, `--accent-control`, `--accent-soft` | Things you can click or that are selected: active page, chosen class type, buttons, links, focus ring | Data, status or decoration |
+| Status | `--ok-*`, `--warn-*`, `--error*` | Room health (fine, keep an eye on it, act now) and sensor link health | Anything that isn't a health state |
+| Sensor tints | `--sense-comfort`, `--sense-air`, `--sense-motion`, `--sense-sound` | Which sensor: the icon next to a reading, and sensor bars | Tag or card backgrounds (amber and coral would read as alerts) |
+
+Chart lines use `--series-1` to `--series-6`, one per node, together with a dash pattern. Series colours appear only inside charts and in the node key on the Sensors page.
+
+Tags all share one shape: a white pill with neutral text. The colour sits only in the dot or the leading icon. Only "Act now" and "Connection lost" get a solid red fill, so they're the only things on screen that shout. Every status also carries an icon or a word, never colour alone.
+
+A new colour needs a new job. If it doesn't fit one of the families above, raise it in the group chat before adding a token.
+
 ## Who owns what
 
 Reviewers are auto-requested from `.github/CODEOWNERS`:
