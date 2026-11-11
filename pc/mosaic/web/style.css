@@ -176,7 +176,7 @@ main { padding-top: var(--space-6); padding-bottom: var(--space-10); }
 .audio[data-invalid] .audio-icon, .audio[data-invalid] .audio-class { color: var(--muted); }
 .audio-class { font-weight: 600; }
 .audio-conf { font-size: 22px; font-weight: 600; font-variant-numeric: tabular-nums; letter-spacing: -.02em; }
-.probs { display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--space-2); }
+.probs { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--space-2); }
 .probs span { display: flex; align-items: center; gap: 4px; color: var(--muted); }
 .probs i { flex: 1; height: 4px; border-radius: 999px; background: var(--surface); position: relative; overflow: hidden; }
 .probs i::after { content: ""; position: absolute; inset: 0; width: var(--p, 0%); background: var(--control-border); border-radius: inherit; transition: width .4s ease; }

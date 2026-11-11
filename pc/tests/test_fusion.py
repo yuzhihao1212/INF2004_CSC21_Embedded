@@ -3,8 +3,7 @@
 Run from the pc/ folder:  python -m unittest -v
 
 Each scenario feeds four zones one TELEMETRY per second and evaluates once a
-second, as the gateway does. Probabilities are (background, lecturer speech,
-student conversation, transient noise) in %.
+second, as the gateway does. Probabilities are (background, speech, reserved, transient noise) in %.
 """
 
 import json
@@ -15,17 +14,17 @@ from pathlib import Path
 from mosaic import protocol as p
 from mosaic.fusion import Activity, Air, Comfort, FusionConfig, FusionEngine
 
-QUIET = (90, 5, 3, 2)
-SPEECH = (10, 75, 10, 5)
-CHAT = (10, 15, 70, 5)
-MURMUR = (40, 25, 30, 5)    # Conversation between the exit (25) and enter (40) thresholds
-BANG = (5, 5, 5, 85)
+QUIET = (90, 8, 0, 2)
+SPEECH = (10, 85, 0, 5)
+CHAT = SPEECH  # Identical classifier evidence; location determines the role.
+MURMUR = (65, 30, 0, 5)    # Conversation between the exit (25) and enter (40) thresholds
+BANG = (5, 10, 0, 85)
 ALL = (1, 2, 3, 4)
 
 
-def telemetry(probs=QUIET, pir=0, co2=600, temp=24.0, humidity=55.0, co2_valid=True):
+def telemetry(probs=QUIET, pir=0, co2=600, temp=24.0, humidity=55.0, co2_valid=True, rms_x16=160):
     valid = p.Valid.PIR | p.Valid.TEMP_HUM | (p.Valid.CO2 if co2_valid else p.Valid.CO2_WARMUP)
-    window = p.AudioWindow(160, p.AudioClass.UNKNOWN, probs)
+    window = p.AudioWindow(rms_x16, p.AudioClass.UNKNOWN, probs)
     return p.Telemetry(temperature_x10=round(temp * 10), humidity_x10=round(humidity * 10),
                        co2_ppm=co2, audio=(window, window), pir_active_pct=pir,
                        valid_flags=valid)
@@ -108,7 +107,7 @@ class Lecture(Scenario):
     def setUp(self):
         super().setUp()
         self.run_for(30)
-        self.lecture = dict(n1=dict(probs=SPEECH, pir=20), n2=dict(probs=SPEECH))
+        self.lecture = dict(n1=dict(probs=SPEECH, pir=20))
         self.run_for(60, **self.lecture)
         self.assert_states(Activity.FOCUSED_LECTURE)
 
@@ -118,6 +117,14 @@ class Lecture(Scenario):
         self.run_for(30, **self.lecture)
         self.assert_states(Activity.FOCUSED_LECTURE)
         self.assertEqual(sum(e.region == "activity" for e in self.engine.events), 3)
+
+    def test_same_speech_moves_from_lecturer_to_student_zone(self):
+        # B is on the front row, but it is a student zone unless configured otherwise.
+        self.run_for(60, n2=dict(probs=SPEECH))
+        self.assert_states(Activity.NOISE_RISING)
+        self.engine = FusionEngine(FusionConfig(reference_zone="B"))
+        self.run_for(60, n2=dict(probs=SPEECH))
+        self.assert_states(Activity.FOCUSED_LECTURE)
 
     def test_rear_chatter_rises_then_sustains_then_settles(self):
         chatter = dict(self.lecture, n3=dict(probs=CHAT), n4=dict(probs=CHAT))
@@ -168,10 +175,10 @@ class Discussion(Scenario):
         self.run_for(40, **self.every(probs=CHAT, pir=30))
         self.assert_states(Activity.NOISE_RISING)
 
-    def test_one_group_talking_is_not_discussion(self):
+    def test_one_group_talking_is_neither_discussion_nor_focused_lecture(self):
         self.engine.set_mode(p.Mode.DISCUSSION, self.now)
         self.run_for(60, n1=dict(probs=SPEECH, pir=20), n4=dict(probs=CHAT))
-        self.assert_states(Activity.FOCUSED_LECTURE)
+        self.assert_states(Activity.QUIET)
 
 
 class Environment(Scenario):
@@ -235,11 +242,54 @@ class Configuration(unittest.TestCase):
         with self.assertRaises(ValueError):
             FusionConfig.from_json(self.write({"co2_poor_pmm": 1500}))
 
+    def test_legacy_lecture_threshold_loads_with_deprecation_warning(self):
+        with self.assertWarnsRegex(DeprecationWarning, "lecturer_zone_speech_pct"):
+            cfg = FusionConfig.from_json(self.write({"lecture_speech_pct": 63}))
+        self.assertEqual(cfg.lecturer_zone_speech_pct, 63)
+        with self.assertWarns(DeprecationWarning):
+            cfg = FusionConfig.from_json(self.write(
+                {"lecture_speech_pct": 63, "lecturer_zone_speech_pct": 67}))
+        self.assertEqual(cfg.lecturer_zone_speech_pct, 67)
+
     def test_unmapped_node_ignored(self):
         engine = FusionEngine()
         engine.add(7, telemetry(probs=SPEECH), 1.0)
         engine.evaluate(1.0, online={7})
         self.assertTrue(all(z["state"] == "NO_DATA" for z in engine.state()["zones"]))
+
+
+class UncalibratedLoudnessFallback(unittest.TestCase):
+    """Without voice setup every node hears the lecturer as SPEECH. Quieter
+    copies of the lecturer's voice must not count as student talk."""
+
+    def run_lecture(self, rear_rms_x16, config=None):
+        engine, now = FusionEngine(config), 0.0
+        for _ in range(90):
+            now += 1.0
+            engine.add(1, telemetry(SPEECH, pir=25, rms_x16=1600), now)
+            engine.add(2, telemetry(SPEECH, pir=5, rms_x16=960), now)
+            for node in (3, 4):
+                engine.add(node, telemetry(SPEECH, pir=5, rms_x16=rear_rms_x16), now)
+            engine.evaluate(now, set(ALL))
+        return engine.state()
+
+    def test_lecturer_heard_everywhere_is_a_lecture(self):
+        state = self.run_lecture(rear_rms_x16=560)
+        self.assertEqual(state["activity"], "FOCUSED_LECTURE")
+        zones = {z["zone"]: z["state"] for z in state["zones"]}
+        self.assertEqual(zones["A"], "LECTURER")
+        self.assertNotIn("TALKING", zones.values())
+
+    def test_louder_local_speech_is_student_talk(self):
+        state = self.run_lecture(rear_rms_x16=1520)
+        self.assertIn(state["activity"], ("NOISE_RISING", "SUSTAINED_CHATTER"))
+        self.assertEqual({z["zone"]: z["state"] for z in state["zones"] if z["zone"] in "CD"},
+                         {"C": "TALKING", "D": "TALKING"})
+
+    def test_without_the_fallback_the_lecture_looks_like_chatter(self):
+        # Regression: the first 3-class version had no loudness check.
+        state = self.run_lecture(rear_rms_x16=560, config=FusionConfig(uncalibrated_local_rms_pct=0))
+        self.assertIn(state["activity"], ("NOISE_RISING", "SUSTAINED_CHATTER"))
 
 
 if __name__ == "__main__":

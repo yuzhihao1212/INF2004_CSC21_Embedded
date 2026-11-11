@@ -94,6 +94,16 @@ sustained chatter), **air** (normal or poor ventilation) and **comfort**. The pa
 under *Classroom*, with buttons that switch the classroom mode (Lecture, Discussion, Quiet work)
 for fusion and every node at once.
 
+Nodes report background, speech and transient noise. Protocol v2 keeps four probability
+slots, with slot 3 reserved and zero. Fusion assigns the lecturer role to
+`reference_zone` (default A). A focused lecture needs dominant speech there and no
+detected student talk. The other zones use calibrated reference comparison when its
+result is known, or their smoothed speech probability otherwise. Discussion mode
+requires talk in a configurable share of student zones with audio; Lecture and Quiet
+Work can raise an alert from one student zone. If the reference zone is null or unmapped,
+all zones use the student speech rule and `FOCUSED_LECTURE` is unavailable: without a
+lecturer location the model cannot tell a lecture from a student speaking.
+
 Thresholds, dwell times and the node → zone map are defaults in `FusionConfig`. To tune them
 without editing code, pass a JSON file containing only the values to change:
 
@@ -102,6 +112,11 @@ python -m mosaic.dashboard --fusion-config fusion.json
 ```
 
 where `fusion.json` is, for example, `{"co2_poor_ppm": 1500, "zones": {"1": "A", "2": "C"}}`.
+Use `lecturer_zone_speech_pct` for the lecturer's speech gate. The old JSON key
+`lecture_speech_pct` still loads with a deprecation warning; the new key takes priority
+if both are present. The `conversation_*` and `quiet_work_conversation_*` thresholds
+now apply to the student zones' speech fallback. `front_zones` is accepted in older
+configs; it no longer assigns the lecturer role.
 `pc/tests/test_fusion.py` holds the scripted scenarios (lecture, chatter, discussion,
 ventilation and so on) that check the rules.
 

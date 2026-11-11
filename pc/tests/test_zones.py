@@ -27,9 +27,9 @@ class ZoneStates(unittest.TestCase):
             with self.subTest(state=state):
                 self.assertEqual(self.feed(node, self.seq, probs=probs, pir=pir)['state'], state)
 
-    def test_front_lecturer_must_be_dominant(self):
-        self.assertEqual(self.feed(1, probs=(55, 40, 3, 2))['state'], 'STILL')
-        self.assertEqual(self.feed(3, now=1, probs=SPEECH)['state'], 'STILL')  # No evidence of LOCAL speech.
+    def test_lecturer_must_be_dominant_and_in_reference_zone(self):
+        self.assertEqual(self.feed(1, probs=(55, 43, 0, 2))['state'], 'STILL')
+        self.assertEqual(self.feed(2, now=1, probs=SPEECH)['state'], 'TALKING')
 
     def test_dwell_and_interrupted_candidate(self):
         self.engine.config.zone_dwell_ms = 10000
@@ -138,10 +138,10 @@ class IntegerBoundaries(unittest.TestCase):
 
     def test_sums_compare_without_rounding_the_mean(self):
         # 39.5 rounds to 40 for display, but must NOT meet a 40% decision gate.
-        view = ZoneView('C', 3, (0, 0, 79, 0), 2, 19, 2, None, None, None, False)
-        self.assertFalse(view.prob_at_least(p.AudioClass.STUDENT_CONVERSATION, 40))
+        view = ZoneView('C', 3, (0, 79, 0, 0), 2, 19, 2, None, None, None, False)
+        self.assertFalse(view.prob_at_least(p.AudioClass.SPEECH, 40))
         self.assertFalse(view.motion(10))
-        self.assertTrue(view.prob_at_least(p.AudioClass.STUDENT_CONVERSATION, 39))
+        self.assertTrue(view.prob_at_least(p.AudioClass.SPEECH, 39))
 
     def test_wire_bounds_clamp_environment_and_reject_decimal_config(self):
         engine = FusionEngine()

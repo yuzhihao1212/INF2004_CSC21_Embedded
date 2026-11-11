@@ -31,9 +31,9 @@ int main(void) {
     t.payload.audio_window_seq = 301;
     t.payload.audio_window_count = 2;
     t.payload.audio[0] = (mosaic_audio_window_t){
-        .rms_x16 = 200, .audio_class = MOSAIC_AUDIO_LECTURER_SPEECH, .prob_pct = {5, 80, 10, 5}};
+        .rms_x16 = 200, .audio_class = MOSAIC_AUDIO_SPEECH, .prob_pct = {5, 90, 0, 5}};
     t.payload.audio[1] = (mosaic_audio_window_t){
-        .rms_x16 = 0xFFFF, .audio_class = MOSAIC_AUDIO_UNKNOWN, .prob_pct = {30, 40, 20, 10}};
+        .rms_x16 = 0xFFFF, .audio_class = MOSAIC_AUDIO_UNKNOWN, .prob_pct = {30, 60, 0, 10}};
     t.payload.pir_active_pct = 35;
     t.payload.valid_flags = MOSAIC_VALID_TEMP_HUM | MOSAIC_VALID_CO2 | MOSAIC_VALID_PIR;
     t.payload.cpu_load_pct = 63;

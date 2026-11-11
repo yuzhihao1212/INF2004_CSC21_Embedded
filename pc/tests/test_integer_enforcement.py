@@ -47,7 +47,7 @@ def violations(source, allowed):
                     self.bad(node, 'noninteger math operation: ' + node.attr)
             self.generic_visit(node)
         def visit_Import(self, node):
-            if any(a.name not in {'enum', 'json', 'math'} or a.asname for a in node.names):
+            if any(a.name not in {'enum', 'json', 'math', 'warnings'} or a.asname for a in node.names):
                 self.bad(node, 'unreviewed numeric import/alias')
         def visit_ImportFrom(self, node):
             if node.module not in {'__future__', 'collections', 'dataclasses', 'pathlib',

@@ -10,9 +10,9 @@ from mosaic import protocol as p
 from mosaic.fusion import FusionConfig, FusionEngine
 from mosaic.reference import ReferenceConfig, ReferenceFusion, round_ratio
 
-SPEECH = (5, 85, 5, 5)
-OTHER_SPEECH = (5, 5, 85, 5)
-NOISE = (90, 3, 2, 5)
+SPEECH = (5, 90, 0, 5)
+OTHER_SPEECH = (8, 87, 0, 5)
+NOISE = (90, 5, 0, 5)
 
 
 def window(rms, probs=SPEECH):
@@ -219,7 +219,7 @@ class Reference(unittest.TestCase):
         self.assertEqual(self.pair(student=80, student_probs=NOISE)["state"], "QUIET")
         self.assertEqual(self.pair(student=80)["state"], "PENDING")
 
-    def test_speech_evidence_independent_of_lecturer_student_class_split(self):
+    def test_speech_evidence_with_different_probability_mixes(self):
         self.calibrate()
         self.pair(student=80, student_probs=OTHER_SPEECH)
         self.assertEqual(self.pair(student=80, student_probs=SPEECH)["state"], "TALKING")
@@ -376,7 +376,7 @@ class FusionReference(unittest.TestCase):
         self.engine.evaluate(self.now, {1, 2, 3, 4} if online is None else online)
 
     def test_level_not_classifier_drives_conversation_and_sustained_chatter(self):
-        self.feed(probs=OTHER_SPEECH)  # Classifier calls attenuated lecturer speech conversation.
+        self.feed(probs=OTHER_SPEECH)  # Even attenuated lecturer speech is classified as speech.
         self.assertEqual(self.engine.activity.state.value, "FOCUSED_LECTURE")
         self.feed(talking=(3,))
         self.feed(talking=(3,))
@@ -406,14 +406,17 @@ class FusionReference(unittest.TestCase):
         self.engine.evaluate(self.now, online={1, 2, 4}, stale={3})
         self.assertEqual(self.engine.reference.state()["zones"]["C"]["state"], "UNKNOWN")
 
-    def test_disabled_and_uncalibrated_keep_legacy_rule(self):
-        for reference_zone in (None, "A"):
-            engine = FusionEngine(FusionConfig(reference_zone=reference_zone, occupied_after_ms=0,
-                                               activity_dwell_ms=0))
-            for now in (0, 1):
-                engine.add(3, p.Telemetry(audio=(window(100, OTHER_SPEECH),)), now)
-                engine.evaluate(now, {3})
-            self.assertEqual(engine.activity.state.value, "NOISE_RISING")
+    def test_disabled_and_uncalibrated_use_student_speech_probability(self):
+        # With no mapped reference, even speech in A cannot be identified as a lecture.
+        for reference_zone, node in ((None, 1), ("Unmapped", 1), ("A", 3)):
+            with self.subTest(reference_zone=reference_zone):
+                engine = FusionEngine(FusionConfig(reference_zone=reference_zone, occupied_after_ms=0,
+                                                   activity_dwell_ms=0, zone_dwell_ms=0))
+                for now in (0, 1):
+                    engine.add(node, p.Telemetry(audio=(window(100, OTHER_SPEECH),)), now)
+                    engine.evaluate(now, {node})
+                self.assertEqual(engine.activity.state.value, "NOISE_RISING")
+                self.assertEqual(engine.state()["zones"][node - 1]["state"], "TALKING")
 
 
 class RollingReference(unittest.TestCase):
