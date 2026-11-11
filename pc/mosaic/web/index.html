@@ -250,7 +250,18 @@
       <p class="empty-title">Waiting for sensors</p>
       <p class="empty-hint">Switch a sensor on and connect it to the hotspot, or run <code>python3 -m mosaic.dashboard --scenario demo</code></p>
     </div>
-    <div class="nodes" id="nodes"></div>
+    <table class="sensor-table" id="nodes-table" hidden>
+      <caption class="sr-only">Latest reading from each sensor</caption>
+      <thead><tr>
+        <th scope="col">Sensor</th>
+        <th scope="col"><svg class="icon icon-sm" aria-hidden="true"><use href="#i-thermo"/></svg>Temperature</th>
+        <th scope="col"><svg class="icon icon-sm" aria-hidden="true"><use href="#i-drop"/></svg>Humidity</th>
+        <th scope="col"><svg class="icon icon-sm" aria-hidden="true"><use href="#i-air"/></svg>Air</th>
+        <th scope="col"><svg class="icon icon-sm" aria-hidden="true"><use href="#i-motion"/></svg>Movement</th>
+        <th scope="col"><svg class="icon icon-sm" aria-hidden="true"><use href="#i-sound"/></svg>Sound</th>
+      </tr></thead>
+      <tbody id="nodes"></tbody>
+    </table>
     <p class="footnote" id="footnote"></p>
   </section>
 
@@ -334,44 +345,21 @@
 </dialog>
 
 <template id="node-tpl">
-  <article class="card node">
-    <header class="node-head">
-      <span class="badge"><svg class="icon" aria-hidden="true"><use href="#i-node"/></svg></span>
-      <h2 class="node-name"></h2>
-      <span class="series-key" aria-hidden="true"></span>
-      <span class="sim-chip" hidden title="Simulated: readings are generated, not measured"><svg class="icon icon-xs" aria-hidden="true"><use href="#i-flask"/></svg>Simulated</span>
-      <span class="status" data-status="online"><svg class="icon icon-sm" aria-hidden="true"><use href="#i-check"/></svg><span class="status-text">Working</span></span>
-    </header>
-    <div class="metrics">
-      <div class="metric" data-k="temp"><svg class="icon" aria-hidden="true"><use href="#i-thermo"/></svg><div><p class="value"><span class="v">—</span><span class="unit">°C</span></p><p class="mlabel">Temperature</p></div></div>
-      <div class="metric" data-k="hum"><svg class="icon" aria-hidden="true"><use href="#i-drop"/></svg><div><p class="value"><span class="v">—</span><span class="unit">%</span></p><p class="mlabel">Humidity</p></div></div>
-      <div class="metric" data-k="co2"><svg class="icon" aria-hidden="true"><use href="#i-air"/></svg>
-        <div class="grow"><p class="value"><span class="v">—</span><span class="unit">ppm</span><span class="chip chip-sm" data-level="none">—</span></p>
-        <div class="scale" aria-hidden="true"><span class="seg seg-good"></span><span class="seg seg-fair"></span><span class="seg seg-poor"></span><span class="marker"></span></div>
-        <p class="mlabel">CO₂</p></div></div>
-      <div class="metric" data-k="pir"><svg class="icon" aria-hidden="true"><use href="#i-motion"/></svg>
-        <div class="grow"><p class="value"><span class="v">—</span><span class="unit">%</span></p>
-        <div class="meter" aria-hidden="true"><span></span></div>
-        <p class="mlabel">Movement</p></div></div>
-    </div>
-    <div class="audio" data-k="audio">
-      <svg class="icon audio-icon" aria-hidden="true"><use href="#i-mute"/></svg>
-      <div class="grow"><p class="audio-class">No sound reading</p>
-        <div class="probs" aria-hidden="true">
-          <span title="Background"><svg class="icon icon-xs"><use href="#i-background"/></svg><i></i></span>
-          <span title="Speech"><svg class="icon icon-xs"><use href="#i-discussion"/></svg><i></i></span>
-          <span title="Sudden noise"><svg class="icon icon-xs"><use href="#i-transient"/></svg><i></i></span>
-        </div>
-      </div>
-      <span class="audio-conf"></span>
-    </div>
-    <footer class="link">
-      <span class="link-item" data-k="rssi"><span class="bars" aria-hidden="true"><i></i><i></i><i></i><i></i></span><span class="lv">—</span></span>
-      <span class="link-item" data-k="loss"><svg class="icon icon-sm" aria-hidden="true"><use href="#i-loss"/></svg><span class="lv">—</span></span>
-      <span class="link-item" data-k="rtt"><svg class="icon icon-sm" aria-hidden="true"><use href="#i-rtt"/></svg><span class="lv">—</span></span>
-      <span class="link-item" data-k="age"><svg class="icon icon-sm" aria-hidden="true"><use href="#i-clock"/></svg><span class="lv">—</span></span>
-    </footer>
-  </article>
+  <tr class="node-row">
+    <th scope="row" class="nr-sensor">
+      <span class="nr-area"></span>
+      <span class="nr-sub">
+        <span class="status" data-status="online"><svg class="icon icon-sm" aria-hidden="true"><use href="#i-check"/></svg><span class="status-text">Working</span></span>
+        <span class="nr-meta"></span>
+      </span>
+      <span class="tech nr-link"></span>
+    </th>
+    <td data-label="Temperature" data-k="temp"><span class="nr-val"><span class="v">—</span><span class="unit">°C</span></span></td>
+    <td data-label="Humidity" data-k="hum"><span class="nr-val"><span class="v">—</span><span class="unit">%</span></span></td>
+    <td data-label="Air" data-k="co2"><span class="chip" data-level="none">—</span><span class="nr-note"><span class="v">—</span> ppm</span></td>
+    <td data-label="Movement" data-k="pir"><span class="nr-val"><span class="v">—</span><span class="unit">%</span></span></td>
+    <td data-label="Sound" data-k="audio"><span class="nr-sound">—</span><span class="nr-note nr-conf"></span><span class="tech nr-probs"></span></td>
+  </tr>
 </template>
 
 <script src="intro.js"></script>

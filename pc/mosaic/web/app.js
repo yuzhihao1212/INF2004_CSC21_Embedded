@@ -565,84 +565,66 @@
     renderCharts();
   }
 
-  /* ---- Sensors ---- */
-  function makeCard(id) {
-    const card = $("#node-tpl").content.firstElementChild.cloneNode(true);
-    card.style.setProperty("--series", series(id));
-    $(".series-key", card).style.borderTopStyle = dash(id) ? "dashed" : "solid";
-    card.querySelectorAll(".link-item").forEach((item) => {
-      const label = LINK_LABELS[item.dataset.k];
-      item.title = label;
-      item.insertAdjacentHTML("afterbegin", `<span class="sr-only">${label}: </span>`);
-    });
+  /* ---- Sensors: one table row per sensor ---- */
+  function makeRow(id) {
+    const row = $("#node-tpl").content.firstElementChild.cloneNode(true);
     const next = [...cards.keys()].filter((k) => k > id).sort((a, b) => a - b)[0];
-    $("#nodes").insertBefore(card, next === undefined ? null : cards.get(next));
-    cards.set(id, card);
-    return card;
+    $("#nodes").insertBefore(row, next === undefined ? null : cards.get(next));
+    cards.set(id, row);
+    return row;
   }
-  function setMetric(card, key, value, digits) {
-    const m = $(`[data-k="${key}"]`, card);
-    $(".v", m).textContent = fmt(value, digits);
-    m.toggleAttribute("data-invalid", value == null);
-    return m;
+  function setValue(row, key, value, digits) {
+    const cell = $(`[data-k="${key}"]`, row);
+    $(".v", cell).textContent = fmt(value, digits);
+    cell.toggleAttribute("data-invalid", value == null);
+    return cell;
   }
   function co2Level(ppm, warmup) {
     if (ppm == null) return warmup ? "warmup" : "none";
     if (ppm < state.co2_bands.fair) return "good";
     return ppm < state.co2_bands.poor ? "fair" : "poor";
   }
+  const SIGNAL = ["very weak", "weak", "fair", "good", "strong"];
   function updateCard(n) {
-    const card = cards.get(n.id) || makeCard(n.id);
+    const row = cards.get(n.id) || makeRow(n.id);
     const t = n.telemetry || {};
-    card.dataset.status = n.status;
-    $(".node-name", card).textContent = `Sensor ${n.id} · ${sensorName(n.id)}`;
-    $(".sim-chip", card).hidden = !n.simulated;
-    const status = $(".status", card);
+    row.dataset.status = n.status;
+    $(".nr-area", row).textContent = sensorName(n.id);
+    const status = $(".status", row);
     status.dataset.status = n.status;
     $(".status-text", status).textContent = STATUS[n.status][0];
     setIcon($("svg", status), STATUS[n.status][1]);
-    setMetric(card, "temp", t.temperature_c, 1);
-    setMetric(card, "hum", t.humidity_pct, 0);
-    const co2 = setMetric(card, "co2", t.co2_ppm, 0);
+
+    const rssi = t.rssi_dbm;
+    const bars = !rssi ? 0 : rssi >= -55 ? 4 : rssi >= -65 ? 3 : rssi >= -75 ? 2 : rssi >= -85 ? 1 : 0;
+    const meta = [`Sensor ${n.id}`];
+    if (n.simulated) meta.push("Simulated");
+    if (rssi && n.status !== "offline") meta.push(`${SIGNAL[bars]} signal`);
+    if (n.status !== "online" && n.age_s != null) meta.push(`last reading ${Math.round(n.age_s)} s ago`);
+    $(".nr-meta", row).textContent = meta.join(" · ");
+    $(".nr-link", row).textContent = [rssi ? `${rssi} dBm` : null, `${fmt(n.loss_pct, 1)}% lost`,
+      n.rtt_ms == null ? null : `${fmt(n.rtt_ms, 0)} ms`, n.age_s < 1.5 ? "now" : `${Math.round(n.age_s)} s ago`].filter(Boolean).join(" · ");
+
+    setValue(row, "temp", t.temperature_c, 1);
+    setValue(row, "hum", t.humidity_pct, 0);
+    setValue(row, "pir", t.pir_pct, 0);
+    const co2 = setValue(row, "co2", t.co2_ppm, 0);
     const level = co2Level(t.co2_ppm, t.co2_warmup);
     const chip = $(".chip", co2);
     chip.dataset.level = level;
     chip.textContent = CO2_LEVEL[level];
-    if (t.co2_ppm != null) $(".marker", co2).style.left = `${clamp((t.co2_ppm - 400) / 1200, 0, 1) * 100}%`;
-    const pir = setMetric(card, "pir", t.pir_pct, 0);
-    $(".meter span", pir).style.width = `${t.pir_pct || 0}%`;
 
-    const audio = $(".audio", card);
     const a = t.audio;
-    audio.toggleAttribute("data-invalid", !a);
-    const [name, ic] = a ? (AUDIO[a.class] || AUDIO.unknown) : ["No sound reading", "i-mute"];
-    $(".audio-class", audio).textContent = name;
-    setIcon($(".audio-icon", audio), ic);
-    $(".audio-conf", audio).textContent = a && a.class !== "unknown" ? `${a.confidence}%` : "";
-    const probs = a ? [a.probs[0], a.probs[1], a.probs[3]] : [0, 0, 0];
-    const top = probs.indexOf(Math.max(...probs));
-    audio.querySelectorAll(".probs span").forEach((s, i) => {
-      s.querySelector("i").style.setProperty("--p", `${probs[i]}%`);
-      s.toggleAttribute("data-top", !!a && i === top && a.class !== "unknown");
-    });
-
-    const link = (k, text, bad) => {
-      const item = $(`[data-k="${k}"]`, card);
-      $(".lv", item).textContent = text;
-      item.toggleAttribute("data-bad", !!bad);
-      return item;
-    };
-    const rssi = t.rssi_dbm;
-    const bars = !rssi ? 0 : rssi >= -55 ? 4 : rssi >= -65 ? 3 : rssi >= -75 ? 2 : rssi >= -85 ? 1 : 0;
-    link("rssi", rssi ? `${["Very weak", "Weak", "Fair", "Good", "Strong"][bars]} (${rssi} dBm)` : "—", rssi && bars < 2)
-      .querySelectorAll(".bars i").forEach((b, i) => b.toggleAttribute("data-on", i < bars));
-    link("loss", `${fmt(n.loss_pct, 1)}% lost`, n.loss_pct > 5);
-    link("rtt", n.rtt_ms == null ? "—" : `${fmt(n.rtt_ms, 0)} ms`, n.rtt_ms > 100);
-    link("age", n.age_s < 1.5 ? "now" : `${Math.round(n.age_s)} s ago`, n.status !== "online");
+    const sound = $('[data-k="audio"]', row);
+    sound.toggleAttribute("data-invalid", !a);
+    $(".nr-sound", sound).textContent = a ? (AUDIO[a.class] || AUDIO.unknown)[0] : "No reading";
+    $(".nr-conf", sound).textContent = a && a.class !== "unknown" ? `${a.confidence}% sure` : "";
+    $(".nr-probs", sound).textContent = a ? `background ${a.probs[0]}% · speech ${a.probs[1]}% · sudden ${a.probs[3]}%` : "";
   }
   function renderSensors() {
     const nodes = state.nodes;
     $("#empty").hidden = nodes.length > 0;
+    $("#nodes-table").hidden = nodes.length === 0;
     const f = fb();
     $("#sensors-lead").textContent = f ? f.sensors.text + "." : "";
     nodes.forEach(updateCard);
