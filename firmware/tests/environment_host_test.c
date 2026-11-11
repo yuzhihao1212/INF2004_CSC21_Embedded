@@ -99,8 +99,83 @@ static void test_status(void) {
     assert(r.validity_flags == 0 && r.dht_status == SENSOR_STALE && r.co2_status == SENSOR_STALE);
     assert(r.temperature_x10 == 258 && r.co2_ppm == 850);
 }
+static void test_expiry_after_acquisition(void) {
+    const uint64_t loop_starts[] = {1000, UINT32_MAX};
+    for (unsigned i = 0; i < sizeof(loop_starts) / sizeof(loop_starts[0]); ++i) {
+        environment_record_t r = {0};
+        uint64_t now = loop_starts[i];
+        environment_apply_dht(&r, SENSOR_OK, 258, 672, (uint32_t)now);
+        environment_apply_co2(&r, SENSOR_OK, 850, (uint32_t)++now);
+        environment_apply_pir(&r, true, (uint32_t)++now);
+        /* Expiry uses current time after acquisition, including across wrap. */
+        environment_expire(&r, (uint32_t)++now);
+        assert(r.validity_flags == (ENV_DHT_VALID | ENV_CO2_VALID | ENV_PIR_VALID));
+        assert(r.dht_status == SENSOR_OK && r.co2_status == SENSOR_OK && r.pir_status == SENSOR_OK);
+        assert(r.timestamp_ms == (uint32_t)now);
+        assert(r.dht_sample_ms == (uint32_t)loop_starts[i]);
+        assert(r.co2_sample_ms == (uint32_t)(loop_starts[i] + 1));
+        assert(r.pir_sample_ms == (uint32_t)(loop_starts[i] + 2));
+    }
+}
+
+static void test_expiry_boundaries(void) {
+    const uint32_t starts[] = {100, UINT32_MAX - 100};
+    const struct { uint32_t elapsed_ms; uint8_t valid; } cases[] = {
+        {999, ENV_DHT_VALID | ENV_CO2_VALID | ENV_PIR_VALID},
+        {1000, ENV_DHT_VALID | ENV_CO2_VALID | ENV_PIR_VALID},
+        {1001, ENV_DHT_VALID | ENV_CO2_VALID},
+        {4999, ENV_DHT_VALID | ENV_CO2_VALID},
+        {5000, ENV_DHT_VALID | ENV_CO2_VALID},
+        {5001, ENV_DHT_VALID},
+        {5999, ENV_DHT_VALID},
+        {6000, ENV_DHT_VALID},
+        {6001, 0},
+    };
+    for (unsigned i = 0; i < sizeof(starts) / sizeof(starts[0]); ++i) {
+        environment_record_t r = {0};
+        environment_apply_dht(&r, SENSOR_OK, 258, 672, starts[i]);
+        environment_apply_co2(&r, SENSOR_OK, 850, starts[i]);
+        environment_apply_pir(&r, true, starts[i]);
+        for (unsigned j = 0; j < sizeof(cases) / sizeof(cases[0]); ++j) {
+            uint32_t now = (uint32_t)(starts[i] + cases[j].elapsed_ms);
+            environment_expire(&r, now);
+            assert(r.validity_flags == cases[j].valid && r.timestamp_ms == now);
+            assert(r.dht_status == ((cases[j].valid & ENV_DHT_VALID) ? SENSOR_OK : SENSOR_STALE));
+            assert(r.co2_status == ((cases[j].valid & ENV_CO2_VALID) ? SENSOR_OK : SENSOR_STALE));
+            assert(r.pir_status == ((cases[j].valid & ENV_PIR_VALID) ? SENSOR_OK : SENSOR_STALE));
+            assert(r.dht_sample_ms == starts[i] && r.co2_sample_ms == starts[i] && r.pir_sample_ms == starts[i]);
+            assert(r.temperature_x10 == 258 && r.humidity_x10 == 672 && r.co2_ppm == 850 && r.motion == 1);
+        }
+    }
+}
+
+static void test_expiry_preserves_invalid(void) {
+    const sensor_status_t errors[] = {
+        SENSOR_STALE, SENSOR_WARMING_UP, SENSOR_TIMEOUT, SENSOR_CHECKSUM_ERROR,
+        SENSOR_OUT_OF_RANGE, SENSOR_PROTOCOL_ERROR, SENSOR_RESOURCE_ERROR,
+    };
+    for (unsigned i = 0; i < sizeof(errors) / sizeof(errors[0]); ++i) {
+        environment_record_t r = {0};
+        environment_apply_dht(&r, SENSOR_OK, 258, 672, 100);
+        environment_apply_co2(&r, SENSOR_OK, 850, 100);
+        environment_apply_pir(&r, true, 100);
+        environment_expire(&r, 1101); /* PIR is already stale. */
+        environment_apply_dht(&r, errors[i], 0, 0, 1102);
+        environment_apply_co2(&r, errors[i], 0, 1102);
+        const uint32_t checks[] = {1103, 7103};
+        for (unsigned j = 0; j < sizeof(checks) / sizeof(checks[0]); ++j) {
+            environment_expire(&r, checks[j]);
+            assert(r.validity_flags == 0);
+            assert(r.dht_status == errors[i] && r.co2_status == errors[i] && r.pir_status == SENSOR_STALE);
+            assert(r.dht_sample_ms == 100 && r.co2_sample_ms == 100 && r.pir_sample_ms == 100);
+            assert(r.temperature_x10 == 258 && r.humidity_x10 == 672 && r.co2_ppm == 850 && r.motion == 1);
+        }
+    }
+}
+
 int main(void) {
     test_decode(); test_pulses(); test_format(); test_status();
-    puts("PASS: DHT/CO2 decode, pulse validation, integer formatting, validity/status and wrap/stale logic");
+    test_expiry_after_acquisition(); test_expiry_boundaries(); test_expiry_preserves_invalid();
+    puts("PASS: DHT/CO2 decode, pulse validation, integer formatting, validity/status, acquisition freshness and wrap/stale boundaries");
     return 0;
 }

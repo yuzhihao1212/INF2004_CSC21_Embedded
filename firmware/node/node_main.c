@@ -333,7 +333,8 @@ int main(void) {
             (void)dht22_start(&dht);
             next_dht = now + config.dht_interval_ms;
         }
-        environment_expire(&env, (uint32_t)now);
+        /* Sensor service may timestamp samples after the loop-start time. */
+        environment_expire(&env, (uint32_t)now_ms());
 
         if (now >= next_report) {
             if (send_telemetry(&env, pir_samples, pir_active, first)) {
