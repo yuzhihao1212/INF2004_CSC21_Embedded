@@ -12,8 +12,10 @@ settings, POST the fields to change as JSON to /api/nodes/<id>/config, e.g.
 The gateway then delivers it as a CONFIG and /api/state shows its progress.
 POST {"mode": "DISCUSSION"} to /api/mode to change the classroom mode: fusion
 switches rules and every node gets the new mode. /api/state includes the
-fusion engine's classroom states under "classroom". The CO2 bands are
-display colours only; fusion has its own thresholds.
+fusion engine's classroom states under "classroom", and their plain-language
+description, severity and alerts under "feedback" and "alerts" (feedback.py).
+POST to /api/alerts/<id>/hide to keep an alert off the banner for 10 minutes.
+The CO2 bands are display colours only; fusion has its own thresholds.
 Standard library only, like the gateway.
 """
 
@@ -35,6 +37,7 @@ from typing import Optional
 
 from mosaic import protocol as p
 from mosaic import simulator
+from mosaic.feedback import AlertLog, describe
 from mosaic.fusion import FusionEngine
 from mosaic.gateway import (PING_INTERVAL_S, ConfigDelivery, GatewayServer, NodeState,
                             add_fusion_argument, load_fusion_config)
@@ -45,6 +48,7 @@ CO2_FAIR_PPM = 800   # Common classroom guidance; tune with the fusion threshold
 CO2_POOR_PPM = 1200
 WEB_DIR = Path(__file__).with_name("web")
 _CONFIG_PATH = re.compile(r"/api/nodes/(\d+)/config")
+_HIDE_PATH = re.compile(r"/api/alerts/(\d+)/hide")
 _MAX_BODY = 4096
 _CONTENT_TYPES = {".html": "text/html; charset=utf-8", ".css": "text/css; charset=utf-8",
                   ".js": "text/javascript; charset=utf-8", ".svg": "image/svg+xml"}
@@ -58,7 +62,31 @@ class Dashboard:
         self.history_s = history_s
         # node_id -> [wall_ms, temp_c, humidity_pct, co2_ppm, pir_pct]; None = invalid
         self.history: dict[int, deque[list]] = {}
+        self.alerts = AlertLog(self._log_alert)
+        self._next_tick = 0.0
         server.telemetry_listeners.append(self._record)
+        server.tick_listeners.append(self._tick)
+
+    def _log_alert(self, action: str, fields: dict) -> None:
+        self.server._log("alert", time.monotonic(), action=action, **fields)
+
+    def _tick(self, now: float) -> None:
+        """Keep alerts current once a second even when no page is open."""
+        if self.server.fusion and now >= self._next_tick:
+            self._next_tick = now + 1.0
+            self._feedback([self._node(n, now) for _, n in sorted(self.server.gateway.nodes.items())])
+
+    def _feedback(self, nodes: list[dict]) -> tuple[dict, dict]:
+        """Classroom, its plain-language description; updates alerts. Lock held."""
+        fusion = self.server.fusion
+        classroom = present_classroom(fusion)
+        wall_ms = int(time.time() * 1000)
+        now_ms = classroom["now_ms"]
+        events = [{"wall_ms": wall_ms - (now_ms - e.time_ms), "region": e.region, "old": e.old,
+                   "new": e.new} for e in fusion.events if e.region in ("activity", "air", "comfort", "mode")]
+        feedback = describe(classroom, nodes, events, wall_ms)
+        self.alerts.update(feedback.pop("alerts_wanted"), wall_ms)
+        return classroom, feedback
 
     def _record(self, header: p.Header, t: p.Telemetry, now: float) -> None:
         v = t.valid_flags
@@ -80,8 +108,10 @@ class Dashboard:
             now = time.monotonic()
             gateway = self.server.gateway
             nodes = [self._node(n, now) for _, n in sorted(gateway.nodes.items())]
+            classroom = feedback = None
             if self.server.fusion:
                 self.server._evaluate_fusion(now)
+                classroom, feedback = self._feedback(nodes)
             simulated = {n["simulated"] for n in nodes}
             return {
                 "time_ms": int(time.time() * 1000),
@@ -92,7 +122,9 @@ class Dashboard:
                 "source": ("none" if not nodes else "mixed" if len(simulated) == 2
                            else "simulated" if True in simulated else "sensors"),
                 "nodes": nodes,
-                "classroom": present_classroom(self.server.fusion) if self.server.fusion else None,
+                "classroom": classroom,
+                "feedback": feedback,
+                "alerts": self.alerts.view(int(time.time() * 1000)),
             }
 
     def _node(self, n: NodeState, now: float) -> dict:
@@ -232,6 +264,11 @@ def make_handler(dashboard: Dashboard) -> type[BaseHTTPRequestHandler]:
                 return self._post_mode()
             if path in ("/api/calibrate", "/api/calibrate/reset"):
                 return self._post_calibrate(reset=path.endswith("/reset"))
+            hide = _HIDE_PATH.fullmatch(path)
+            if hide:
+                with dashboard.server.lock:
+                    found = dashboard.alerts.hide(int(hide[1]), int(time.time() * 1000))
+                return self._json(202 if found else 404, {"hidden": found})
             match = _CONFIG_PATH.fullmatch(path)
             if not match:
                 return self._send(404, "text/plain; charset=utf-8", b"Not found")

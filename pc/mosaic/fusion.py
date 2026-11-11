@@ -627,8 +627,11 @@ class FusionEngine:
             if name in reference["zones"] and node in self._zones:
                 reference["zones"][name].update(self._reference_summary(node))
         return {
+            "now_ms": self._now_ms,
             "mode": self.mode.name,
             "activity": self.activity.state.value,
+            "activity_since_ms": self.activity.since_ms,
+            "air_since_ms": self.air.since_ms,
             "occupied": self.activity.state.occupied,
             "air": self.air.state.value,
             "comfort": self.comfort.state.value,
