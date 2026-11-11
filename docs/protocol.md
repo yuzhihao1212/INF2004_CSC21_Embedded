@@ -105,8 +105,8 @@ equal 16 + the payload size for its type. The PC counts drops per node.
 | Offset | Field | Type | Description |
 |-------:|-------|------|-------------|
 | 0 | `rms_x16` | u16 | Mean RMS of the 500 ms window in ADC units, Q12.4 (`200` = 12.5) |
-| 2 | `audio_class` | u8 | 0 UNKNOWN, 1 BACKGROUND_NOISE, 2 LECTURER_SPEECH, 3 STUDENT_CONVERSATION, 4 TRANSIENT_NOISE |
-| 3 | `prob_pct[4]` | u8 ×4 | Probability of classes 1–4, 0–100 (index = class − 1) |
+| 2 | `audio_class` | u8 | 0 UNKNOWN, 1 BACKGROUND_NOISE, 2 SPEECH, 3 RESERVED (never report), 4 TRANSIENT_NOISE |
+| 3 | `prob_pct[4]` | u8 ×4 | Background, speech, reserved (must be 0), transient; 0–100 (index = class − 1) |
 | 7 | `reserved` | u8 | Send 0 |
 
 `valid_flags`: a value is only meaningful when its bit is set.
@@ -125,10 +125,23 @@ feedback). With the default interval the node now sends every classification. If
 longer interval, the node sends the two newest windows, and the PC counts the rest as skipped
 from `audio_window_seq` (§5).
 
-**Audio class rule:** for each window the node reports the highest-probability class, or `UNKNOWN`
-if that probability is below `audio_conf_threshold_pct`. All four probabilities are always sent, so
-the PC can smooth them over time. *Sustained chatter* is deliberately **not** an audio class: it's
-`STUDENT_CONVERSATION` persisting over time, which the PC fusion engine detects.
+**Audio class rule:** for each window the node reports the highest-probability active class
+(1, 2 or 4), or `UNKNOWN` if that probability is below `audio_conf_threshold_pct`.
+For the classifier's background, speech and transient outputs, send
+`[background, speech, 0, transient]`. The four slots, window size and v2 version are unchanged.
+Slot 3 (`prob_pct[2]`) must be zero. The PC rejects the entire TELEMETRY datagram if
+any declared audio window has a nonzero slot 3 or reports `audio_class = 3`. Update old
+senders that used slot 3 before pairing them with the updated receiver.
+
+The audio model does not identify the speaker. The PC interprets speech at the configured
+lecturer/reference zone as lecturer speech. For student zones it uses a calibrated level
+comparison when available (after voice setup). Without it, the PC falls back to the `SPEECH`
+probability plus a loudness check: while the lecturer zone is speaking, student-zone speech
+counts as local talk only if its mean `rms_x16` reaches `uncalibrated_local_rms_pct` (75 %)
+of the lecturer zone's, because every node hears the lecturer as speech, only quieter.
+**Limit:** a student talking close to a node while the lecturer is far from the reference node
+can still be misattributed; voice setup is recommended. Sustained chatter is a PC fusion
+state, not an audio class.
 
 ### CONFIG: PC → node (16-byte payload, 32 total)
 

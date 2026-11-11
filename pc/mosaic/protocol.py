@@ -46,12 +46,13 @@ FLAG_FIRST_SINCE_BOOT = 1 << 0
 class AudioClass(enum.IntEnum):
     UNKNOWN = 0
     BACKGROUND_NOISE = 1
-    LECTURER_SPEECH = 2
-    STUDENT_CONVERSATION = 3
+    SPEECH = 2
+    RESERVED = 3
     TRANSIENT_NOISE = 4
 
 
-AUDIO_CLASS_COUNT = 4  # Classes 1..4; probability index = class - 1
+AUDIO_CLASS_COUNT = 4  # Wire slots 1..4; probability index = class - 1
+AUDIO_RESERVED_INDEX = AudioClass.RESERVED - 1
 AUDIO_WINDOWS_PER_REPORT = 2
 
 
@@ -112,6 +113,10 @@ class AudioWindow:
     rms_x16: int = 0  # Q12.4, ADC units
     audio_class: AudioClass = AudioClass.UNKNOWN
     prob_pct: tuple[int, ...] = (0,) * AUDIO_CLASS_COUNT
+
+    def uses_reserved_class(self) -> bool:
+        return (self.audio_class == AudioClass.RESERVED
+                or self.prob_pct[AUDIO_RESERVED_INDEX] != 0)
 
     @property
     def rms(self) -> float:
@@ -240,6 +245,8 @@ def _encode_telemetry(t: Telemetry) -> bytes:
         probs = bytes(w.prob_pct)
         if len(probs) != AUDIO_CLASS_COUNT:
             raise ValueError(f"prob_pct needs {AUDIO_CLASS_COUNT} values")
+        if w.uses_reserved_class():
+            raise ProtocolError("audio class 3 is reserved and its probability must be zero")
         windows += [w.rms_x16, w.audio_class, probs, 0]
     return _TELEMETRY.pack(
         t.dsp_time_us, t.inference_time_us, t.free_heap_bytes,
@@ -259,6 +266,8 @@ def _decode_telemetry(body: bytes) -> Telemetry:
         AudioWindow(rms, _audio_class(audio_class), tuple(probs))
         for rms, audio_class, probs, _reserved in
         (window_fields[i * 4:i * 4 + 4] for i in range(count)))
+    if any(window.uses_reserved_class() for window in windows):
+        raise ProtocolError("audio class 3 is reserved and its probability must be zero")
     return Telemetry(*head, windows, pir_pct, Valid(valid), cpu, rssi)
 
 
