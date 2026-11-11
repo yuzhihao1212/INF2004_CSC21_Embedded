@@ -67,12 +67,25 @@ python -m mosaic.dashboard                 # then open http://localhost:8050
 python -m mosaic.dashboard --simulate 3    # rehearse with simulated nodes, no second terminal
 ```
 
-The dashboard runs the gateway and serves a web page with each node's status, readings,
-audio class and link quality, plus CO₂ and temperature trends for the last 1–10 minutes.
-A pill in the top bar says whether the data is **Simulated** (sent from this computer),
-from real **Sensors**, or **Mixed**; simulated node cards are also tagged.
-Add `--http-host 0.0.0.0` to open it from another device on the same network, `--csv FILE`
-to log readings, and `--verbose` to also print every packet.
+The dashboard runs the gateway and serves a plain-language web page with five pages
+(design and accessibility rationale: [docs/ui_design.md](docs/ui_design.md)):
+
+| Page | For | Shows |
+|---|---|---|
+| **Overview** | The lecturer, at a glance | One headline ("Lecture in progress"), a one-line summary, Sound / Air / Comfort tiles, the class type, the room at a glance and the latest changes |
+| **Room map** | Where something is happening | A floor plan of the classroom (whiteboard, lecturer's desk, door, windows, desks, sensors) split into the lecturer's area and the front, middle and back rows, tinted by sound, air, temperature or movement; select an area for all its readings |
+| **History** | What happened | A timeline of changes and cleared alerts, and CO₂/temperature charts with a text summary |
+| **Sensors** | The team | Each sensor's readings, sound class, Wi-Fi signal, lost readings and response time |
+| **Setup** | Changing things | Class type, voice setup (lecturer calibration), how often sensors report, technical names, theme |
+
+When something needs action (ongoing chatter in a lecture, stuffy air in an occupied room, or
+fewer than half the sensors working), a banner with one suggested action appears on every
+page. It clears by itself when the situation ends; **Hide** removes it for 10 minutes but keeps
+it in History. Alerts are also written to `--events`. **Setup › Show technical names** adds the
+engine's state names (`FOCUSED_LECTURE`, …) and raw numbers, for testing and assessment.
+A pill in the top bar says whether the data is **Simulated** (sent from this computer) or
+**Partly simulated**. Add `--http-host 0.0.0.0` to open it from another device on the same
+network, `--csv FILE` to log readings, and `--verbose` to also print every packet.
 
 To change a node's settings, POST only the fields you want to change. The gateway then delivers
 them as a CONFIG, retrying until the node acknowledges, and resends after the node reboots:
@@ -82,8 +95,8 @@ curl -d '{"report_interval_ms": 500, "mode": "DISCUSSION"}' http://localhost:805
 ```
 
 Fields and ranges are listed under CONFIG in [docs/protocol.md](docs/protocol.md). The
-`config` entry for each node in `/api/state` shows the delivery's progress. There are no
-buttons on the page for this yet.
+`config` entry for each node in `/api/state` shows the delivery's progress. The Setup page
+uses this for the class type and report interval.
 
 ### Classroom states (fusion)
 
@@ -91,8 +104,8 @@ The gateway and dashboard run the fusion engine (`pc/mosaic/fusion.py`, statecha
 combines every zone's audio probabilities, PIR motion, CO₂ and temperature/humidity into
 three parallel states: **activity** (empty, quiet, focused lecture, discussion, noise rising,
 sustained chatter), **air** (normal or poor ventilation) and **comfort**. The page shows them
-under *Classroom*, with buttons that switch the classroom mode (Lecture, Discussion, Quiet work)
-for fusion and every node at once.
+in plain words (`pc/mosaic/feedback.py`), with a class-type control (Lecture, Group work, Quiet
+work) that switches fusion and every node at once.
 
 Nodes report background, speech and transient noise. Protocol v2 keeps four probability
 slots, with slot 3 reserved and zero. Fusion assigns the lecturer role to

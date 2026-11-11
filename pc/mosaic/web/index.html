@@ -3,11 +3,12 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>MOSAIC dashboard</title>
+<title>Overview · MOSAIC</title>
 <script>
   try {
     var saved = localStorage.getItem("mosaic-theme");
     if (saved === "light" || saved === "dark") document.documentElement.dataset.theme = saved;
+    if (localStorage.getItem("mosaic-tech") === "1") document.documentElement.dataset.tech = "";
   } catch (e) {}
 </script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -21,7 +22,11 @@
 
 <svg class="sprite" aria-hidden="true" focusable="false">
   <symbol id="i-logo" viewBox="0 0 24 24"><rect x="3" y="3" width="8" height="8" rx="2" fill="currentColor" stroke="none"/><rect x="13" y="3" width="8" height="8" rx="2" fill="currentColor" stroke="none" opacity=".5"/><rect x="3" y="13" width="8" height="8" rx="2" fill="currentColor" stroke="none" opacity=".5"/><rect x="13" y="13" width="8" height="8" rx="2" fill="currentColor" stroke="none"/></symbol>
+  <symbol id="i-home" viewBox="0 0 24 24"><path d="M4 11 12 4l8 7M6 9.5V20h12V9.5"/><path d="M10 20v-5h4v5"/></symbol>
+  <symbol id="i-map" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M12 4v16M3 12h18"/></symbol>
+  <symbol id="i-history" viewBox="0 0 24 24"><path d="M4 12a8 8 0 1 0 2.3-5.7L4 8.5"/><path d="M4 4v4.5h4.5M12 8v4l3 2"/></symbol>
   <symbol id="i-node" viewBox="0 0 24 24"><circle cx="12" cy="10" r="2"/><path d="M12 12v9M8.5 6.5a5 5 0 0 0 0 7M15.5 6.5a5 5 0 0 1 0 7M5.6 3.6a9 9 0 0 0 0 12.8M18.4 3.6a9 9 0 0 1 0 12.8"/></symbol>
+  <symbol id="i-setup" viewBox="0 0 24 24"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></symbol>
   <symbol id="i-thermo" viewBox="0 0 24 24"><path d="M10 13.5V5a2 2 0 1 1 4 0v8.5a4 4 0 1 1-4 0Z"/><path d="M12 10v6"/></symbol>
   <symbol id="i-drop" viewBox="0 0 24 24"><path d="M12 3.5s-6 6.4-6 10.5a6 6 0 0 0 12 0c0-4.1-6-10.5-6-10.5Z"/></symbol>
   <symbol id="i-air" viewBox="0 0 24 24"><path d="M3 8h10a3 3 0 1 0-3-3M3 12h15a3 3 0 1 1-3 3M3 16h6"/></symbol>
@@ -34,13 +39,17 @@
   <symbol id="i-transient" viewBox="0 0 24 24"><path d="M13 3 5 14h6l-1 7 8-11h-6Z"/></symbol>
   <symbol id="i-unsure" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .9-1 1.6v.6M12 17h.01"/></symbol>
   <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12.5 4.5 4.5L19 7.5"/></symbol>
+  <symbol id="i-fine" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="m8 12.5 3 3 5-6"/></symbol>
+  <symbol id="i-alert" viewBox="0 0 24 24"><path d="M12 3.5 21.5 20h-19Z"/><path d="M12 10v4.5M12 17.2h.01"/></symbol>
+  <symbol id="i-stop" viewBox="0 0 24 24"><rect x="3.5" y="3.5" width="17" height="17" rx="3"/><path d="M12 7.5v6M12 16.5h.01"/></symbol>
+  <symbol id="i-none" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" stroke-dasharray="3 3"/><path d="M8 12h8"/></symbol>
   <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol>
   <symbol id="i-offline" viewBox="0 0 24 24"><path d="M3 3l18 18M8.5 16a5 5 0 0 1 5.5-1M5.5 12.5a9.5 9.5 0 0 1 4.6-2.3M2.5 9a14 14 0 0 1 4.3-2.8M14.5 7.3A14 14 0 0 1 21.5 9M12 19.5h.01"/></symbol>
-  <symbol id="i-alert" viewBox="0 0 24 24"><path d="M12 4 21 20H3Z"/><path d="M12 10v4M12 17h.01"/></symbol>
   <symbol id="i-loss" viewBox="0 0 24 24"><rect x="3" y="7" width="5" height="10" rx="1"/><rect x="16" y="7" width="5" height="10" rx="1" stroke-dasharray="2 2"/><path d="M8 12h3M13 12h3"/></symbol>
   <symbol id="i-rtt" viewBox="0 0 24 24"><path d="M4 9h13l-3-3M20 15H7l3 3"/></symbol>
-  <symbol id="i-reboot" viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-2.3-5.7M20 4v5h-5"/></symbol>
   <symbol id="i-flask" viewBox="0 0 24 24"><path d="M9 3h6M10 3v6l-5.2 9.1A2 2 0 0 0 6.5 21h11a2 2 0 0 0 1.7-2.9L14 9V3M7.2 15h9.6"/></symbol>
+  <symbol id="i-door" viewBox="0 0 24 24"><path d="M5 21V4h10v17M3 21h18M12 12h.01"/></symbol>
+  <symbol id="i-arrow" viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></symbol>
   <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></symbol>
   <symbol id="i-moon" viewBox="0 0 24 24"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5Z"/></symbol>
   <symbol id="i-auto" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 4v16" /><path d="M12 4a8 8 0 0 1 0 16Z" fill="currentColor" stroke="none"/></symbol>
@@ -48,95 +57,156 @@
 
 <header class="topbar">
   <div class="wrap topbar-inner">
-    <a class="brand" href="/" aria-label="MOSAIC dashboard home">
+    <a class="brand" href="#/overview" aria-label="MOSAIC: go to overview">
       <svg class="icon brand-mark" aria-hidden="true"><use href="#i-logo"/></svg>
       <span class="wordmark">mosaic</span>
     </a>
+    <nav class="pages" aria-label="Pages">
+      <a href="#/overview" data-page="overview"><svg class="icon" aria-hidden="true"><use href="#i-home"/></svg><span>Overview</span></a>
+      <a href="#/map" data-page="map"><svg class="icon" aria-hidden="true"><use href="#i-map"/></svg><span>Room map</span></a>
+      <a href="#/history" data-page="history"><svg class="icon" aria-hidden="true"><use href="#i-history"/></svg><span>History</span></a>
+      <a href="#/sensors" data-page="sensors"><svg class="icon" aria-hidden="true"><use href="#i-node"/></svg><span>Sensors</span></a>
+      <a href="#/setup" data-page="setup"><svg class="icon" aria-hidden="true"><use href="#i-setup"/></svg><span>Setup</span></a>
+    </nav>
     <div class="topbar-tools">
-      <span class="source" id="source" data-source="none" hidden>
+      <a class="pill" id="sensors-pill" href="#/sensors" data-level="none">
+        <svg class="icon icon-sm" aria-hidden="true"><use href="#i-none"/></svg><span id="sensors-text">Connecting…</span>
+      </a>
+      <span class="pill source" id="source" hidden title="">
         <svg class="icon icon-sm" aria-hidden="true"><use href="#i-flask"/></svg><span id="source-text"></span>
       </span>
-      <span class="live" id="live" data-state="connecting">
+      <span class="live" id="live" data-state="connecting" role="status">
         <span class="live-dot" aria-hidden="true"></span><span id="live-text">Connecting</span>
       </span>
-      <time class="clock" id="clock" aria-label="Current time"></time>
-      <button class="icon-btn" id="theme" type="button" aria-label="Theme: system">
+      <button class="icon-btn" id="theme-btn" type="button" aria-label="Theme: automatic. Change theme">
         <svg class="icon" aria-hidden="true"><use href="#i-auto"/></svg>
       </button>
     </div>
   </div>
 </header>
 
+<div class="wrap banner-wrap">
+  <div class="banners" id="banners" role="region" aria-label="Things to act on"></div>
+  <p class="hidden-note" id="hidden-note" hidden></p>
+</div>
+
 <main id="main" class="wrap" tabindex="-1">
-  <h1 class="sr-only">MOSAIC classroom sensing dashboard</h1>
 
-  <section class="classroom" id="classroom" aria-labelledby="classroom-h" hidden>
-    <div class="classroom-head">
-      <h2 id="classroom-h" class="section-title">Classroom</h2>
-      <div class="chips" role="group" aria-label="Classroom mode" id="modes">
-        <button class="chip-btn" type="button" data-mode="LECTURE" aria-pressed="false">Lecture</button>
-        <button class="chip-btn" type="button" data-mode="DISCUSSION" aria-pressed="false">Discussion</button>
-        <button class="chip-btn" type="button" data-mode="QUIET_WORK" aria-pressed="false">Quiet work</button>
-      </div>
+  <!-- 1. Overview: one answer for the lecturer -->
+  <section class="page" data-page="overview" aria-labelledby="h-overview">
+    <div class="page-head">
+      <h1 id="h-overview" class="page-title" tabindex="-1">Overview</h1>
+      <fieldset class="segmented mode-control">
+        <legend>Class type</legend>
+        <label><input type="radio" name="mode-overview" value="LECTURE"><span>Lecture</span></label>
+        <label><input type="radio" name="mode-overview" value="DISCUSSION"><span>Group work</span></label>
+        <label><input type="radio" name="mode-overview" value="QUIET_WORK"><span>Quiet work</span></label>
+      </fieldset>
     </div>
-    <div class="classroom-body tile">
-      <p class="activity" id="c-activity" aria-live="polite">—</p>
-      <div class="classroom-chips">
-        <span class="chip" id="c-air" data-level="none">—</span>
-        <span class="chip" id="c-comfort" data-level="none">—</span>
-        <span class="minor" id="c-confidence" title="Share of zones reporting fresh data"></span>
-      </div>
-      <p class="minor" id="c-reason"></p>
-      <div class="reference-row" id="c-reference">
-        <strong id="reference-label">Reference</strong>
-        <span class="minor reference-summary" id="reference-status" aria-live="polite"></span>
-        <button class="chip-btn" id="calibrate" type="button" aria-describedby="reference-hint">Calibrate</button>
-        <button class="chip-btn" id="calibrate-reset" type="button">Reset</button>
-        <p class="minor reference-hint" id="reference-hint">During calibration, let only the lecturer speak. Recalibrate after moving nodes or changing gain.</p>
-        <p class="reference-error" id="reference-error" role="status" hidden></p>
-      </div>
-      <div class="floor-plan" aria-labelledby="zone-map-h">
-        <div class="map-head">
-          <h3 id="zone-map-h">Zone map</h3>
-          <div class="chips" id="map-metrics" role="group" aria-label="Zone map metric">
-            <button class="chip-btn" type="button" data-metric="activity" aria-pressed="true">Activity</button>
-            <button class="chip-btn" type="button" data-metric="co2" aria-pressed="false">CO₂</button>
-            <button class="chip-btn" type="button" data-metric="temperature" aria-pressed="false">Temperature</button>
-            <button class="chip-btn" type="button" data-metric="motion" aria-pressed="false">Motion</button>
-          </div>
-        </div>
-        <p class="map-front"><svg class="icon icon-sm" aria-hidden="true"><use href="#i-lecturer"/></svg>Lecturer’s desk · front of room</p>
-        <div class="zone-grid" id="zone-grid" role="list" aria-label="Classroom zones"></div>
-        <p class="minor">Each zone reacts after 10 seconds by default. Stripes mean offline; dimmed cells have stale readings.</p>
-      </div>
+    <p class="mode-status" role="status" data-mode-status></p>
+
+    <div class="hero" id="hero" data-level="fine">
+      <p class="headline" id="headline">Checking the room…</p>
+      <p class="summary" id="summary">Waiting for the first readings.</p>
+      <p class="tech" id="hero-tech"></p>
+    </div>
+
+    <div class="tiles">
+      <article class="tile status-tile" id="tile-sound" data-level="fine">
+        <h2 class="tile-title"><svg class="icon" aria-hidden="true"><use href="#i-sound"/></svg>Sound</h2>
+        <p class="tile-label"><svg class="icon level-icon" aria-hidden="true"><use href="#i-fine"/></svg><span class="lt">—</span></p>
+        <p class="tile-why"></p><p class="tech"></p>
+      </article>
+      <article class="tile status-tile" id="tile-air" data-level="fine">
+        <h2 class="tile-title"><svg class="icon" aria-hidden="true"><use href="#i-air"/></svg>Air</h2>
+        <p class="tile-label"><svg class="icon level-icon" aria-hidden="true"><use href="#i-fine"/></svg><span class="lt">—</span></p>
+        <p class="tile-why"></p><p class="tech"></p>
+      </article>
+      <article class="tile status-tile" id="tile-comfort" data-level="fine">
+        <h2 class="tile-title"><svg class="icon" aria-hidden="true"><use href="#i-thermo"/></svg>Comfort</h2>
+        <p class="tile-label"><svg class="icon level-icon" aria-hidden="true"><use href="#i-fine"/></svg><span class="lt">—</span></p>
+        <p class="tile-why"></p><p class="tech"></p>
+      </article>
+    </div>
+
+    <div class="overview-split">
+      <section class="card" aria-labelledby="h-glance">
+        <div class="card-head"><h2 id="h-glance">Room at a glance</h2><a class="more" href="#/map">Room map<svg class="icon icon-sm" aria-hidden="true"><use href="#i-arrow"/></svg></a></div>
+        <div class="plan compact" id="mini-map" role="group"></div>
+      </section>
+      <section class="card" aria-labelledby="h-latest">
+        <div class="card-head"><h2 id="h-latest">What happened</h2><a class="more" href="#/history">History<svg class="icon icon-sm" aria-hidden="true"><use href="#i-arrow"/></svg></a></div>
+        <ol class="timeline" id="latest"></ol>
+      </section>
     </div>
   </section>
 
-  <section class="summary" aria-label="Overview">
-    <article class="tile rise">
-      <div class="tile-head"><span class="badge"><svg class="icon" aria-hidden="true"><use href="#i-node"/></svg></span><span class="label">Nodes online</span></div>
-      <p class="big"><span id="s-online">0</span><span class="big-sub">/<span id="s-total">0</span></span></p>
-      <div class="dots" id="s-dots" aria-hidden="true"></div>
-    </article>
-    <article class="tile rise">
-      <div class="tile-head"><span class="badge"><svg class="icon" aria-hidden="true"><use href="#i-air"/></svg></span><span class="label" title="Highest CO₂ across online nodes">Air quality</span></div>
-      <p class="big"><span id="s-co2">—</span><span class="unit">ppm</span></p>
-      <span class="chip" id="s-air" data-level="none">—</span>
-    </article>
-    <article class="tile rise">
-      <div class="tile-head"><span class="badge"><svg class="icon" aria-hidden="true"><use href="#i-thermo"/></svg></span><span class="label" title="Average across online nodes">Temperature</span></div>
-      <p class="big"><span id="s-temp">—</span><span class="unit">°C</span></p>
-      <p class="minor"><svg class="icon icon-sm" aria-hidden="true"><use href="#i-drop"/></svg><span id="s-hum">—</span>% RH</p>
-    </article>
-    <article class="tile rise">
-      <div class="tile-head"><span class="badge"><svg class="icon" aria-hidden="true"><use href="#i-motion"/></svg></span><span class="label" title="Average share of time with motion">Motion</span></div>
-      <p class="big"><span id="s-pir">—</span><span class="unit">%</span></p>
-      <div class="meter" aria-hidden="true"><span id="s-pir-bar"></span></div>
-    </article>
+  <!-- 2. Room map -->
+  <section class="page" data-page="map" aria-labelledby="h-map" hidden>
+    <div class="page-head">
+      <h1 id="h-map" class="page-title" tabindex="-1">Room map</h1>
+      <fieldset class="segmented" id="map-metric">
+        <legend>Show</legend>
+        <label><input type="radio" name="map-metric" value="activity" checked><span>Sound</span></label>
+        <label><input type="radio" name="map-metric" value="air"><span>Air</span></label>
+        <label><input type="radio" name="map-metric" value="comfort"><span>Temperature</span></label>
+        <label><input type="radio" name="map-metric" value="motion"><span>Movement</span></label>
+      </fieldset>
+    </div>
+    <div class="plan" id="zone-map" role="group"></div>
+    <section class="card zone-detail" id="zone-detail" aria-labelledby="zone-detail-h">
+      <h2 id="zone-detail-h">Select an area</h2>
+      <p class="hint" id="zone-detail-sensor"></p>
+      <dl class="readings" id="zone-detail-list"></dl>
+      <p class="tech" id="zone-detail-tech"></p>
+    </section>
+    <ul class="key" aria-label="Key">
+      <li><svg class="icon icon-sm lvl-fine" aria-hidden="true"><use href="#i-fine"/></svg>Fine</li>
+      <li><svg class="icon icon-sm lvl-heads_up" aria-hidden="true"><use href="#i-alert"/></svg>Keep an eye on it</li>
+      <li><svg class="icon icon-sm lvl-act_now" aria-hidden="true"><use href="#i-stop"/></svg>Act now</li>
+      <li><svg class="icon icon-sm lvl-none" aria-hidden="true"><use href="#i-none"/></svg>No reading</li>
+    </ul>
+    <p class="hint">Select an area for all its readings. Dots mark the sensors. Each area updates after about 10 seconds, so a short noise doesn't count.</p>
   </section>
 
-  <section aria-labelledby="nodes-h">
-    <h2 id="nodes-h" class="section-title">Nodes</h2>
+  <!-- 3. History -->
+  <section class="page" data-page="history" aria-labelledby="h-history" hidden>
+    <div class="page-head"><h1 id="h-history" class="page-title" tabindex="-1">History</h1></div>
+    <section class="card" aria-labelledby="h-events">
+      <h2 id="h-events">What happened</h2>
+      <ol class="timeline" id="timeline"></ol>
+    </section>
+    <section class="trends" aria-labelledby="h-trends">
+      <div class="card-head">
+        <h2 id="h-trends">Readings over time</h2>
+        <fieldset class="segmented">
+          <legend class="sr-only">Time range</legend>
+          <label><input type="radio" name="range" value="60"><span>1 min</span></label>
+          <label><input type="radio" name="range" value="300" checked><span>5 min</span></label>
+          <label><input type="radio" name="range" value="600"><span>10 min</span></label>
+        </fieldset>
+      </div>
+      <div class="chips legend" id="legend" role="group" aria-label="Show sensors"></div>
+      <div class="charts">
+        <figure class="card chart-card">
+          <figcaption class="chart-title"><svg class="icon icon-sm" aria-hidden="true"><use href="#i-air"/></svg>Air (CO₂, ppm)</figcaption>
+          <div class="chart" id="chart-co2" role="img"></div>
+          <p class="chart-summary" id="sum-co2"></p>
+          <div class="bands" aria-hidden="true"><span><i class="sw sw-good"></i>Fresh</span><span><i class="sw sw-fair"></i>Getting stuffy</span><span><i class="sw sw-poor"></i>Stuffy</span></div>
+        </figure>
+        <figure class="card chart-card">
+          <figcaption class="chart-title"><svg class="icon icon-sm" aria-hidden="true"><use href="#i-thermo"/></svg>Temperature (°C)</figcaption>
+          <div class="chart" id="chart-temp" role="img"></div>
+          <p class="chart-summary" id="sum-temp"></p>
+        </figure>
+      </div>
+    </section>
+  </section>
+
+  <!-- 4. Sensors (technical) -->
+  <section class="page" data-page="sensors" aria-labelledby="h-sensors" hidden>
+    <div class="page-head"><h1 id="h-sensors" class="page-title" tabindex="-1">Sensors</h1></div>
+    <p class="lead" id="sensors-lead"></p>
     <div class="empty" id="empty">
       <svg class="empty-art" viewBox="0 0 220 120" aria-hidden="true">
         <rect x="18" y="58" width="56" height="40" rx="6" class="art-board"/>
@@ -148,69 +218,119 @@
         <path d="M134 98h78" class="art-line"/>
         <path d="M152 78l9-10 8 6 10-12 12 8" class="art-accent"/>
       </svg>
-      <p class="empty-title">Waiting for nodes</p>
-      <p class="empty-hint">Power a node, or run <code>python -m mosaic.dashboard --simulate 3</code></p>
+      <p class="empty-title">Waiting for sensors</p>
+      <p class="empty-hint">Switch a sensor on and connect it to the hotspot, or run <code>python3 -m mosaic.dashboard --scenario demo</code></p>
     </div>
     <div class="nodes" id="nodes"></div>
+    <p class="footnote" id="footnote"></p>
   </section>
 
-  <section aria-labelledby="trends-h" class="trends" id="trends" hidden>
-    <div class="trends-head">
-      <h2 id="trends-h" class="section-title">Trends</h2>
-      <div class="chips" role="group" aria-label="Time range">
-        <button class="chip-btn" type="button" data-range="60" aria-pressed="false">1 min</button>
-        <button class="chip-btn" type="button" data-range="300" aria-pressed="true">5 min</button>
-        <button class="chip-btn" type="button" data-range="600" aria-pressed="false">10 min</button>
-      </div>
-    </div>
-    <div class="chips legend" id="legend" role="group" aria-label="Show nodes"></div>
-    <div class="charts">
-      <figure class="card chart-card">
-        <figcaption class="chart-title"><svg class="icon icon-sm" aria-hidden="true"><use href="#i-air"/></svg>CO₂ <span class="muted">ppm</span></figcaption>
-        <div class="chart" id="chart-co2" role="img"></div>
-        <div class="bands" aria-hidden="true">
-          <span><i class="sw sw-good"></i>Good</span><span><i class="sw sw-fair"></i>Fair</span><span><i class="sw sw-poor"></i>Poor</span>
+  <!-- 5. Setup -->
+  <section class="page" data-page="setup" aria-labelledby="h-setup" hidden>
+    <div class="page-head"><h1 id="h-setup" class="page-title" tabindex="-1">Setup</h1></div>
+    <div class="setup-grid">
+      <section class="card" aria-labelledby="h-classtype">
+        <h2 id="h-classtype">Class type</h2>
+        <p class="hint">Tells the system what to expect. Talking is normal in group work, but not in a lecture or quiet work.</p>
+        <fieldset class="segmented mode-control">
+          <legend class="sr-only">Class type</legend>
+          <label><input type="radio" name="mode-setup" value="LECTURE"><span>Lecture</span></label>
+          <label><input type="radio" name="mode-setup" value="DISCUSSION"><span>Group work</span></label>
+          <label><input type="radio" name="mode-setup" value="QUIET_WORK"><span>Quiet work</span></label>
+        </fieldset>
+        <p class="mode-status" role="status" data-mode-status></p>
+      </section>
+
+      <section class="card" aria-labelledby="h-voice">
+        <h2 id="h-voice">Voice setup</h2>
+        <p id="voice-text" class="hint"></p>
+        <ul class="progress-list" id="voice-zones"></ul>
+        <div class="actions">
+          <button class="btn primary" id="voice-open" type="button">Set up voice detection</button>
+          <button class="btn" id="voice-reset" type="button">Start over</button>
         </div>
-      </figure>
-      <figure class="card chart-card">
-        <figcaption class="chart-title"><svg class="icon icon-sm" aria-hidden="true"><use href="#i-thermo"/></svg>Temperature <span class="muted">°C</span></figcaption>
-        <div class="chart" id="chart-temp" role="img"></div>
-      </figure>
+        <p class="error" id="voice-error" role="alert" hidden></p>
+      </section>
+
+      <section class="card" aria-labelledby="h-interval">
+        <h2 id="h-interval">How often sensors report</h2>
+        <p class="hint">More often reacts faster; every second is recommended.</p>
+        <fieldset class="segmented" id="interval">
+          <legend class="sr-only">Report every</legend>
+          <label><input type="radio" name="interval" value="1000"><span>Every second</span></label>
+          <label><input type="radio" name="interval" value="2000"><span>Every 2 s</span></label>
+          <label><input type="radio" name="interval" value="5000"><span>Every 5 s</span></label>
+        </fieldset>
+        <p class="mode-status" role="status" id="interval-status"></p>
+      </section>
+
+      <section class="card" aria-labelledby="h-display">
+        <h2 id="h-display">Display</h2>
+        <label class="switch"><input type="checkbox" role="switch" id="tech-toggle"><span>Show technical names</span></label>
+        <p class="hint">Adds the system's internal state names and raw numbers, for the team and assessors.</p>
+        <fieldset class="segmented" id="theme">
+          <legend>Theme</legend>
+          <label><input type="radio" name="theme" value="system"><span>Automatic</span></label>
+          <label><input type="radio" name="theme" value="light"><span>Light</span></label>
+          <label><input type="radio" name="theme" value="dark"><span>Dark</span></label>
+        </fieldset>
+      </section>
     </div>
   </section>
 
-  <p class="footnote" id="footnote"></p>
   <div class="sr-only" aria-live="polite" id="announcer"></div>
+  <div class="sr-only" role="alert" id="alerter"></div>
 </main>
 
+<dialog class="dialog" id="voice-dialog" aria-labelledby="voice-title">
+  <h2 id="voice-title">Set up voice detection</h2>
+  <div data-step="intro">
+    <p>This teaches the system how loud the lecturer sounds in each area, so it can tell the lecturer and students apart.</p>
+    <ol class="steps"><li>Ask everyone except the lecturer to stay quiet.</li><li>The lecturer speaks normally for about 30 seconds.</li><li>Keep the sensors where they are afterwards.</li></ol>
+  </div>
+  <div data-step="listening" hidden>
+    <p><strong>Listening…</strong> Keep only the lecturer speaking.</p>
+    <ul class="progress-list" id="dialog-zones"></ul>
+  </div>
+  <div data-step="done" hidden>
+    <p class="done-line"><svg class="icon lvl-fine" aria-hidden="true"><use href="#i-fine"/></svg><strong>Done.</strong> Voice detection is set up for every area.</p>
+  </div>
+  <p class="error" id="dialog-error" role="alert" hidden></p>
+  <div class="actions">
+    <button class="btn" type="button" id="dialog-cancel">Cancel</button>
+    <button class="btn primary" type="button" id="dialog-start">Start listening</button>
+    <button class="btn primary" type="button" id="dialog-close" hidden>Close</button>
+  </div>
+</dialog>
+
 <template id="node-tpl">
-  <article class="card node rise">
+  <article class="card node">
     <header class="node-head">
       <span class="badge"><svg class="icon" aria-hidden="true"><use href="#i-node"/></svg></span>
-      <h3 class="node-name"></h3>
+      <h2 class="node-name"></h2>
       <span class="series-key" aria-hidden="true"></span>
-      <span class="sim-chip" hidden title="Simulated node: readings are generated, not measured"><svg class="icon icon-xs" aria-hidden="true"><use href="#i-flask"/></svg>Simulated</span>
-      <span class="status" data-status="online"><svg class="icon icon-sm" aria-hidden="true"><use href="#i-check"/></svg><span class="status-text">Online</span></span>
+      <span class="sim-chip" hidden title="Simulated: readings are generated, not measured"><svg class="icon icon-xs" aria-hidden="true"><use href="#i-flask"/></svg>Simulated</span>
+      <span class="status" data-status="online"><svg class="icon icon-sm" aria-hidden="true"><use href="#i-check"/></svg><span class="status-text">Working</span></span>
     </header>
     <div class="metrics">
       <div class="metric" data-k="temp"><svg class="icon" aria-hidden="true"><use href="#i-thermo"/></svg><div><p class="value"><span class="v">—</span><span class="unit">°C</span></p><p class="mlabel">Temperature</p></div></div>
       <div class="metric" data-k="hum"><svg class="icon" aria-hidden="true"><use href="#i-drop"/></svg><div><p class="value"><span class="v">—</span><span class="unit">%</span></p><p class="mlabel">Humidity</p></div></div>
-      <div class="metric metric-wide" data-k="co2"><svg class="icon" aria-hidden="true"><use href="#i-air"/></svg>
+      <div class="metric" data-k="co2"><svg class="icon" aria-hidden="true"><use href="#i-air"/></svg>
         <div class="grow"><p class="value"><span class="v">—</span><span class="unit">ppm</span><span class="chip chip-sm" data-level="none">—</span></p>
         <div class="scale" aria-hidden="true"><span class="seg seg-good"></span><span class="seg seg-fair"></span><span class="seg seg-poor"></span><span class="marker"></span></div>
         <p class="mlabel">CO₂</p></div></div>
-      <div class="metric metric-wide" data-k="pir"><svg class="icon" aria-hidden="true"><use href="#i-motion"/></svg>
+      <div class="metric" data-k="pir"><svg class="icon" aria-hidden="true"><use href="#i-motion"/></svg>
         <div class="grow"><p class="value"><span class="v">—</span><span class="unit">%</span></p>
         <div class="meter" aria-hidden="true"><span></span></div>
-        <p class="mlabel">Motion</p></div></div>
+        <p class="mlabel">Movement</p></div></div>
     </div>
     <div class="audio" data-k="audio">
       <svg class="icon audio-icon" aria-hidden="true"><use href="#i-mute"/></svg>
-      <div class="grow"><p class="audio-class">No audio</p>
+      <div class="grow"><p class="audio-class">No sound reading</p>
         <div class="probs" aria-hidden="true">
           <span title="Background"><svg class="icon icon-xs"><use href="#i-background"/></svg><i></i></span>
           <span title="Speech"><svg class="icon icon-xs"><use href="#i-discussion"/></svg><i></i></span>
-          <span title="Transient"><svg class="icon icon-xs"><use href="#i-transient"/></svg><i></i></span>
+          <span title="Sudden noise"><svg class="icon icon-xs"><use href="#i-transient"/></svg><i></i></span>
         </div>
       </div>
       <span class="audio-conf"></span>
