@@ -62,22 +62,38 @@ def duration(ms: int) -> str:
 
 
 def zone_names(zones: list[dict]) -> dict[str, str]:
-    """Room positions from the zone layout: row 0 is the front (lecturer's desk)."""
-    if not zones:
-        return {}
-    rows = max(z["layout"][0] for z in zones) + 1
-    cols = max(z["layout"][1] for z in zones) + 1
+    """Room areas from the zone layout ([row, col]): row 0 is the front of the
+    room, rows run towards the back, and columns run from the door side to the
+    window side. The reference zone is the lecturer's area; the student rows
+    are front, middle and back rows."""
     names = {}
+    students = [z for z in zones if not z.get("reference_zone")]
     for z in zones:
+        if z.get("reference_zone"):
+            names[z["zone"]] = "Lecturer's area"
+    rows = sorted({z["layout"][0] for z in students})
+    for z in students:
         row, col = z["layout"]
-        r = "" if rows == 1 else "front" if row == 0 else "back" if row == rows - 1 else "middle"
-        c = "" if cols == 1 else "left" if col == 0 else "right" if col == cols - 1 else "centre"
-        name = f"{r} {c}".strip()
-        names[z["zone"]] = name.capitalize() if name else f"Zone {z['zone']}"
-    counts: dict[str, int] = {}
-    for name in names.values():
-        counts[name] = counts.get(name, 0) + 1
-    return {zone: f"{name} ({zone})" if counts[name] > 1 else name for zone, name in names.items()}
+        i = rows.index(row)
+        if len(rows) == 1:
+            name = "Seating"
+        elif i == 0:
+            name = "Front rows"
+        elif i == len(rows) - 1:
+            name = "Back rows"
+        else:
+            name = "Middle rows" if len(rows) == 3 else f"Row group {i + 1}"
+        cols = sorted(s["layout"][1] for s in students if s["layout"][0] == row)
+        if len(cols) > 1:
+            name += (", door side" if col == cols[0] else ", window side" if col == cols[-1]
+                     else ", centre")
+        names[z["zone"]] = name
+    return names
+
+
+def place(name: str) -> str:
+    """'Back rows' -> 'the back rows', for sentences."""
+    return "the " + name[0].lower() + name[1:]
 
 
 def _mean(values: list) -> Optional[float]:
@@ -142,7 +158,7 @@ def describe(c: dict, nodes: list[dict], events: list[dict] = (), wall_ms: int =
     now_ms = c.get("now_ms", 0)
     sensors = _sensors(zones, names, bool(nodes))
     talking = [names[z["zone"]] for z in zones if z["state"] == "TALKING"]
-    where = join(talking).lower() or "some desks"
+    where = join([place(n) for n in talking]) or "some desks"
     # How long people have been talking: from the first area that started, not
     # from when the classroom state escalated to chatter.
     talk_since = min([z.get("since_ms", now_ms) for z in zones if z["state"] == "TALKING"]
@@ -158,8 +174,8 @@ def describe(c: dict, nodes: list[dict], events: list[dict] = (), wall_ms: int =
         "QUIET": "People are here, but no one is talking much.",
         "FOCUSED_LECTURE": ("Someone is speaking at the lecturer's desk." if mode == "QUIET_WORK"
                             else "The lecturer is speaking and students are quiet."),
-        "NOISE_RISING": f"Talking at {where}.",
-        "SUSTAINED_CHATTER": f"Talking at {where} for {duration(now_ms - talk_since)}.",
+        "NOISE_RISING": f"Talking in {where}.",
+        "SUSTAINED_CHATTER": f"Talking in {where} for {duration(now_ms - talk_since)}.",
         "DISCUSSION": "Most groups are talking, as expected in group work.",
     }.get(activity, "")
 
@@ -171,7 +187,7 @@ def describe(c: dict, nodes: list[dict], events: list[dict] = (), wall_ms: int =
         air_level = HEADS_UP if empty else ACT_NOW
         air_label = "Stuffy"
         air_why = ("Air the room before the next class." if empty else
-                   f"Stuffiest near the {peak[1].lower()}. Open a door or window." if peak else
+                   f"Stuffiest in {place(peak[1])}. Open a door or window." if peak else
                    "Open a door or window.")
     elif air == "NORMAL":
         air_level, air_label, air_why = FINE, "Fresh", "The air is fine in every area."
@@ -292,10 +308,10 @@ def _alerts(activity: str, air: str, mode: str, where: str, sensors: dict,
     elif chatter:
         # While chatter winds down the areas may already be quiet; "some desks"
         # must not overwrite the places the alert named (vague: keep old text).
-        wanted["chatter"] = {"message": f"Ongoing chatter at {where}.",
+        wanted["chatter"] = {"message": f"Ongoing chatter in {where}.",
                              "action": "Consider re-engaging the class.", "vague": where == "some desks"}
     elif stuffy:
-        near = f" Stuffiest near the {peak[1].lower()}." if peak else ""
+        near = f" Stuffiest in {place(peak[1])}." if peak else ""
         wanted["air"] = {"message": "The air is stuffy." + near, "action": "Open a door or window."}
     if sensors["low_coverage"]:
         wanted["coverage"] = {"message": "Fewer than half the sensors are working, so readings may be wrong.",

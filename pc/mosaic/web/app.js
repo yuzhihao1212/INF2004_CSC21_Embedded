@@ -89,8 +89,9 @@
 
   /* ---- Pages: #/overview ... #/setup; Back/Forward and links work ---- */
   function route(fromUser) {
-    const id = location.hash.replace(/^#\/?/, "");
+    const [id, arg] = location.hash.replace(/^#\/?/, "").split("/");
     page = PAGES[id] ? id : "overview";
+    if (page === "map" && arg) selectedZone = decodeURIComponent(arg);
     $$(".page").forEach((s) => { s.hidden = s.dataset.page !== page; });
     $$(".pages a").forEach((a) => {
       if (a.dataset.page === page) a.setAttribute("aria-current", "page"); else a.removeAttribute("aria-current");
@@ -109,13 +110,25 @@
   function store(key, value) {
     try { if (value == null) localStorage.removeItem(key); else localStorage.setItem(key, value); } catch (e) { /* Blocked */ }
   }
+  const THEMES = { system: ["i-auto", "automatic"], light: ["i-sun", "light"], dark: ["i-moon", "dark"] };
   function applyTheme(mode) {
     const root = document.documentElement;
     if (mode === "system") delete root.dataset.theme; else root.dataset.theme = mode;
     store("mosaic-theme", mode === "system" ? null : mode);
     $$('input[name="theme"]').forEach((r) => { r.checked = r.value === mode; });
+    const btn = $("#theme-btn");
+    setIcon(btn, THEMES[mode][0]);
+    btn.setAttribute("aria-label", `Theme: ${THEMES[mode][1]}. Change theme`);
+    btn.title = `Theme: ${THEMES[mode][1]}`;
   }
   $$('input[name="theme"]').forEach((r) => r.addEventListener("change", () => applyTheme(r.value)));
+  $("#theme-btn").addEventListener("click", () => {  // Automatic -> light -> dark
+    const order = Object.keys(THEMES);
+    const now = document.documentElement.dataset.theme || "system";
+    const next = order[(order.indexOf(now) + 1) % order.length];
+    applyTheme(next);
+    announcer.textContent = `Theme: ${THEMES[next][1]}`;
+  });
   applyTheme(document.documentElement.dataset.theme || "system");
 
   const techToggle = $("#tech-toggle");
@@ -150,7 +163,16 @@
   function renderBanners() {
     const alerts = state.alerts || { banner: [], hidden: 0 };
     const box = $("#banners");
-    box.replaceChildren(...alerts.banner.map((a) => {
+    // Rebuild only when the alerts change, so focus on "Hide" survives the refresh.
+    const key = alerts.banner.map((a) => `${a.id}:${a.message}`).join("|");
+    if (box.dataset.key === key) {
+      box.querySelectorAll(".banner-time").forEach((p, i) => {
+        const a = alerts.banner[i];
+        p.textContent = `Started ${clockTime(a.started_ms)} · ${minutesSince(a.started_ms)} ago`;
+      });
+    } else {
+      box.dataset.key = key;
+      box.replaceChildren(...alerts.banner.map((a) => {
       const card = make("div", "banner");
       card.dataset.level = a.level;
       const text = make("div", "banner-text");
@@ -170,6 +192,7 @@
       card.append(icon("i-stop", "icon banner-icon"), text, hide);
       return card;
     }));
+    }
     // A new act-now alert is announced once, assertively.
     for (const a of alerts.banner) {
       if (!seenAlerts.has(a.id)) { seenAlerts.add(a.id); alerter.textContent = `${a.message} ${a.action}`; }
@@ -245,37 +268,161 @@
       $(".tech", node).textContent = [tile.tech, tile.detail].filter(Boolean).join(" · ");
       node.setAttribute("aria-label", `${tile.title}: ${tile.label}, ${LEVEL_WORD[tile.level]}. ${tile.why}`);
     }
-    renderZones($("#mini-map"), "activity", true);
+    renderPlan($("#mini-map"), "activity", true);
     renderTimeline($("#latest"), f.timeline.slice(0, 4));
   }
 
   /* ---- Room map ---- */
-  $$('input[name="map-metric"]').forEach((r) => r.addEventListener("change", () => { mapMetric = r.value; if (state) renderZones($("#zone-map"), mapMetric); }));
+  $$('input[name="map-metric"]').forEach((r) => r.addEventListener("change", () => { mapMetric = r.value; if (state) renderMapPage(); }));
 
-  function renderZones(list, metric, mini = false) {
+  /* Floor plan (docs/ui_design.md): drawn from the zone layout. u runs from
+   * the front of the room (whiteboard) to the back, v from the door side to
+   * the window side. Wide: front on the left; narrow: front at the top. */
+  let selectedZone = null;
+  const SVG_W = 1000, SVG_H = 600;
+
+  function planGeometry(zones) {
+    const lecturer = zones.find((z) => z.lecturer_area);
+    const rows = [...new Set(zones.map((z) => z.layout[0]))].sort((a, b) => a - b);
+    const lecturerAlone = lecturer && zones.filter((z) => z.layout[0] === lecturer.layout[0]).length === 1 && lecturer.layout[0] === rows[0];
+    const first = lecturerAlone ? 0.24 : 0;
+    const rest = rows.length - (lecturerAlone ? 1 : 0);
+    const bands = {};
+    rows.forEach((row, i) => {
+      if (lecturerAlone && i === 0) bands[row] = [0, first];
+      else { const k = i - (lecturerAlone ? 1 : 0); bands[row] = [first + (k * (1 - first)) / rest, first + ((k + 1) * (1 - first)) / rest]; }
+    });
+    const rects = {};
+    for (const row of rows) {
+      const inRow = zones.filter((z) => z.layout[0] === row).sort((a, b) => a.layout[1] - b.layout[1]);
+      inRow.forEach((z, j) => { rects[z.zone] = { u0: bands[row][0], u1: bands[row][1], v0: j / inRow.length, v1: (j + 1) / inRow.length }; });
+    }
+    return { rects, seatsFrom: lecturerAlone ? first : 0, seatBands: rest || rows.length };
+  }
+
+  function drawRoom(root, portrait, geo) {
+    const vbW = portrait ? SVG_H : SVG_W, vbH = portrait ? SVG_W : SVG_H, m = 14;
+    const P = (u, v) => (portrait ? [m + v * (vbW - 2 * m), m + u * (vbH - 2 * m)] : [m + u * (vbW - 2 * m), m + v * (vbH - 2 * m)]);
+    const box = (u0, v0, u1, v1, attrs) => {
+      const [x0, y0] = P(u0, v0), [x1, y1] = P(u1, v1);
+      return svg("rect", { x: Math.min(x0, x1), y: Math.min(y0, y1), width: Math.abs(x1 - x0), height: Math.abs(y1 - y0), ...attrs }, root);
+    };
+    const line = (u0, v0, u1, v1, cls) => { const [x0, y0] = P(u0, v0), [x1, y1] = P(u1, v1); svg("line", { x1: x0, y1: y0, x2: x1, y2: y1, class: cls }, root); };
+    box(0, 0, 1, 1, { class: "room-floor" });
+    box(0, 0, 1, 1, { class: "room-wall" });                       // Wall first: board, door, windows sit on it
+    line(0, 0.18, 0, 0.72, "room-board");                       // Whiteboard on the front wall
+    const [hx, hy] = P(0.035, 0), [ex, ey] = P(0.115, 0);         // Door: gap, open leaf, swing
+    const r = Math.hypot(ex - hx, ey - hy);
+    const [lx, ly] = portrait ? [hx + r, hy] : [hx, hy + r];      // Leaf opens into the room
+    svg("line", { x1: hx, y1: hy, x2: ex, y2: ey, class: "room-door-gap" }, root);
+    svg("line", { x1: hx, y1: hy, x2: lx, y2: ly, class: "room-door" }, root);
+    svg("path", { d: `M${ex} ${ey} A${r} ${r} 0 0 ${portrait ? 0 : 1} ${lx} ${ly}`, class: "room-door room-swing" }, root);
+    for (let i = 0; i < 3; i++) {                                 // Windows on the far wall
+      const a = geo.seatsFrom + ((i + 0.2) * (1 - geo.seatsFrom)) / 3, b = a + (0.6 * (1 - geo.seatsFrom)) / 3;
+      line(a, 1, b, 1, "room-window");
+    }
+    if (geo.seatsFrom > 0) {                                      // Lecturer's desk and chair
+      box(geo.seatsFrom * 0.5, 0.6, geo.seatsFrom * 0.68, 0.86, { class: "room-desk", rx: 4 });
+      const [cx, cy] = P(geo.seatsFrom * 0.3, 0.73);
+      svg("circle", { cx, cy, r: 13, class: "room-chair" }, root);
+    }
+    const cols = geo.seatBands * 2;                               // Student desks: two blocks, aisle between
+    for (let c = 0; c < cols; c++) {
+      const u = geo.seatsFrom + ((c + 0.5) * (1 - geo.seatsFrom)) / cols;
+      for (const v of [0.16, 0.28, 0.4, 0.6, 0.72, 0.84]) {
+        box(u - 0.022, v - 0.04, u + 0.006, v + 0.04, { class: "room-desk", rx: 3 });
+        const [cx, cy] = P(u + 0.024, v);
+        svg("circle", { cx, cy, r: 9, class: "room-chair" }, root);
+      }
+    }
+    return { P, vbW, vbH };
+  }
+
+  function renderPlan(container, metric, compact = false) {
     const f = fb();
     if (!f) return;
-    const zones = [...f.zones].sort((a, b) => a.layout[0] - b.layout[0] || a.layout[1] - b.layout[1]);
-    list.style.setProperty("--map-cols", Math.max(1, ...zones.map((z) => z.layout[1] + 1)));
-    list.replaceChildren(...zones.map((z) => {
+    const portrait = container.clientWidth > 0 && container.clientWidth < 560;
+    // Rebuild only when the room changes shape; otherwise update in place, so
+    // keyboard focus and screen-reader position survive the 1 s refresh.
+    const key = `${portrait}|${f.zones.map((z) => `${z.zone}:${z.layout}:${z.lecturer_area}`).join(",")}`;
+    if (container.dataset.key !== key) buildPlan(container, portrait, compact, f.zones, key);
+    for (const z of f.zones) {
+      const el = container.querySelector(`[data-zone="${CSS.escape(z.zone)}"]`);
+      const offline = z.status === "Not connected";
       const m = z[metric];
-      const level = z.status === "Not connected" ? "none" : m.level;
-      const cell = make("li", "zone-cell");
-      cell.dataset.level = level;
-      cell.dataset.offline = String(z.status === "Not connected");
-      cell.style.gridRow = z.layout[0] + 1;
-      cell.style.gridColumn = z.layout[1] + 1;
-      const head = make("p", "zone-name", z.name);
-      if (z.lecturer_area) head.append(make("span", "zone-tag", "Lecturer's desk"));
-      cell.append(head, levelLine(level, z.status === "Not connected" ? "Not connected" : m.label, "zone-value"));
-      if (!mini) {
-        const why = metric === "activity" ? m.why : m.detail;
-        if (why) cell.append(make("p", "zone-why", why));
-        if (z.status !== "Working") cell.append(make("p", "zone-why", `Sensor: ${z.status.toLowerCase()}`));
-        cell.append(make("p", "tech", `zone ${z.zone} · sensor ${z.node_id}${m.tech ? " · " + m.tech : ""}`));
+      const level = offline ? "none" : m.level;
+      const label = offline ? "Not connected" : m.label;
+      el.dataset.level = level;
+      el.dataset.offline = String(offline);
+      if (!compact) el.setAttribute("aria-pressed", String(z.zone === selectedZone));
+      el.setAttribute("aria-label", `${z.name}: ${label}, ${LEVEL_WORD[level]}.${m.why ? " " + m.why : ""}`);
+      const state = $(".plan-state", el);
+      state.dataset.level = level;
+      setIcon($(".level-icon", state), LEVEL_ICON[level] || LEVEL_ICON.none);
+      $(".level-icon", state).setAttribute("class", `icon level-icon lvl-${level}`);
+      $("span", state).textContent = label;
+      const tech = $(".tech", el);
+      if (tech) tech.textContent = `zone ${z.zone} · sensor ${z.node_id}${m.tech ? " · " + m.tech : ""}`;
+    }
+  }
+
+  function buildPlan(container, portrait, compact, zones, key) {
+    container.dataset.key = key;
+    container.dataset.portrait = String(portrait);
+    container.setAttribute("aria-label", `Classroom floor plan. The front of the room, with the whiteboard and the lecturer's desk, is ${portrait ? "at the top" : "on the left"}.`);
+    const geo = planGeometry(zones);
+    const root = svg("svg", { class: "plan-room", "aria-hidden": "true", preserveAspectRatio: "none" });
+    const { P, vbW, vbH } = drawRoom(root, portrait, geo);
+    root.setAttribute("viewBox", `0 0 ${vbW} ${vbH}`);
+    container.style.setProperty("--ratio", `${vbW} / ${vbH}`);
+    const pct = (x, total) => `${(100 * x) / total}%`;
+    const nodes = [root];
+    for (const z of zones) {
+      const g = geo.rects[z.zone];
+      const [x0, y0] = P(g.u0, g.v0), [x1, y1] = P(g.u1, g.v1);
+      const [sx, sy] = P((g.u0 + g.u1) / 2, g.v1 - 0.08);
+      svg("circle", { cx: sx, cy: sy, r: 8, class: "room-sensor" }, root);
+      const el = make(compact ? "a" : "button", "plan-zone");
+      el.dataset.zone = z.zone;
+      if (compact) el.href = `#/map/${encodeURIComponent(z.zone)}`;
+      else {
+        el.type = "button";
+        el.setAttribute("aria-controls", "zone-detail");
+        el.addEventListener("click", () => { selectedZone = z.zone; renderMapPage(); });
       }
-      return cell;
+      Object.assign(el.style, { left: pct(Math.min(x0, x1), vbW), top: pct(Math.min(y0, y1), vbH),
+                                width: pct(Math.abs(x1 - x0), vbW), height: pct(Math.abs(y1 - y0), vbH) });
+      const chip = make("span", "plan-chip");
+      chip.append(make("span", "plan-name", z.name), levelLine("none", "", "plan-state"));
+      if (!compact) chip.append(make("span", "tech"));
+      el.append(chip);
+      nodes.push(el);
+    }
+    container.replaceChildren(...nodes);
+  }
+
+  function renderMapPage() {
+    const f = fb();
+    if (!f) return;
+    const rank = { act_now: 3, heads_up: 2, fine: 1, none: 0 };
+    if (!f.zones.some((z) => z.zone === selectedZone)) {  // Default: the area that needs most attention
+      selectedZone = [...f.zones].sort((a, b) => rank[b.activity.level] - rank[a.activity.level])[0].zone;
+    }
+    renderPlan($("#zone-map"), mapMetric);
+    const z = f.zones.find((x) => x.zone === selectedZone);
+    $("#zone-detail-h").textContent = z.name;
+    $("#zone-detail-sensor").textContent = `Sensor ${z.node_id}: ${z.status.toLowerCase()}`;
+    const rows = [["Sound", "i-sound", z.activity, z.activity.why], ["Air", "i-air", z.air, z.air.detail],
+                  ["Temperature", "i-thermo", z.comfort, z.comfort.detail], ["Movement", "i-motion", z.motion, z.motion.detail]];
+    $("#zone-detail-list").replaceChildren(...rows.flatMap(([title, ic, m, extra]) => {
+      const dt = make("dt");
+      dt.append(icon(ic, "icon icon-sm"), make("span", "", title));
+      const dd = make("dd");
+      dd.append(levelLine(m.level, m.label, "level-line"));
+      if (extra) dd.append(make("span", "detail-extra", extra));
+      return [dt, dd];
     }));
+    $("#zone-detail-tech").textContent = `zone ${z.zone} · layout [${z.layout}] · ${z.activity.tech} · ${z.air.tech} · ${z.comfort.tech}`;
   }
 
   /* ---- History ---- */
@@ -612,7 +759,7 @@
     renderBanners();
     renderMode();
     if (page === "overview") renderOverview();
-    else if (page === "map") renderZones($("#zone-map"), mapMetric);
+    else if (page === "map") renderMapPage();
     else if (page === "history") renderHistory();
     else if (page === "sensors") renderSensors();
     else if (page === "setup") renderSetup();
@@ -643,7 +790,7 @@
   let resizeTimer;
   window.addEventListener("resize", () => {
     clearTimeout(resizeTimer);
-    resizeTimer = setTimeout(() => state && renderCharts(), 150);
+    resizeTimer = setTimeout(() => state && render(), 150);  // Charts and plan orientation
   });
   route(false);
   poll();

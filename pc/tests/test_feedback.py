@@ -21,12 +21,12 @@ from mosaic.fusion import Activity, Air, Comfort, FusionEngine, ZoneActivity, Zo
 from mosaic.gateway import GatewayServer
 
 ENGINE_WORDS = re.compile(r"\b[A-Z]{2,}(?:_[A-Z]+)+\b|\b(?:UNKNOWN|NORMAL|EMPTY|QUIET|STALE|OFFLINE|ONLINE)\b")
-LAYOUT = {"A": [0, 0], "B": [0, 1], "C": [1, 0], "D": [1, 1]}
+LAYOUT = {"A": [0, 0], "B": [1, 0], "C": [2, 0], "D": [3, 0]}
 
 
 def zone(name, node, state="STILL", status="ONLINE", air="GOOD", comfort="COMFORTABLE", **extra):
     return {"zone": name, "node_id": node, "status": status, "state": state, "since_ms": 0,
-            "air": air, "comfort": comfort, "layout": LAYOUT[name], "reference_zone": name == "A",
+            "air": air, "comfort": comfort, "layout": list(LAYOUT.get(name, [4, 0])), "reference_zone": name == "A",
             "co2_ppm": 700, "temperature_c": 24.5, "humidity_pct": 55.0, "motion_active": False,
             "motion_pct": 3, **extra}
 
@@ -66,13 +66,17 @@ class Labels(unittest.TestCase):
                 with self.subTest(activity=activity, air=air, comfort=comfort, mode=mode, text=text):
                     self.assertIsNone(ENGINE_WORDS.search(text))
 
-    def test_room_positions(self):
+    def test_room_areas(self):
         names = fb.zone_names(classroom()["zones"])
-        self.assertEqual(names, {"A": "Front left", "B": "Front right", "C": "Back left", "D": "Back right"})
-        row = [dict(zone=z, layout=[0, i]) for i, z in enumerate("ABC")]
-        self.assertEqual(fb.zone_names(row), {"A": "Left", "B": "Centre", "C": "Right"})
-        same = [dict(zone="A", layout=[0, 0]), dict(zone="B", layout=[1, 0])]
-        self.assertEqual(fb.zone_names(same), {"A": "Front", "B": "Back"})
+        self.assertEqual(names, {"A": "Lecturer's area", "B": "Front rows", "C": "Middle rows", "D": "Back rows"})
+        # A fifth sensor splits the back rows into door and window side.
+        five = classroom()["zones"] + [zone("E", 5)]
+        five[3]["layout"], five[4]["layout"] = [3, 0], [3, 1]
+        self.assertEqual({k: v for k, v in fb.zone_names(five).items() if k in "DE"},
+                         {"D": "Back rows, door side", "E": "Back rows, window side"})
+        one_row = [dict(zone=z, layout=[0, i]) for i, z in enumerate("ABC")]
+        self.assertEqual(fb.zone_names(one_row), {"A": "Seating, door side", "B": "Seating, centre",
+                                                  "C": "Seating, window side"})
 
     def test_checking_instead_of_no_data_while_sensors_work(self):
         out = fb.describe(classroom("UNKNOWN"), NODES)
@@ -96,8 +100,8 @@ class Severity(unittest.TestCase):
         zones = [zone("A", 1, "LECTURER"), zone("B", 2), zone("C", 3, "TALKING"), zone("D", 4, "TALKING")]
         # Chatter escalated 10 s ago, but the areas have talked for 3+ minutes.
         out = fb.describe(classroom("SUSTAINED_CHATTER", zones=zones, now_ms=200000, since_ms=190000), NODES)
-        self.assertEqual(out["tiles"][0]["why"], "Talking at back left and back right for 3 minutes.")
-        self.assertEqual(out["alerts_wanted"]["chatter"]["message"], "Ongoing chatter at back left and back right.")
+        self.assertEqual(out["tiles"][0]["why"], "Talking in the middle rows and the back rows for 3 minutes.")
+        self.assertEqual(out["alerts_wanted"]["chatter"]["message"], "Ongoing chatter in the middle rows and the back rows.")
 
     def test_comfort_direction(self):
         out = fb.describe(classroom(comfort="OUT_OF_RANGE", reasons=("too warm", "too humid")), NODES)

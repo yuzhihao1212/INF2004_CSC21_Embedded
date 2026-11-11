@@ -218,7 +218,7 @@ class ModeApi(unittest.TestCase):
             audio=(p.AudioWindow(160, p.AudioClass.SPEECH, (5, 90, 0, 5)),)), NODE_ADDR, now)
         with urllib.request.urlopen(self.url.replace('/api/mode', '/api/state'), timeout=2) as response:
             classroom = json.load(response)['classroom']
-        self.assertEqual(classroom['zone_layout'], {'A': [0, 0], 'B': [0, 1], 'C': [1, 0], 'D': [1, 1]})
+        self.assertEqual(classroom['zone_layout'], {'A': [0, 0], 'B': [1, 0], 'C': [2, 0], 'D': [3, 0]})
         a, _, c, _ = classroom['zones']
         self.assertEqual((a['state'], a['air'], a['comfort']), ('LECTURER', 'FAIR', 'COMFORTABLE'))
         self.assertEqual((a['temperature_x10'], a['temperature_c'], a['humidity_pct']), (245, 24.5, 61.5))

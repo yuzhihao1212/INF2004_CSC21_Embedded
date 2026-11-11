@@ -171,7 +171,9 @@ class FusionConfig:
                 or not 0 <= self.humidity_hysteresis_x10 * 2 <= self.humidity_max_x10 - self.humidity_min_x10):
             raise ValueError("comfort hysteresis must fit inside its range")
         if self.zone_layout is None:
-            self.zone_layout = {name: [i // 2, i % 2] for i, name in enumerate(self.zones.values())}
+            # Display only: one band per zone from the front (row 0, the
+            # lecturer's area) to the back. Columns split a band door/window side.
+            self.zone_layout = {name: [i, 0] for i, name in enumerate(self.zones.values())}
         if not isinstance(self.zone_layout, dict) or set(self.zone_layout) != set(self.zones.values()):
             raise ValueError("zone_layout must place every configured zone exactly once")
         cells = []
