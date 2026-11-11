@@ -37,7 +37,7 @@
   const hidden = new Set();
   const cards = new Map();
 
-  const series = (id) => `var(--series-${((id - 1) % 8) + 1})`;
+  const series = (id) => `var(--series-${((id - 1) % 6) + 1})`;
   const dash = (id) => DASHES[(id - 1) % DASHES.length];
   const fmt = (v, digits = 0) => (v == null ? "—" : v.toFixed(digits));
   const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
