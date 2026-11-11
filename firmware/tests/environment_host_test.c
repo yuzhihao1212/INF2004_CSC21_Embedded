@@ -118,6 +118,33 @@ static void test_expiry_after_acquisition(void) {
     }
 }
 
+static void test_expiry_future_samples(void) {
+    const struct { uint32_t now, sample; } cases[] = {
+        {1000, 1003},
+        {UINT32_MAX - 5, UINT32_MAX - 2},
+        {UINT32_MAX - 1, 1},
+        {UINT32_MAX, 2},
+        {0, 3},
+    };
+    for (unsigned i = 0; i < sizeof(cases) / sizeof(cases[0]); ++i) {
+        environment_record_t r = {0};
+        uint32_t sample = cases[i].sample;
+        environment_apply_dht(&r, SENSOR_OK, 258, 672, sample);
+        environment_apply_co2(&r, SENSOR_OK, 850, sample);
+        environment_apply_pir(&r, true, sample);
+        /* A slightly future sample must stay valid until now catches up. */
+        const uint32_t checks[] = {cases[i].now, sample};
+        for (unsigned j = 0; j < sizeof(checks) / sizeof(checks[0]); ++j) {
+            environment_expire(&r, checks[j]);
+            assert(r.validity_flags == (ENV_DHT_VALID | ENV_CO2_VALID | ENV_PIR_VALID));
+            assert(r.dht_status == SENSOR_OK && r.co2_status == SENSOR_OK && r.pir_status == SENSOR_OK);
+            assert(r.timestamp_ms == checks[j]);
+            assert(r.dht_sample_ms == sample && r.co2_sample_ms == sample && r.pir_sample_ms == sample);
+            assert(r.temperature_x10 == 258 && r.humidity_x10 == 672 && r.co2_ppm == 850 && r.motion == 1);
+        }
+    }
+}
+
 static void test_expiry_boundaries(void) {
     const uint32_t starts[] = {100, UINT32_MAX - 100};
     const struct { uint32_t elapsed_ms; uint8_t valid; } cases[] = {
@@ -176,6 +203,7 @@ static void test_expiry_preserves_invalid(void) {
 int main(void) {
     test_decode(); test_pulses(); test_format(); test_status();
     test_expiry_after_acquisition(); test_expiry_boundaries(); test_expiry_preserves_invalid();
-    puts("PASS: DHT/CO2 decode, pulse validation, integer formatting, validity/status, acquisition freshness and wrap/stale boundaries");
+    test_expiry_future_samples();
+    puts("PASS: DHT/CO2 decode, pulse validation, integer formatting, validity/status, acquisition freshness, future samples and wrap/stale boundaries");
     return 0;
 }
