@@ -1,4 +1,6 @@
-/* lwIP settings for the MOSAIC node: no OS (poll mode), UDP + DHCP.
+/* lwIP settings: raw API (NO_SYS), background IRQ servicing, UDP + DHCP.
+ * The RTOS target keeps the same architecture: one network task accesses
+ * lwIP through the SDK locks; it does not use lwIP's socket/sys_arch API.
  * Based on pico-examples' lwipopts_examples_common.h; TCP kept for the
  * cyw43 driver's defaults but unused by MOSAIC. */
 #ifndef MOSAIC_LWIPOPTS_H

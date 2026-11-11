@@ -46,7 +46,7 @@ document so the team can check work against it. The evidence tracker below is ou
 | | Acoustic DSP Q-formats | Moe | To do |
 | | int8 model scales and zero points | Darius | To do |
 | | Environmental and occupancy conversions | Kendrick | To do (`environment.h` documents the units) |
-| | Node-health calculations | Arif | To do |
+| | Node-health calculations | Arif | Representation and limits recorded in `node_health_numeric_representation.md`; host tests cover watchdog gating and audio handoff. CPU load remains unmeasured; linked-firmware float audit and end-to-end timing remain pending. |
 | | Sensor-fusion mathematics | ZhiHao | To do (fusion is being made integer-only) |
 | DSP timing with headroom (500 ms budget) | Complete DSP path on the Pico | Moe | To do (Week 10 test B2) |
 | Accuracy comparison: fixed-point DSP vs float | Feature outputs | Moe | To do (the float version is in git history) |
