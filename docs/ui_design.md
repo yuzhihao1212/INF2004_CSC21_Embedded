@@ -16,7 +16,7 @@ banner appears above every page.
 | Page | Question it answers | Contents |
 |---|---|---|
 | Overview | Is the room OK, and should I do anything? | Headline + summary, Sound/Air/Comfort tiles, class type, room at a glance, latest 4 changes |
-| Room map | Where is it happening? | Areas by position; switch between sound, air, temperature and movement; key for the four levels |
+| Room map | Where is it happening? | Floor plan of the classroom (front wall with whiteboard, lecturer's desk, door, windows, desks, sensor dots) with each area tinted by level; switch sound, air, temperature, movement; select an area for all its readings. On narrow screens the plan turns so the front is at the top. |
 | History | What happened? | Full timeline incl. cleared alerts; CO₂ and temperature charts with a text summary |
 | Sensors | Is the equipment working? | Per-sensor readings, sound class, Wi-Fi signal, lost readings, response time |
 | Setup | How do I change it? | Class type, voice setup (guided), report interval, technical names, theme |
@@ -30,7 +30,7 @@ banner appears above every page.
 │ ┃ Ongoing chatter                                                                         │
 │ ┃ Talking at back right for 3 minutes. The air is fresh. Temperature is comfortable.      │
 │ [Sound ■ Ongoing chatter] [Air ✓ Fresh] [Comfort ✓ Comfortable]                           │
-│ [Room at a glance 2×2]                         [What happened: 10:47 … 10:44 …]            │
+│ [Room at a glance: small floor plan]           [What happened: 10:47 … 10:44 …]            │
 └──────────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -55,7 +55,7 @@ engine name in brackets, so we can map the screen to the statechart in the tribu
 | Node `ONLINE` / `STALE` / `OFFLINE` | Working / Delayed / Not connected | — |
 | Mode `LECTURE` / `DISCUSSION` / `QUIET_WORK` | Class type: Lecture / Group work / Quiet work | — |
 | Reference calibration | Voice setup | "Done" / "Not set up: the system tells lecturer and students apart by loudness only." |
-| Zone labels A–D | Front left, Front right, Back left, Back right | From `zone_layout`; editable names. |
+| Zone labels A–D | Lecturer's area, Front rows, Middle rows, Back rows | From `zone_layout` ([row, col], row 0 = front). A fifth sensor in the same row adds "door side" / "window side". |
 
 Words to avoid on the main view: node, ppm, dBm, RTT, packet, calibrate, reference,
 confidence %, fusion, stale. They may appear on the *Sensors* page and with technical names on.

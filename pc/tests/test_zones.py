@@ -97,7 +97,7 @@ class ZoneStates(unittest.TestCase):
 class Layout(unittest.TestCase):
     def test_default_and_explicit_custom_map(self):
         self.assertEqual(FusionConfig().zone_layout,
-                         {'A': [0, 0], 'B': [0, 1], 'C': [1, 0], 'D': [1, 1]})
+                         {'A': [0, 0], 'B': [1, 0], 'C': [2, 0], 'D': [3, 0]})
         cfg = FusionConfig(zones={1: 'Desk', 3: 'Rear'}, zone_layout={'Desk': [0, 1], 'Rear': [2, 0]})
         self.assertEqual(FusionEngine(cfg).state()['zone_layout'], cfg.zone_layout)
 

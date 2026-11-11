@@ -73,7 +73,7 @@ The dashboard runs the gateway and serves a plain-language web page with five pa
 | Page | For | Shows |
 |---|---|---|
 | **Overview** | The lecturer, at a glance | One headline ("Lecture in progress"), a one-line summary, Sound / Air / Comfort tiles, the class type, the room at a glance and the latest changes |
-| **Room map** | Where something is happening | Each area of the room (front left, back right, …) by sound, air, temperature or movement |
+| **Room map** | Where something is happening | A floor plan of the classroom (whiteboard, lecturer's desk, door, windows, desks, sensors) split into the lecturer's area and the front, middle and back rows, tinted by sound, air, temperature or movement; select an area for all its readings |
 | **History** | What happened | A timeline of changes and cleared alerts, and CO₂/temperature charts with a text summary |
 | **Sensors** | The team | Each sensor's readings, sound class, Wi-Fi signal, lost readings and response time |
 | **Setup** | Changing things | Class type, voice setup (lecturer calibration), how often sensors report, technical names, theme |
