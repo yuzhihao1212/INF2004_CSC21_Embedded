@@ -20,7 +20,7 @@
   };
   const CO2_LEVEL = { good: "Fresh", fair: "Getting stuffy", poor: "Stuffy", warmup: "Warming up", none: "—" };
   const DASHES = ["", "7 4", "2 4", "10 4 2 4"];  // Second cue besides colour
-  const LINK_LABELS = { rssi: "Wi-Fi signal", loss: "Readings lost", rtt: "Response time", age: "Last reading" };
+  const LINK_LABELS = { rssi: "Wi-Fi signal", loss: "Unrecovered message loss", rtt: "Round trip", age: "Last update" };
 
   const $ = (sel, root = document) => root.querySelector(sel);
   const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];

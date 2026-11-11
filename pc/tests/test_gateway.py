@@ -77,7 +77,83 @@ class SequenceTracking(unittest.TestCase):
 
     def test_duplicate_not_loss(self):
         node = self.feed(10, 11, 11, 12)
-        self.assertEqual((node.received, node.lost, node.duplicates), (4, 0, 1))
+        self.assertEqual((node.received, node.lost, node.duplicates), (3, 0, 1))
+
+    def test_retry_repairs_gap_without_rewinding_live_reading(self):
+        self.gw.handle(telemetry(seq=10, co2_ppm=600), NODE_ADDR, now=1)
+        self.gw.handle(telemetry(seq=12, co2_ppm=800), NODE_ADDR, now=3)
+        recovered = self.gw.handle(telemetry(seq=11, co2_ppm=700), NODE_ADDR, now=3.1)
+        node = self.gw.nodes[1]
+        self.assertIsNotNone(recovered)  # Retain recovered history in CSV.
+        self.assertEqual((node.received, node.lost, node.recovered), (3, 0, 1))
+        self.assertEqual((node.gaps_detected, node.reboots, node.last_seq), (1, 0, 12))
+        self.assertEqual(node.telemetry.co2_ppm, 800)
+
+    def test_duplicate_does_not_refresh_reading_or_inflate_delivery(self):
+        data = telemetry(seq=10)
+        self.gw.handle(data, NODE_ADDR, now=1)
+        self.assertIsNone(self.gw.handle(data, NODE_ADDR, now=5))
+        node = self.gw.nodes[1]
+        self.assertEqual((node.received, node.last_seen), (1, 1))
+
+    def test_retried_boot_packet_after_pong_is_not_a_reboot(self):
+        data = telemetry(flags=p.FLAG_FIRST_SINCE_BOOT)
+        self.gw.handle(data, NODE_ADDR, now=1)
+        self.gw.handle(datagram(p.MsgType.PONG, p.Ping(0), seq=1), NODE_ADDR, now=1.05)
+        self.assertIsNone(self.gw.handle(data, NODE_ADDR, now=1.1))
+        self.assertEqual((self.gw.nodes[1].reboots, self.gw.nodes[1].duplicates), (0, 1))
+
+    def test_delayed_first_telemetry_after_pong_does_not_reboot(self):
+        self.gw.handle(datagram(p.MsgType.PONG, p.Ping(0), seq=1), NODE_ADDR, now=1)
+        self.gw.handle(telemetry(flags=p.FLAG_FIRST_SINCE_BOOT), NODE_ADDR, now=1.1)
+        self.assertEqual((self.gw.nodes[1].reboots, self.gw.nodes[1].received), (0, 2))
+
+    def test_boot_retry_arrives_after_next_telemetry(self):
+        self.gw.handle(telemetry(seq=1, co2_ppm=800), NODE_ADDR, now=1)
+        self.gw.handle(telemetry(seq=0, flags=p.FLAG_FIRST_SINCE_BOOT, co2_ppm=600),
+                       NODE_ADDR, now=1.1)
+        node = self.gw.nodes[1]
+        self.assertEqual((node.reboots, node.lost, node.received), (0, 0, 2))
+        self.assertEqual(node.telemetry.co2_ppm, 800)
+
+    def test_reordering_across_sequence_wrap(self):
+        self.feed(2**32 - 2, 0, 2**32 - 1)
+        node = self.gw.nodes[1]
+        self.assertEqual((node.lost, node.recovered, node.reboots, node.last_seq), (0, 1, 0, 0))
+
+    def test_gap_tracking_storage_is_bounded(self):
+        node = self.feed(0, 10000000)
+        self.assertEqual(node.lost, 9999999)
+        self.assertLessEqual(len(node._seen), 256)
+        self.assertLessEqual(len(node._missing), 255)
+
+    def test_expired_history_does_not_fake_a_reboot(self):
+        node = self.feed(700, 1000)
+        self.assertIsNone(self.gw.handle(telemetry(seq=701), NODE_ADDR, now=2))
+        self.assertEqual((node.last_seq, node.reboots), (1000, 0))
+
+    def test_burst_loss_and_two_retries_deliver_once(self):
+        # Lose each fourth original, then each eighth first retry. Deliver
+        # the second retry, except one message for which all copies are lost.
+        # Repeated copies must not improve the denominator or enter fusion.
+        for seq in range(200):
+            data = telemetry(seq=seq)
+            for attempt, offset in enumerate((0, 0.1, 0.3)):
+                lost = seq == 37 or (attempt == 0 and seq % 4 == 0) or (attempt == 1 and seq % 8 == 0)
+                if not lost:
+                    self.gw.handle(data, NODE_ADDR, now=seq + offset)
+        node = self.gw.nodes[1]
+        self.assertEqual((node.received, node.lost, node.reboots), (199, 1, 0))
+        self.assertAlmostEqual(node.loss_pct, 0.5)
+        self.assertGreater(node.duplicates, 0)
+
+    def test_repair_after_intervening_pong(self):
+        self.feed(9)
+        self.gw.handle(datagram(p.MsgType.PONG, p.Ping(0), seq=11), NODE_ADDR, now=1)
+        self.gw.handle(telemetry(seq=10, co2_ppm=700), NODE_ADDR, now=1.1)
+        node = self.gw.nodes[1]
+        self.assertEqual((node.lost, node.recovered, node.last_seq), (0, 1, 11))
+        self.assertEqual(node.telemetry.co2_ppm, 700)
 
     def test_backwards_seq_is_reboot(self):
         node = self.feed(500, 501, 0, 1)
