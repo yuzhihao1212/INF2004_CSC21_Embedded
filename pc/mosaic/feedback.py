@@ -27,7 +27,7 @@ ACTIVITY = {
 AIR = {"UNKNOWN": "No reading", "NORMAL": "Fresh", "POOR_VENTILATION": "Stuffy"}
 COMFORT = {"UNKNOWN": "No reading", "COMFORTABLE": "Comfortable", "OUT_OF_RANGE": "Uncomfortable"}
 ZONE_ACTIVITY = {"NO_DATA": "No signal", "STILL": "Settled", "MOTION": "Moving around",
-                 "LECTURER": "Lecturer speaking", "TALKING": "Talking"}
+                 "LECTURER": "Lecturer speaking", "TALKING": "Talking", "LOUD": "Excessive noise"}
 ZONE_AIR = {"UNKNOWN": "No reading", "GOOD": "Fresh", "FAIR": "Getting stuffy", "POOR": "Stuffy"}
 SENSOR = {"ONLINE": "Working", "STALE": "Delayed", "OFFLINE": "Not connected"}
 MODE = {"LECTURE": "Lecture", "DISCUSSION": "Group work", "QUIET_WORK": "Quiet work"}
@@ -42,6 +42,11 @@ def activity_level(activity: str, mode: str) -> str:
     if activity == "FOCUSED_LECTURE" and mode == "QUIET_WORK":
         return HEADS_UP
     return FINE
+
+
+def loud_level(mode: str) -> str:
+    """Excessive noise: act now, except in group work where noise is expected."""
+    return HEADS_UP if mode == "DISCUSSION" else ACT_NOW
 
 
 def worst(*levels: str) -> str:
@@ -147,6 +152,32 @@ def _voice(reference: dict, names: dict[str, str]) -> dict:
             "lecturer_area": names.get(reference.get("zone"), reference.get("zone"))}
 
 
+def _loudness(zones: list[dict], names: dict[str, str]) -> dict:
+    """Excessive-noise setup per student area (the lecturer's area has none)."""
+    areas = []
+    for z in zones:
+        loud = z.get("loud")
+        if loud is None:
+            continue
+        level = loud.get("level_x16")
+        areas.append({"zone": z["zone"], "name": names[z["zone"]], "node_id": z["node_id"],
+                      "set": level is not None, "capturing": bool(loud.get("capturing")),
+                      "capture_left_s": (loud["capture_left_ms"] + 999) // 1000
+                                        if loud.get("capture_left_ms") is not None else None,
+                      "error": loud.get("error"), "online": z["status"] == "ONLINE",
+                      "level": level / 16 if level is not None else None})
+    done = sum(a["set"] for a in areas)
+    if any(a["capturing"] for a in areas):
+        state, text = "in_progress", "Listening… keep the sound steady next to the sensor."
+    elif areas and done == len(areas):
+        state, text = "done", "Set for every area. Noise above these levels shows as Excessive noise."
+    elif done:
+        state, text = "partial", "Set for some areas only. The others show Talking, never Excessive noise."
+    else:
+        state, text = "not_set_up", "Not set up. Noisy areas show as Talking."
+    return {"state": state, "text": text, "areas": areas}
+
+
 def describe(c: dict, nodes: list[dict], events: list[dict] = (), wall_ms: int = 0) -> dict:
     """Everything the page says about the room. `c` is present_classroom()
     output, `nodes` the dashboard's node list, `events` fusion state changes as
@@ -157,11 +188,14 @@ def describe(c: dict, nodes: list[dict], events: list[dict] = (), wall_ms: int =
     mode, activity, air, comfort = c["mode"], c["activity"], c["air"], c["comfort"]
     now_ms = c.get("now_ms", 0)
     sensors = _sensors(zones, names, bool(nodes))
-    talking = [names[z["zone"]] for z in zones if z["state"] == "TALKING"]
+    # An area over its loud level is also a talking area for these sentences.
+    talking = [names[z["zone"]] for z in zones if z["state"] in ("TALKING", "LOUD")]
     where = join([place(n) for n in talking]) or "some desks"
+    loud = [names[z["zone"]] for z in zones if z["state"] == "LOUD" and z["status"] != "OFFLINE"]
+    loud_where = join([place(n) for n in loud])
     # How long people have been talking: from the first area that started, not
     # from when the classroom state escalated to chatter.
-    talk_since = min([z.get("since_ms", now_ms) for z in zones if z["state"] == "TALKING"]
+    talk_since = min([z.get("since_ms", now_ms) for z in zones if z["state"] in ("TALKING", "LOUD")]
                      or [c.get("activity_since_ms", now_ms)])
     warming = any((n.get("telemetry") or {}).get("co2_warmup") for n in nodes if n["status"] != "offline")
 
@@ -178,6 +212,11 @@ def describe(c: dict, nodes: list[dict], events: list[dict] = (), wall_ms: int =
         "SUSTAINED_CHATTER": f"Talking in {where} for {duration(now_ms - talk_since)}.",
         "DISCUSSION": "Most groups are talking, as expected in group work.",
     }.get(activity, "")
+    sound_label = ACTIVITY.get(activity, activity)
+    if loud:
+        sound_level = worst(sound_level, loud_level(mode))
+        sound_label = "Excessive noise"
+        sound_why = (f"Louder than the set level in {loud_where}. " + sound_why).strip()
 
     # Air
     co2 = [(z["co2_ppm"], names[z["zone"]]) for z in zones if z.get("co2_ppm") is not None]
@@ -213,8 +252,8 @@ def describe(c: dict, nodes: list[dict], events: list[dict] = (), wall_ms: int =
         comfort_why = reading if comfort == "COMFORTABLE" else "No temperature sensor is reporting."
 
     tiles = [
-        {"id": "sound", "title": "Sound", "label": ACTIVITY.get(activity, activity), "level": sound_level,
-         "why": sound_why, "tech": activity},
+        {"id": "sound", "title": "Sound", "label": sound_label, "level": sound_level,
+         "why": sound_why, "tech": activity + (" + LOUD" if loud else "")},
         {"id": "air", "title": "Air", "label": air_label, "level": air_level, "why": air_why,
          "detail": f"Highest CO₂ {peak[0]} ppm" if peak else "", "tech": air},
         {"id": "comfort", "title": "Comfort", "label": comfort_label, "level": comfort_level,
@@ -228,24 +267,28 @@ def describe(c: dict, nodes: list[dict], events: list[dict] = (), wall_ms: int =
                 f"It's {join(reasons)}." if comfort == "OUT_OF_RANGE" and reasons else "")]
 
     return {
-        "headline": ACTIVITY.get(activity, activity),
+        "headline": sound_label,
         "summary": " ".join(s for s in summary if s),
         "level": worst(sound_level, air_level, comfort_level, sensors["level"]),
         "tech": {"activity": activity, "air": air, "comfort": comfort, "mode": mode},
         "mode": {"value": mode, "label": MODE.get(mode, mode)},
         "sensors": sensors,
         "tiles": tiles,
-        "zones": [_zone(z, names, now_ms) for z in zones],
+        "zones": [_zone(z, names, now_ms, mode) for z in zones],
         "voice": _voice(c.get("reference"), names),
+        "loudness": _loudness(zones, names),
         "timeline": [_timeline(e, mode) for e in reversed(events)],
-        "alerts_wanted": _alerts(activity, air, mode, where, sensors, peak, names),
+        "alerts_wanted": _alerts(activity, air, mode, where, sensors, peak, names, loud_where),
     }
 
 
-def _zone(z: dict, names: dict[str, str], now_ms: int) -> dict:
+def _zone(z: dict, names: dict[str, str], now_ms: int, mode: str = "LECTURE") -> dict:
     state, status = z["state"], z["status"]
     if status == "OFFLINE":
         label, level, why = "Not connected", "none", "Check that this sensor is powered."
+    elif state == "LOUD":
+        label, level = "Excessive noise", loud_level(mode)
+        why = f"Louder than the set level for {duration(now_ms - z.get('since_ms', now_ms))}."
     elif state == "TALKING":
         label, level, why = "Talking", HEADS_UP, f"For {duration(now_ms - z.get('since_ms', now_ms))}."
     elif state == "NO_DATA":
@@ -297,9 +340,12 @@ def _timeline(e: dict, mode: str) -> dict:
 
 
 def _alerts(activity: str, air: str, mode: str, where: str, sensors: dict,
-            peak: Optional[tuple], names: dict) -> dict[str, dict]:
+            peak: Optional[tuple], names: dict, loud_where: str = "") -> dict[str, dict]:
     """Act-now conditions, keyed so the same situation keeps one alert."""
     wanted = {}
+    if loud_where and loud_level(mode) == ACT_NOW:
+        wanted["loud"] = {"message": f"Excessive noise in {loud_where}.",
+                          "action": "Ask the class to lower the volume."}
     chatter = activity == "SUSTAINED_CHATTER" and mode != "DISCUSSION"
     stuffy = air == "POOR_VENTILATION" and activity != "EMPTY"
     if chatter and stuffy:

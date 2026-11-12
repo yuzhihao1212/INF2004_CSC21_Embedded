@@ -370,6 +370,27 @@ main.wrap { padding-top: var(--space-6); padding-bottom: var(--space-10); }  /* 
 .steps { margin: var(--space-3) 0 0; padding-left: 1.3em; display: grid; gap: var(--space-1); }
 .done-line { display: flex; align-items: center; gap: var(--space-2); font-size: 18px; }
 
+/* Noise limit: card rows and the dialog's live meter (sound tint, like other sound lines) */
+.loud-list { list-style: none; padding: 0; margin: 0 0 var(--space-2); }
+.loud-item { display: flex; align-items: center; gap: var(--space-3); padding: var(--space-2) 0; border-top: 1px solid var(--border); font-size: 15px; }
+.loud-item:first-child { border-top: 0; }
+.loud-item > :first-child { flex: 1; }
+.loud-item .tech { font-size: 13px; color: var(--muted); }
+.loud-word { font-weight: 600; font-size: 14px; color: var(--muted); }
+.loud-word[data-set="yes"] { color: var(--ok-text); }
+.lstep-kicker { margin: 0; font-size: 14px; color: var(--muted); }
+.dialog > [data-lstep] > * + * { margin-top: var(--space-3); }
+.lstep-title { margin: 0; font-size: 20px; }
+.meter-row { display: flex; align-items: center; gap: var(--space-3); }
+.meter-label { font-size: 14px; color: var(--muted); flex: none; }
+.meter { flex: 1; height: 12px; border-radius: 999px; background: var(--border); position: relative; }
+.meter::before { content: ""; position: absolute; inset: 0 auto 0 0; width: var(--p, 0%); border-radius: inherit; background: var(--sense-sound); transition: width .4s ease; }
+.meter[data-top="yes"]::before { background: var(--warn-dot); }
+.meter-limit { position: absolute; top: -5px; bottom: -5px; width: 3px; margin-left: -1px; border-radius: 2px; background: var(--text); }
+.meter-word { margin: 0; font-weight: 600; font-size: 15px; color: var(--ok-text); }
+.meter-word[data-level="warn"] { color: var(--warn-text); }
+.btn[aria-disabled="true"] { opacity: .7; cursor: progress; }
+
 /* Motion */
 @keyframes pulse { 50% { opacity: .35; } }
 @keyframes flow { to { stroke-dashoffset: -10; } }
@@ -379,7 +400,8 @@ main.wrap { padding-top: var(--space-6); padding-bottom: var(--space-10); }  /* 
 
 /* Windows high contrast: keep the shapes and outlines */
 @media (forced-colors: active) {
-  .live-dot, .chip::before, .sw, .bar::after, .sim-bar i[data-done], .sim-bar i[data-now]::after { forced-color-adjust: none; background: CanvasText; }
+  .live-dot, .chip::before, .sw, .bar::after, .sim-bar i[data-done], .sim-bar i[data-now]::after, .meter::before, .meter-limit { forced-color-adjust: none; background: CanvasText; }
+  .meter { border: 1px solid CanvasText; }
   .series-line { stroke: CanvasText; }
   .status, .chip, .pill, .plan-zone, .plan-chip, .tile, .hero, .banner { border: 1px solid CanvasText; }
   .pages a[aria-current="page"] { outline: 2px solid Highlight; }

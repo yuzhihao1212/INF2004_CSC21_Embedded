@@ -301,6 +301,17 @@
         <p class="error" id="voice-error" role="alert" hidden></p>
       </section>
 
+      <section class="card" aria-labelledby="h-loud">
+        <h2 id="h-loud">Noise limit</h2>
+        <p id="loud-text" class="hint"></p>
+        <ul class="loud-list" id="loud-zones"></ul>
+        <div class="actions">
+          <button class="btn primary" id="loud-open" type="button">Set noise limit</button>
+          <button class="btn" id="loud-clear" type="button">Remove all</button>
+        </div>
+        <p class="error" id="loud-error" role="alert" hidden></p>
+      </section>
+
       <section class="card" aria-labelledby="h-interval">
         <h2 id="h-interval">How often sensors report</h2>
         <p class="hint">More often reacts faster; every second is recommended.</p>
@@ -350,6 +361,42 @@
     <button class="btn" type="button" id="dialog-cancel">Cancel</button>
     <button class="btn primary" type="button" id="dialog-start">Start listening</button>
     <button class="btn primary" type="button" id="dialog-close" hidden>Close</button>
+  </div>
+</dialog>
+
+<dialog class="dialog" id="loud-dialog" aria-labelledby="loud-title">
+  <h2 id="loud-title">Set the noise limit</h2>
+  <div data-lstep="intro">
+    <p>This tells the system how loud is too loud in each area. Above the limit, the area shows <strong>Excessive noise</strong> instead of Talking.</p>
+    <ol class="steps">
+      <li>Open a sound-meter app on a phone.</li>
+      <li>Pick one steady sound you can play at <span data-target-db></span> dB, such as music or a recording of a busy room.</li>
+      <li>Go to each area's sensor in turn. Each one takes about 10 seconds.</li>
+    </ol>
+  </div>
+  <div data-lstep="area" hidden>
+    <p class="lstep-kicker" id="loud-step"></p>
+    <h3 class="lstep-title" id="loud-area-title">Make the sound now</h3>
+    <p id="loud-how"></p>
+    <div class="meter-row">
+      <span class="meter-label">Sensor hears</span>
+      <span class="meter" id="loud-meter" role="meter" aria-label="Sound level at the sensor" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><span class="meter-limit" id="loud-limit" hidden></span></span>
+    </div>
+    <p class="meter-word" id="loud-word" role="status"></p>
+    <p class="tech" id="loud-raw"></p>
+  </div>
+  <div data-lstep="done" hidden>
+    <p class="done-line"><svg class="icon lvl-fine" aria-hidden="true"><use href="#i-fine"/></svg><strong>Done.</strong> <span id="loud-done-text"></span></p>
+  </div>
+  <p class="error" id="loud-dialog-error" role="alert" hidden></p>
+  <div class="actions">
+    <button class="btn" type="button" id="loud-cancel">Cancel</button>
+    <button class="btn" type="button" id="loud-skip" hidden>Skip this area</button>
+    <button class="btn" type="button" id="loud-again" hidden>Capture again</button>
+    <button class="btn primary" type="button" id="loud-start">Start</button>
+    <button class="btn primary" type="button" id="loud-capture" hidden>Capture</button>
+    <button class="btn primary" type="button" id="loud-next" hidden>Next area</button>
+    <button class="btn primary" type="button" id="loud-close" hidden>Close</button>
   </div>
 </dialog>
 

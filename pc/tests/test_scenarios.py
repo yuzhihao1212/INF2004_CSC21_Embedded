@@ -11,7 +11,7 @@ from itertools import accumulate
 
 from mosaic import protocol as p
 from mosaic import scenarios
-from mosaic.fusion import FusionEngine
+from mosaic.fusion import FusionConfig, FusionEngine
 from mosaic.simulator import Simulator
 
 LECTURE = ("FOCUSED_LECTURE", "NORMAL", "COMFORTABLE")
@@ -35,8 +35,8 @@ EXPECTED = {
         ("QUIET", "NORMAL", "COMFORTABLE"), ("QUIET", "NORMAL", "COMFORTABLE")],
     ("demo", p.Mode.LECTURE): [
         ("EMPTY", "NORMAL", "COMFORTABLE"), LECTURE,
-        ("SUSTAINED_CHATTER", "NORMAL", "COMFORTABLE"), LECTURE,
-        ("FOCUSED_LECTURE", "POOR_VENTILATION", "COMFORTABLE"), LECTURE,
+        ("SUSTAINED_CHATTER", "NORMAL", "COMFORTABLE"), ("SUSTAINED_CHATTER", "NORMAL", "COMFORTABLE"),
+        LECTURE, ("FOCUSED_LECTURE", "POOR_VENTILATION", "COMFORTABLE"), LECTURE,
         ("FOCUSED_LECTURE", "NORMAL", "OUT_OF_RANGE"), LECTURE],
 }
 
@@ -50,6 +50,11 @@ EXPECTED_ZONES = {
     # Speech at A remains attributed to the lecturer, even during group work.
     'discussion': [{'A': 'LECTURER', 'C': 'STILL'}, {'A': 'LECTURER', 'C': 'TALKING'},
                    {'A': 'LECTURER', 'C': 'STILL'}],
+    # Loud levels are set for B-D in every run: only the rowdy phase is LOUD.
+    'demo': [{'C': 'STILL'}, {'A': 'LECTURER', 'B': 'STILL', 'C': 'STILL'},
+             {'B': 'STILL', 'C': 'TALKING', 'D': 'TALKING'},
+             {'A': 'LECTURER', 'B': 'STILL', 'C': 'LOUD', 'D': 'LOUD'},
+             {'C': 'STILL', 'D': 'STILL'}, {}, {}, {}, {}],
 }
 
 
@@ -59,7 +64,11 @@ def play(scenario: scenarios.Scenario, mode: p.Mode, seed: int, *, aligned=False
     calibrate defaults to True only for the reference scenario."""
     sim = Simulator(nodes=4, seed=seed, scenario=scenario, aligned=aligned,
                     receive_jitter_s=0 if aligned else 0.08)
-    engine = FusionEngine()
+    config = FusionConfig()
+    # As if each student node's loud level had been captured: no other phase
+    # may reach it (talking, lecture bleed), so every scenario checks that too.
+    config.loud_levels_x16 = scenarios.sim_loud_levels(config.zones, config.reference_zone)
+    engine = FusionEngine(config)
     if calibrate is None:
         calibrate = scenario is scenarios.SCENARIOS["reference"]
     if calibrate:
@@ -78,6 +87,11 @@ def play(scenario: scenarios.Scenario, mode: p.Mode, seed: int, *, aligned=False
             s = engine.state()
             ends.append((s["activity"], s["air"], s["comfort"]))
             name = next(name for name, value in scenarios.SCENARIOS.items() if value is scenario)
+            actual = {z['zone']: z['state'] for z in s['zones']}
+            wanted_loud = {zone for zone, state in EXPECTED_ZONES.get(name, {}) and
+                           EXPECTED_ZONES[name][boundaries[step]].items() if state == 'LOUD'}
+            assert {zone for zone, state in actual.items() if state == 'LOUD'} == wanted_loud, (
+                name, boundaries[step], actual)
             if name in EXPECTED_ZONES:
                 actual = {z['zone']: z['state'] for z in s['zones']}
                 for zone, expected in EXPECTED_ZONES[name][boundaries[step]].items():
