@@ -51,10 +51,11 @@ engine name in brackets, so we can map the screen to the statechart in the tribu
 | `DISCUSSION` | Group discussion | "Most groups are talking, as expected in group work." |
 | Air `NORMAL` / `POOR_VENTILATION` / `UNKNOWN` | Fresh / Stuffy / Sensor warming up | "Highest near the back left." / "Ready in about 3 minutes." |
 | Comfort `COMFORTABLE` / `OUT_OF_RANGE` / `UNKNOWN` | Comfortable / Too warm, Too cold, Too humid, Too dry / No reading | Direction comes from which limit was crossed. |
-| Zone `LECTURER` / `TALKING` / `MOTION` / `STILL` / `NO_DATA` | Lecturer speaking / Talking / Moving around / Settled / No signal | — |
+| Zone `LECTURER` / `TALKING` / `LOUD` / `MOTION` / `STILL` / `NO_DATA` | Lecturer speaking / Talking / Excessive noise / Moving around / Settled / No signal | `LOUD`: "Louder than the set level for 3 minutes." The Sound tile and headline also say Excessive noise while any area is `LOUD`. |
 | Node `ONLINE` / `STALE` / `OFFLINE` | Working / Delayed / Not connected | — |
 | Mode `LECTURE` / `DISCUSSION` / `QUIET_WORK` | Class type: Lecture / Group work / Quiet work | — |
 | Reference calibration | Voice setup | "Done" / "Not set up: the system tells lecturer and students apart by loudness only." |
+| Loud levels (`loud_levels_x16`) | Noise limit | "Set for every area" / "Not set up. Noisy areas show as Talking." |
 | Zone labels A–D | Lecturer's area, Front rows, Middle rows, Back rows | From `zone_layout` ([row, col], row 0 = front). A fifth sensor in the same row adds "door side" / "window side". |
 
 Words to avoid on the main view: node, ppm, dBm, RTT, packet, calibrate, reference,
@@ -65,12 +66,14 @@ confidence %, fusion, stale. They may appear on the *Sensors* page and with tech
 | Level | Look | Used for | Behaviour |
 |---|---|---|---|
 | Fine | ✓ circle, neutral | Normal states | No banner |
-| Heads-up | ▲ triangle, amber | Getting noisy, Too warm/cold/humid/dry, a sensor delayed | Shown in its tile; no banner |
-| Act now | ■ square with "!", red | Ongoing chatter (Lecture or Quiet work), Stuffy air, fewer than half the sensors working | Banner with one suggested action; entered in *What happened*; screen-reader announcement |
+| Heads-up | ▲ triangle, amber | Getting noisy, Too warm/cold/humid/dry, a sensor delayed, Excessive noise in Group work | Shown in its tile; no banner |
+| Act now | ■ square with "!", red | Ongoing chatter or Excessive noise (Lecture or Quiet work), Stuffy air, fewer than half the sensors working | Banner with one suggested action; entered in *What happened*; screen-reader announcement |
 
 Severity depends on class type: chatter is *Act now* in Lecture and Quiet work, while
 talking in Group work is *Fine*. In Quiet work, "Getting noisy" is a heads-up from the
-first talking zone.
+first talking zone. Excessive noise is *Act now* ("Excessive noise in the back rows. Ask the
+class to lower the volume.") except in Group work, where it is a heads-up: noise is
+expected there, but a limit still says when it's too much.
 
 Combined messages (fusion that a single sensor can't give):
 - Stuffy + Room is empty → heads-up only: "Air is stuffy. Air the room before the next class."
@@ -91,6 +94,15 @@ Rules for alerts:
 - **Voice setup** (was Calibrate) is a short guided step: 1. "Ask only the lecturer to speak
   for about 30 seconds" → 2. a progress bar per area → 3. "Done ✓". There is **Cancel** at
   every step, and **Start over** (was Reset) asks for confirmation.
+- **Noise limit** is a guided step like voice setup: an intro (open a sound-meter app, pick
+  one steady sound at the target level), then one area at a time: "Area 1 of 3 · Front
+  rows", which sensor to stand at, a live *Sensor hears* meter, **Capture** with a
+  5-second countdown, then "Saved" with **Next area** or **Capture again**. Any area can be
+  skipped and keeps showing Talking. The meter says when a sensor sends no sound, when the
+  sound is too quiet, and when it nears the top of what the microphone can read (AC RMS of
+  a 12-bit ADC can't pass about 2048 counts). A line on the meter marks the saved limit.
+  **Remove all** asks for confirmation. The 70 dB target is a placeholder until a cited
+  classroom noise limit replaces it.
 - Every button says what it does ("Set up voice detection", not "Calibrate").
 
 ## HCI principles applied (Nielsen's heuristics)
