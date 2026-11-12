@@ -712,6 +712,7 @@
       progressItems($("#dialog-zones"), v.zones);
       if (listening && v.state === "done") showStep("done");
     }
+    renderLoud(f);
   }
 
   function showStep(step) {
@@ -760,6 +761,171 @@
       announcer.textContent = "Voice setup deleted.";
       poll(true);
     } catch (e) { error.textContent = e.message; error.hidden = false; }
+  });
+
+  /* ---- Setup: noise limit (excessive noise), one area at a time ---- */
+  // Placeholder target: find a cited classroom noise limit before the report.
+  const TARGET_DB = 70;
+  // AC RMS of a 12-bit ADC can't pass about 2048 counts; a sine at full
+  // scale is about 1448. Above MIC_NEAR_TOP the reading may be clipping.
+  const MIC_TOP = 2048, MIC_NEAR_TOP = 1400, TOO_QUIET = 4;
+  const loudDialog = $("#loud-dialog");
+  $$("[data-target-db]").forEach((el) => { el.textContent = TARGET_DB; });
+  let loudOpener = null;
+  let loud = null;  // {areas: [zone, ...], i, phase: intro|ready|capturing|saved|done, started, seen}
+
+  const loudArea = (zone) => {
+    const f = fb();
+    return f && f.loudness.areas.find((a) => a.zone === zone);
+  };
+  const meterPct = (rms) => Math.round(100 * Math.min(1, Math.log1p(rms) / Math.log1p(MIC_TOP)));
+
+  function renderLoud(f) {
+    const l = f.loudness;
+    $("#loud-text").textContent = l.text;
+    $("#loud-zones").replaceChildren(...l.areas.map((a) => {
+      const li = make("li", "loud-item");
+      const tag = make("span", "loud-word", a.capturing ? "Listening…" : a.set ? "Set" : "Not set");
+      tag.dataset.set = a.set ? "yes" : "no";
+      const raw = make("span", "tech", a.level != null ? `limit ${a.level.toFixed(1)} RMS` : "");
+      li.append(make("span", "", a.name), raw, tag);
+      return li;
+    }));
+    $("#loud-open").textContent = l.state === "done" ? "Set again" : "Set noise limit";
+    $("#loud-clear").hidden = !l.areas.some((a) => a.set);
+    if (loudDialog.open && loud && loud.phase !== "intro" && loud.phase !== "done") renderLoudStep();
+  }
+
+  function loudButtons(step) {
+    const p = loud ? loud.phase : "";
+    $("#loud-start").hidden = step !== "intro";
+    $("#loud-capture").hidden = step !== "area" || p === "saved";
+    $("#loud-next").hidden = step !== "area" || p !== "saved";
+    $("#loud-again").hidden = step !== "area" || p !== "saved";
+    $("#loud-skip").hidden = step !== "area" || p === "saved";
+    $("#loud-close").hidden = step !== "done";
+    $("#loud-cancel").hidden = step === "done";
+    $("#loud-cancel").textContent = step === "area" ? "Close" : "Cancel";
+  }
+  function showLoudStep(step) {
+    $$("[data-lstep]", loudDialog).forEach((s) => { s.hidden = s.dataset.lstep !== step; });
+    loudButtons(step);
+  }
+
+  function renderLoudStep() {
+    const a = loudArea(loud.areas[loud.i]);
+    if (!a) return;
+    const node = (state.nodes || []).find((n) => n.id === a.node_id);
+    const audio = node && node.status !== "offline" && node.telemetry && node.telemetry.audio;
+    const rms = audio && typeof audio.rms === "number" ? audio.rms : null;
+    const err = $("#loud-dialog-error");
+
+    if (loud.phase === "capturing") {
+      if (a.capturing) loud.seen = true;
+      if (!a.capturing && (loud.seen || Date.now() - loud.started > 7000)) {
+        if (a.error) {
+          loud.phase = "ready";
+          err.textContent = `Couldn't set it: ${a.error} Try again.`;
+          err.hidden = false;
+        } else {
+          loud.phase = "saved";
+          announcer.textContent = `Noise limit saved for the ${a.name.toLowerCase()}.`;
+        }
+      }
+    }
+
+    const place = a.name.charAt(0).toLowerCase() + a.name.slice(1);
+    $("#loud-step").textContent = `Area ${loud.i + 1} of ${loud.areas.length} · ${a.name}`;
+    $("#loud-area-title").textContent = loud.phase === "saved" ? "Saved" : "Make the sound now";
+    $("#loud-how").textContent = loud.phase === "saved"
+      ? `Above this level, the ${place} show Excessive noise. You can stop the sound.`
+      : `Stand by the ${place} sensor (sensor ${a.node_id}). Hold the phone next to it, keep the meter at ${TARGET_DB} dB, then press Capture.`;
+
+    const meter = $("#loud-meter");
+    const pct = rms == null ? 0 : meterPct(rms);
+    meter.style.setProperty("--p", `${pct}%`);
+    meter.setAttribute("aria-valuenow", String(pct));
+    meter.dataset.top = rms != null && rms >= MIC_NEAR_TOP ? "yes" : "no";
+    const limit = $("#loud-limit");
+    limit.hidden = a.level == null;
+    if (a.level != null) limit.style.left = `${meterPct(a.level)}%`;
+    const word = $("#loud-word");
+    const missing = !a.online || rms == null;
+    word.textContent = missing ? "This sensor isn't sending sound readings."
+      : rms >= MIC_NEAR_TOP ? "Close to the most this microphone can read. Move the phone back a little."
+      : rms < TOO_QUIET ? "Too quiet. Turn the sound up."
+      : loud.phase === "saved" ? "The line marks the saved limit."
+      : "Hearing it.";
+    word.dataset.level = missing || rms >= MIC_NEAR_TOP || rms < TOO_QUIET ? "warn" : "ok";
+    $("#loud-raw").textContent = `now ${rms == null ? "—" : rms.toFixed(1)} RMS (ADC counts)` +
+      (a.level != null ? ` · limit ${a.level.toFixed(1)}` : "");
+
+    const cap = $("#loud-capture");
+    cap.textContent = loud.phase === "capturing" ? `Listening… ${a.capture_left_s ?? 5} s` : "Capture";
+    cap.setAttribute("aria-disabled", loud.phase === "capturing" ? "true" : "false");
+    loudButtons("area");
+  }
+
+  function loudGo(i) {
+    $("#loud-dialog-error").hidden = true;
+    if (i >= loud.areas.length) {
+      loud.phase = "done";
+      const f = fb();
+      $("#loud-done-text").textContent = f && f.loudness.areas.every((a) => a.set)
+        ? "Every area has a noise limit." : "Areas you skipped keep showing Talking.";
+      showLoudStep("done");
+      $("#loud-close").focus();
+      return;
+    }
+    loud.i = i;
+    loud.phase = "ready";
+    showLoudStep("area");
+    renderLoudStep();
+    $("#loud-capture").focus();
+  }
+
+  $("#loud-open").addEventListener("click", (e) => {
+    const f = fb();
+    if (!f) return;
+    loudOpener = e.currentTarget;
+    loud = { areas: f.loudness.areas.map((a) => a.zone), i: 0, phase: "intro" };
+    $("#loud-dialog-error").hidden = true;
+    showLoudStep("intro");
+    loudDialog.showModal();
+    $("#loud-start").focus();
+  });
+  $("#loud-start").addEventListener("click", () => loudGo(0));
+  $("#loud-skip").addEventListener("click", () => loudGo(loud.i + 1));
+  $("#loud-next").addEventListener("click", () => loudGo(loud.i + 1));
+  $("#loud-again").addEventListener("click", () => { loud.phase = "ready"; renderLoudStep(); $("#loud-capture").focus(); });
+  $("#loud-capture").addEventListener("click", async () => {
+    if (loud.phase === "capturing") return;
+    const err = $("#loud-dialog-error");
+    err.hidden = true;
+    try {
+      await post("/api/loudness/capture", { zone: loud.areas[loud.i] });
+      Object.assign(loud, { phase: "capturing", started: Date.now(), seen: false });
+      announcer.textContent = "Listening for 5 seconds. Keep the sound steady.";
+      renderLoudStep();
+      poll(true);
+    } catch (e) { err.textContent = e.message; err.hidden = false; }
+  });
+  $("#loud-cancel").addEventListener("click", () => loudDialog.close());
+  $("#loud-close").addEventListener("click", () => loudDialog.close());
+  loudDialog.addEventListener("close", () => { loud = null; if (loudOpener) loudOpener.focus(); poll(true); });
+
+  $("#loud-clear").addEventListener("click", async () => {
+    if (!window.confirm("Remove the noise limit from every area? Noisy areas will show Talking until you set it again.")) return;
+    const error = $("#loud-error");
+    error.hidden = true;
+    const f = fb();
+    const set = f ? f.loudness.areas.filter((a) => a.set) : [];
+    const results = await Promise.allSettled(set.map((a) => post("/api/loudness/clear", { zone: a.zone })));
+    if (results.some((r) => r.status === "rejected")) {
+      error.textContent = "Some areas couldn't be cleared. Try again.";
+      error.hidden = false;
+    } else announcer.textContent = "Noise limits removed.";
+    poll(true);
   });
 
   let intervalBusy = false;

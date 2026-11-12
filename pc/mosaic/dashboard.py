@@ -16,6 +16,10 @@ fusion engine's classroom states under "classroom", and their plain-language
 description, severity and alerts under "feedback" and "alerts" (feedback.py).
 With --simulate, "simulation" names the scenario and the phase being played.
 POST to /api/alerts/<id>/hide to keep an alert off the banner for 10 minutes.
+Excessive noise: hold a steady sound at the target level next to a student
+area's sensor and POST {"zone": "B"} to /api/loudness/capture; that sensor's
+mean level over the next 5 s becomes the area's loud level. POST the same to
+/api/loudness/clear to remove it. --loud-levels FILE keeps them across restarts.
 The CO2 bands are display colours only; fusion has its own thresholds.
 Standard library only, like the gateway.
 """
@@ -58,8 +62,13 @@ _CONTENT_TYPES = {".html": "text/html; charset=utf-8", ".css": "text/css; charse
 class Dashboard:
     """Keeps a short history per node and builds the JSON the page shows."""
 
-    def __init__(self, server: GatewayServer, history_s: float = HISTORY_S) -> None:
+    def __init__(self, server: GatewayServer, history_s: float = HISTORY_S,
+                 loud_levels_path: Optional[Path] = None) -> None:
         self.server = server
+        self.loud_levels_path = loud_levels_path
+        self._saved_loud: dict[str, int] = {}
+        if loud_levels_path and server.fusion:
+            self._saved_loud = load_loud_levels(loud_levels_path, server.fusion)
         self.history_s = history_s
         # node_id -> [wall_ms, temp_c, humidity_pct, co2_ppm, pir_pct]; None = invalid
         self.history: dict[int, deque[list]] = {}
@@ -121,7 +130,24 @@ class Dashboard:
                    "new": e.new} for e in fusion.events if e.region in ("activity", "air", "comfort", "mode")]
         feedback = describe(classroom, nodes, events, wall_ms)
         self.alerts.update(feedback.pop("alerts_wanted"), wall_ms)
+        self._save_loud_levels()
         return classroom, feedback
+
+    def _save_loud_levels(self) -> None:
+        """Write the loud levels when a capture or clear changed them. Lock held."""
+        levels = self.server.fusion.config.loud_levels_x16
+        if levels == self._saved_loud:
+            return
+        for zone in sorted(set(levels) | set(self._saved_loud)):
+            if levels.get(zone) != self._saved_loud.get(zone):
+                self.server._log("loudness", time.monotonic(), zone=zone, action="set",
+                                 level_x16=levels.get(zone))
+        self._saved_loud = dict(levels)
+        if self.loud_levels_path:
+            try:
+                self.loud_levels_path.write_text(json.dumps({"version": 1, "levels_x16": levels}, indent=2) + "\n")
+            except OSError as e:
+                print(f"Could not save loud levels to {self.loud_levels_path}: {e}", file=sys.stderr)
 
     def _record(self, header: p.Header, t: p.Telemetry, now: float) -> None:
         v = t.valid_flags
@@ -197,7 +223,7 @@ def _telemetry(t: p.Telemetry) -> dict:
     if t.latest_audio:
         w = t.latest_audio
         audio = {"class": w.audio_class.name.lower(), "confidence": w.confidence_pct,
-                 "probs": list(w.prob_pct)}
+                 "probs": list(w.prob_pct), "rms": w.rms_x16 / 16}  # AC RMS, ADC counts
     return {
         "temperature_c": round(t.temperature_c, 1) if p.Valid.TEMP_HUM in v else None,
         "humidity_pct": round(t.humidity_pct, 1) if p.Valid.TEMP_HUM in v else None,
@@ -232,6 +258,22 @@ def present_reference(reference: dict, fusion: FusionEngine) -> dict:
         status["threshold"] = ((math.isqrt(power * (100 + cfg.relative_margin_pct) ** 2) // 100
                                 + cfg.abs_margin_x16) / 16 if power is not None else None)
     return reference
+
+
+def load_loud_levels(path: Path, fusion: FusionEngine) -> dict[str, int]:
+    """Merge saved loud levels into fusion. A missing file is fine; levels for
+    zones that are no longer student zones are dropped."""
+    if not path.exists():
+        return {}
+    data = json.loads(path.read_text())
+    if not isinstance(data, dict) or data.get("version") != 1 or not isinstance(data.get("levels_x16"), dict):
+        raise ValueError(f"{path}: expected {{\"version\": 1, \"levels_x16\": {{...}}}}")
+    cfg = fusion.config
+    students = set(cfg.zones.values()) - {cfg.reference_zone}
+    for zone, level in data["levels_x16"].items():
+        if zone in students and type(level) is int and 1 <= level <= 65535:
+            cfg.loud_levels_x16[zone] = level
+    return dict(cfg.loud_levels_x16)
 
 
 def present_classroom(fusion: FusionEngine) -> dict:
@@ -300,6 +342,8 @@ def make_handler(dashboard: Dashboard) -> type[BaseHTTPRequestHandler]:
                 return self._post_mode()
             if path in ("/api/calibrate", "/api/calibrate/reset"):
                 return self._post_calibrate(reset=path.endswith("/reset"))
+            if path in ("/api/loudness/capture", "/api/loudness/clear"):
+                return self._post_loudness(clear=path.endswith("/clear"))
             hide = _HIDE_PATH.fullmatch(path)
             if hide:
                 with dashboard.server.lock:
@@ -362,6 +406,34 @@ def make_handler(dashboard: Dashboard) -> type[BaseHTTPRequestHandler]:
                     return self._json(404, {"error": "unknown student zone"})
                 self._json(202, {"reference": present_reference(fusion.reference.state(), fusion)})
 
+        def _post_loudness(self, *, clear: bool) -> None:
+            try:
+                length = int(self.headers.get("Content-Length") or 0)
+                if length > _MAX_BODY:
+                    return self._json(413, {"error": "request too large"})
+                if length < 0:
+                    raise ValueError("invalid request length")
+                body = json.loads(self.rfile.read(length) or b"null")
+                if not isinstance(body, dict) or set(body) != {"zone"} or not isinstance(body["zone"], str):
+                    raise ValueError('expected {"zone": "student zone"}')
+            except (ValueError, UnicodeError) as e:
+                return self._json(400, {"error": str(e)})
+            with dashboard.server.lock:
+                fusion = dashboard.server.fusion
+                if fusion is None:
+                    return self._json(409, {"error": "fusion is not running"})
+                try:
+                    if clear:
+                        fusion.clear_loud(body["zone"])
+                    else:
+                        fusion.capture_loud(time.monotonic(), body["zone"])
+                except KeyError:
+                    return self._json(404, {"error": "unknown student zone"})
+                dashboard.server._log("loudness", time.monotonic(), zone=body["zone"],
+                                      action="clear" if clear else "capture")
+                dashboard._save_loud_levels()
+                self._json(202, {"zone": body["zone"], "action": "clear" if clear else "capture"})
+
         def _json(self, code: int, value: dict) -> None:
             self._send(code, "application/json", json.dumps(value).encode())
 
@@ -403,6 +475,8 @@ def main(argv: Optional[list[str]] = None) -> None:
     parser.add_argument("--verbose", action="store_true", help="print every packet")
     parser.add_argument("--events", metavar="FILE", help="append JSON Lines evaluation events")
     add_fusion_argument(parser)
+    parser.add_argument("--loud-levels", metavar="FILE",
+                        help="load and save each area's excessive-noise level (JSON)")
     args = parser.parse_args(argv)
     if args.scenario and not args.simulate:
         args.simulate = 4  # Scenarios script zones A-D
@@ -414,7 +488,16 @@ def main(argv: Optional[list[str]] = None) -> None:
     server = GatewayServer((args.host, args.port), args.node_port, args.ping_interval,
                            csv_file=csv_file, out=quiet or sys.stdout, fusion=fusion,
                            fusion_out=sys.stdout, events_file=events_file)
-    dashboard = Dashboard(server)
+    try:
+        dashboard = Dashboard(server, loud_levels_path=Path(args.loud_levels) if args.loud_levels else None)
+    except (OSError, ValueError) as e:
+        server.close()
+        parser.error(f"--loud-levels: {e}")
+    if args.scenario and not fusion.config.loud_levels_x16:
+        # No sound meter in a simulation: use the scenario's stand-in levels.
+        fusion.config.loud_levels_x16.update(
+            scenarios.sim_loud_levels(fusion.config.zones, fusion.config.reference_zone))
+        dashboard._saved_loud = dict(fusion.config.loud_levels_x16)
     httpd = start_http(dashboard, args.http_host, args.http_port)
     url_host = "localhost" if args.http_host in ("127.0.0.1", "0.0.0.0") else args.http_host
     print(f"MOSAIC dashboard: http://{url_host}:{httpd.server_address[1]}  "

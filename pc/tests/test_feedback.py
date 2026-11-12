@@ -109,6 +109,45 @@ class Severity(unittest.TestCase):
         self.assertEqual(out["tiles"][2]["level"], fb.HEADS_UP)
 
 
+class ExcessiveNoise(unittest.TestCase):
+    ZONES = [zone("A", 1, "LECTURER", loud=None), zone("B", 2, loud={"level_x16": 2400}),
+             zone("C", 3, "LOUD", since_ms=100000, loud={"level_x16": 2400}),
+             zone("D", 4, "TALKING", loud={"level_x16": None})]
+
+    def test_act_now_with_an_alert_outside_group_work(self):
+        for mode in ("LECTURE", "QUIET_WORK"):
+            out = fb.describe(classroom("SUSTAINED_CHATTER", mode=mode, zones=self.ZONES), NODES)
+            self.assertEqual(out["headline"], "Excessive noise")
+            self.assertEqual(out["tiles"][0]["label"], "Excessive noise")
+            self.assertEqual(out["tiles"][0]["level"], fb.ACT_NOW)
+            self.assertTrue(out["tiles"][0]["why"].startswith("Louder than the set level in the middle rows."))
+            self.assertEqual(out["alerts_wanted"]["loud"]["message"], "Excessive noise in the middle rows.")
+            area = out["zones"][2]["activity"]
+            self.assertEqual((area["label"], area["level"], area["why"]),
+                             ("Excessive noise", fb.ACT_NOW, "Louder than the set level for 3 minutes."))
+
+    def test_heads_up_without_alert_in_group_work(self):
+        out = fb.describe(classroom("DISCUSSION", mode="DISCUSSION", zones=self.ZONES), NODES)
+        self.assertEqual(out["tiles"][0]["level"], fb.HEADS_UP)
+        self.assertNotIn("loud", out["alerts_wanted"])
+        self.assertEqual(out["zones"][2]["activity"]["level"], fb.HEADS_UP)
+
+    def test_loud_areas_count_as_talking_areas(self):
+        out = fb.describe(classroom("NOISE_RISING", zones=self.ZONES), NODES)
+        self.assertIn("Talking in the middle rows and the back rows.", out["tiles"][0]["why"])
+
+    def test_setup_summary(self):
+        out = fb.describe(classroom(zones=self.ZONES), NODES)["loudness"]
+        self.assertEqual(out["state"], "partial")
+        self.assertEqual([(a["zone"], a["set"], a["level"]) for a in out["areas"]],
+                         [("B", True, 150.0), ("C", True, 150.0), ("D", False, None)])
+        busy = [dict(z) for z in self.ZONES]
+        busy[3] = zone("D", 4, loud={"level_x16": None, "capturing": True, "capture_left_ms": 3200})
+        out = fb.describe(classroom(zones=busy), NODES)["loudness"]
+        self.assertEqual((out["state"], out["areas"][2]["capture_left_s"]), ("in_progress", 4))
+        self.assertEqual(fb.describe(classroom(), NODES)["loudness"]["state"], "not_set_up")
+
+
 class CombinedRules(unittest.TestCase):
     def test_chatter_and_stuffy_air_is_one_alert(self):
         out = fb.describe(classroom("SUSTAINED_CHATTER", "POOR_VENTILATION"), NODES)

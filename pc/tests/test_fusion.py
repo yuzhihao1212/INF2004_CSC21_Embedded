@@ -292,5 +292,124 @@ class UncalibratedLoudnessFallback(unittest.TestCase):
         self.assertIn(state["activity"], ("NOISE_RISING", "SUSTAINED_CHATTER"))
 
 
+
+class ExcessiveNoise(unittest.TestCase):
+    """LOUD: a student zone over its captured loud level for most of the
+    smoothing window. Levels are rms_x16 (Q12.4)."""
+    LEVEL = 2400
+
+    def setUp(self):
+        self.engine = FusionEngine(FusionConfig(loud_levels_x16={"B": self.LEVEL, "C": self.LEVEL,
+                                                                 "D": self.LEVEL}))
+        self.now = 0.0
+        self.history = []  # (second, zone C state) after each evaluation
+
+    def run_for(self, seconds, rear=None, front=1600, lecturer_probs=SPEECH):
+        """rear: callable(second) -> rms_x16 for zone C; other students quiet."""
+        for _ in range(int(seconds)):
+            self.now += 1.0
+            self.engine.add(1, telemetry(lecturer_probs, pir=25, rms_x16=front), self.now)
+            self.engine.add(2, telemetry(QUIET, rms_x16=160), self.now)
+            rms = rear(self.now) if callable(rear) else rear or 160
+            self.engine.add(3, telemetry(CHAT, rms_x16=rms), self.now)
+            self.engine.add(4, telemetry(QUIET, rms_x16=160), self.now)
+            self.engine.evaluate(self.now, set(ALL))
+            self.history.append((self.now, self.engine.state()["zones"][2]["state"]))
+        return {z["zone"]: z for z in self.engine.state()["zones"]}
+
+    def test_sustained_noise_over_the_level_is_loud(self):
+        zones = self.run_for(30, rear=3200)
+        self.assertEqual(zones["C"]["state"], "LOUD")
+        self.assertEqual(zones["C"]["loud"]["loud_pct"], 100)
+        self.assertEqual(zones["B"]["state"], "STILL")
+
+    def test_any_sound_class_counts(self):
+        self.engine.add(3, telemetry(BANG, rms_x16=3200), 1.0)
+        for second in range(2, 31):
+            self.engine.add(3, telemetry(BANG, rms_x16=3200), float(second))
+            self.engine.evaluate(float(second), {3})
+        self.assertEqual(self.engine.state()["zones"][2]["state"], "LOUD")
+
+    def test_talking_below_the_level_stays_talking(self):
+        zones = self.run_for(30, rear=1520)
+        self.assertEqual(zones["C"]["state"], "TALKING")
+
+    def test_a_short_bang_is_not_loud(self):
+        zones = self.run_for(30, rear=lambda t: 6000 if 10 <= t < 13 else 1520)
+        self.assertEqual(zones["C"]["state"], "TALKING")
+        self.assertNotIn("LOUD", {state for _, state in self.history})
+
+    def test_needs_the_enter_share_then_leaves_below_the_exit_share(self):
+        # 6 of 10 s over the level: 60 % < 70 % enter share.
+        zones = self.run_for(40, rear=lambda t: 3200 if int(t) % 10 < 6 else 1520)
+        self.assertNotEqual(zones["C"]["state"], "LOUD")
+        self.run_for(30, rear=3200)
+        # Already LOUD: 60 % still meets the 50 % exit share.
+        zones = self.run_for(40, rear=lambda t: 3200 if int(t) % 10 < 6 else 1520)
+        self.assertEqual(zones["C"]["state"], "LOUD")
+        zones = self.run_for(30, rear=1520)
+        self.assertEqual(zones["C"]["state"], "TALKING")
+
+    def test_waits_the_zone_dwell(self):
+        self.run_for(20, rear=1520)
+        start = self.now
+        self.run_for(30, rear=3200)
+        loud_at = next(t for t, state in self.history if state == "LOUD")
+        # Needs 70 % of the 10 s window, then the 10 s zone dwell.
+        self.assertGreaterEqual(loud_at - start, 10 + 7)
+
+    def test_lecturer_zone_is_never_loud(self):
+        engine = FusionEngine(FusionConfig(loud_levels_x16={"B": 100}))
+        with self.assertRaises(ValueError):
+            FusionConfig(loud_levels_x16={"Z": 100})
+        for second in range(1, 31):
+            engine.add(1, telemetry(SPEECH, rms_x16=9000), float(second))
+            engine.evaluate(float(second), {1})
+        zone_a = engine.state()["zones"][0]
+        self.assertEqual(zone_a["state"], "LECTURER")
+        self.assertIsNone(zone_a["loud"])
+        with self.assertRaises(KeyError):
+            engine.capture_loud(31.0, "A")
+
+    def test_no_level_keeps_today_behaviour(self):
+        self.engine = FusionEngine()
+        zones = self.run_for(30, rear=9000)
+        self.assertEqual(zones["C"]["state"], "TALKING")
+        self.assertIsNone(zones["C"]["loud"]["level_x16"])
+        self.assertIsNone(zones["C"]["loud"]["loud_pct"])
+
+    def test_capture_sets_the_mean_level(self):
+        self.engine = FusionEngine()
+        self.run_for(5, rear=1000)
+        self.engine.capture_loud(self.now, "C")
+        self.assertTrue(self.engine.state()["zones"][2]["loud"]["capturing"])
+        self.run_for(6, rear=lambda t: 2000 if int(t) % 2 else 2401)
+        loud = self.engine.state()["zones"][2]["loud"]
+        self.assertFalse(loud["capturing"])
+        self.assertIsNone(loud["error"])
+        # Windows within the 5 s capture only: half 2000, half 2401 (two per TELEMETRY).
+        self.assertIn(loud["level_x16"], (2160, 2201, 2241))
+        self.assertEqual(self.engine.config.loud_levels_x16["C"], loud["level_x16"])
+
+    def test_capture_fails_when_quiet_or_offline(self):
+        self.engine = FusionEngine()
+        self.engine.capture_loud(self.now, "C")
+        self.run_for(6, rear=40)
+        self.assertEqual(self.engine.state()["zones"][2]["loud"]["error"], "too quiet to be a loud level")
+        self.engine.capture_loud(self.now, "D")
+        for _ in range(6):
+            self.now += 1.0
+            self.engine.evaluate(self.now, {1, 2, 3})
+        loud = self.engine.state()["zones"][3]["loud"]
+        self.assertIn("not enough", loud["error"])
+        self.assertNotIn("D", self.engine.config.loud_levels_x16)
+
+    def test_clear(self):
+        self.engine.clear_loud("C")
+        self.assertNotIn("C", self.engine.config.loud_levels_x16)
+        with self.assertRaises(KeyError):
+            self.engine.clear_loud("A")
+
+
 if __name__ == "__main__":
     unittest.main()
