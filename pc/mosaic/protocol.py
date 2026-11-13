@@ -9,6 +9,10 @@ little-endian with no padding. The wire carries integers only; fractional
 values are scaled, and the field suffix says by how much (temperature_x10 is
 tenths of a degree). The dataclasses keep the wire integers and add float
 properties for display, since the PC has no fixed-point requirement.
+
+Sequence numbers identify new messages. Bounded TELEMETRY retry copies retain
+the same sequence, sample timestamp and payload; receivers must deduplicate.
+The version-2 packet layout is unchanged.
 """
 
 from __future__ import annotations

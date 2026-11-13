@@ -20,7 +20,7 @@
   };
   const CO2_LEVEL = { good: "Fresh", fair: "Getting stuffy", poor: "Stuffy", warmup: "Warming up", none: "—" };
   const DASHES = ["", "7 4", "2 4", "10 4 2 4"];  // Second cue besides colour
-  const LINK_LABELS = { rssi: "Wi-Fi signal", loss: "Readings lost", rtt: "Response time", age: "Last reading" };
+  const LINK_LABELS = { rssi: "Wi-Fi signal", loss: "Unrecovered message loss", rtt: "Round trip", age: "Last update" };
 
   const $ = (sel, root = document) => root.querySelector(sel);
   const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
@@ -644,8 +644,13 @@
     if (rssi && n.status !== "offline") meta.push(`${SIGNAL[bars]} signal`);
     if (n.status !== "online" && n.age_s != null) meta.push(`last reading ${Math.round(n.age_s)} s ago`);
     $(".nr-meta", row).textContent = meta.join(" · ");
-    $(".nr-link", row).textContent = [rssi ? `${rssi} dBm` : null, `${fmt(n.loss_pct, 1)}% lost`,
+    const linkLine = $(".nr-link", row);
+    linkLine.textContent = [rssi ? `${rssi} dBm` : null, `${fmt(n.loss_pct, 1)}% lost`,
       n.rtt_ms == null ? null : `${fmt(n.rtt_ms, 0)} ms`, n.age_s < 1.5 ? "now" : `${Math.round(n.age_s)} s ago`].filter(Boolean).join(" · ");
+    // Loss counts recovery by retries (gateway retry tracking), not raw Wi-Fi loss.
+    linkLine.title = `Unrecovered message loss: ${n.lost}; recovered late: ${n.recovered || 0}; ` +
+      `sequence gaps first detected: ${n.gaps_detected || 0}; duplicates: ${n.duplicates || 0}. ` +
+      "Retries can recover data; this is not raw Wi-Fi transmission loss.";
 
     setValue(row, "temp", t.temperature_c, 1);
     setValue(row, "hum", t.humidity_pct, 0);
