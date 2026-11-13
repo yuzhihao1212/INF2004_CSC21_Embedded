@@ -138,7 +138,7 @@ def _replay_headers(records):
         header = p.Header(p.MsgType[event['msg_type']], node, event['seq'],
                           event.get('sender_time_ms', 0), event.get('flags', 0))
         tracked = gateway.track_header(header, (event.get('source_ip', 'offline'), 0), event['monotonic_ms'] / 1000)
-        if header.msg_type == p.MsgType.TELEMETRY:
+        if header.msg_type == p.MsgType.TELEMETRY and event.get('accepted') is not False:
             matches[(node, header.seq, event.get('csv_pc_time'))].append({
                 'session': sid, 'time_ms': event['monotonic_ms'], 'boot': tracked.reboots,
                 'duplicate': tracked.duplicates > duplicates})
@@ -149,7 +149,7 @@ def _packet_totals(gateways):
     result = defaultdict(Counter)
     for gateway in gateways.values():
         for node, status in gateway.nodes.items():
-            for name in ('received', 'lost', 'duplicates', 'reboots'):
+            for name in ('received', 'lost', 'duplicates', 'reboots', 'recovered', 'gaps_detected'):
                 result[node][name] += getattr(status, name)
     return result
 
@@ -157,7 +157,7 @@ def _packet_totals(gateways):
 def _delivery(counts):
     received, lost, duplicates = (counts.get(k, 0) for k in ('received', 'lost', 'duplicates'))
     total = received + lost
-    unique = received - duplicates
+    unique = received  # Shared gateway tracker now counts unique messages only.
     return dict(counts, received=received, lost=lost, duplicates=duplicates, reboots=counts.get('reboots', 0),
                 delivery_pct=100 * received / total if total else None,
                 loss_pct=100 * lost / total if total else None,
@@ -387,7 +387,8 @@ def evaluate(csv_path, events_path=None, *, deadline_ms=400, expected_path=None)
     if not exact:
         notes.append('Loss is a TELEMETRY-only sequence estimate: unlogged PONG/ACK seqs may appear lost; use --events for exact tracking.')
         headers = [dict(event='datagram', session='csv', monotonic_ms=r['wall_ms'], node=r['node'],
-                        seq=r['seq'], flags=r['flags'] or 0, msg_type='TELEMETRY', csv_pc_time=r['pc_time']) for r in rows]
+                        seq=r['seq'], sender_time_ms=r['sender_time_ms'] or 0,
+                        flags=r['flags'] or 0, msg_type='TELEMETRY', csv_pc_time=r['pc_time']) for r in rows]
     gateways, matches = _replay_headers(headers)
     for row in rows:
         key = row['node'], row['seq'], row['pc_time']
@@ -473,9 +474,9 @@ def markdown(summary):
              f"Observed duration: {_fmt(summary['duration_s'])} s. Telemetry rows: {summary['overall']['telemetry_reports']}. Nodes: {len(summary['nodes'])}.",
              'Percentiles: ' + summary['percentile_method'] + '.', 'Sequence source: ' + summary['sequence_source'] + '.',
              '## Packet delivery',
-             _table(['Scope', 'Received', 'Missing', 'Duplicates', 'Reboots', 'Unique delivery %', 'Unique loss %', 'Gateway loss %'],
-                    [(name, m['packets']['received'], m['packets']['lost'], m['packets']['duplicates'], m['packets']['reboots'], m['packets']['unique_delivery_pct'], m['packets']['unique_loss_pct'], m['packets']['loss_pct']) for name, m in scopes]),
-             'Unique delivery/loss excludes duplicates. Gateway loss matches NodeState.loss_pct; its received count includes duplicates. Counters share the live sequence tracker.',
+             _table(['Scope', 'Received', 'Missing', 'Duplicates', 'Recovered', 'Gaps detected', 'Reboots', 'Unique delivery %', 'Unique loss %', 'Gateway loss %'],
+                    [(name, m['packets']['received'], m['packets']['lost'], m['packets']['duplicates'], m['packets'].get('recovered', 0), m['packets'].get('gaps_detected', 0), m['packets']['reboots'], m['packets']['unique_delivery_pct'], m['packets']['unique_loss_pct'], m['packets']['loss_pct']) for name, m in scopes]),
+             'Received and delivery/loss count unique messages, excluding duplicates. Counters share the live sequence tracker. Residual message loss after retry recovery is not raw Wi-Fi transmission loss.',
              '## Report timing', _table(['Scope', 'Intervals', 'Mean ms', 'Jitter p95−p50 ms'],
                     [(name, m['interval_ms']['n'], m['interval_ms']['mean'], m['interval_ms']['jitter_ms']) for name, m in scopes]),
              '## Processing time (report maxima)', _table(['Scope', 'Metric', 'p50 µs', 'p95 µs', 'p99 µs', 'Max µs'],
