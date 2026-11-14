@@ -80,13 +80,18 @@ void environment_apply_pir(environment_record_t *r, bool high, uint32_t now) {
     r->motion = high ? 1 : 0; r->pir_sample_ms = now; r->timestamp_ms = now;
     r->pir_status = SENSOR_OK; r->validity_flags |= ENV_PIR_VALID;
 }
+static bool expired(uint32_t now, uint32_t sample, uint32_t limit) {
+    uint32_t age = now - sample;
+    /* The upper half of the modular range denotes a future sample. */
+    return age < 0x80000000u && age > limit;
+}
 void environment_expire(environment_record_t *r, uint32_t now) {
     r->timestamp_ms = now;
-    if ((r->validity_flags & ENV_DHT_VALID) && (uint32_t)(now - r->dht_sample_ms) > 6000)
+    if ((r->validity_flags & ENV_DHT_VALID) && expired(now, r->dht_sample_ms, 6000))
         environment_apply_dht(r, SENSOR_STALE, 0, 0, now);
-    if ((r->validity_flags & ENV_CO2_VALID) && (uint32_t)(now - r->co2_sample_ms) > 5000)
+    if ((r->validity_flags & ENV_CO2_VALID) && expired(now, r->co2_sample_ms, 5000))
         environment_apply_co2(r, SENSOR_STALE, 0, now);
-    if ((r->validity_flags & ENV_PIR_VALID) && (uint32_t)(now - r->pir_sample_ms) > 1000) {
+    if ((r->validity_flags & ENV_PIR_VALID) && expired(now, r->pir_sample_ms, 1000)) {
         r->validity_flags &= (uint8_t)~ENV_PIR_VALID; r->pir_status = SENSOR_STALE;
     }
 }

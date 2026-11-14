@@ -421,7 +421,8 @@ static void sensor_step(uint64_t now) {
         (void)dht22_start(&dht);
         next_dht = now + current.dht_interval_ms;
     }
-    environment_expire(&env, (uint32_t)now);
+    /* Sensor service may timestamp samples after the step-start time. */
+    environment_expire(&env, (uint32_t)now_ms());
     critical_section_enter_blocking(&snapshot_lock);
     sensors.env = env;
     sensors.pir_samples += pir_samples;
