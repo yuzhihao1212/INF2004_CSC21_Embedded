@@ -5,6 +5,15 @@ ideas we dropped. Status lines get updated in place; a reversed decision gets a 
 that links back. Entries dated before 14 Nov 2026 were backfilled on 14 Nov from the chat
 where they were decided and the commits that built them.
 
+## 2026-11-14 · Noise-limit target stays at 70 dB for now
+- **From → to:** no change. The Setup dialog still asks for 70 dB; a switch to 65 dB was considered and not made.
+- **Why:** ZhiHao kept 70 (chat, 14 Nov) because only one source has been opened and confirmed.
+- **Problem it solves:** avoids citing figures we haven't read, as the project's research rules require.
+- **Why this way:** a literature search suggested 65 dB, the top of measured occupied lessons (about 55–65 dB LAeq; one survey mean 64.2). Only WHO 1999 was verified, and it gives 35 dB LAeq during teaching, a background goal rather than an activity level. The other figures came from search summaries and stay "to verify".
+- **Risks to watch:** 70 dB may flag too rarely in a real room. The studies average over minutes while our check uses 10 s, so the report needs to state that difference. Revisit once the occupied-classroom survey is opened, or after the first real-room capture.
+- **Verified:** WHO text read. Everything else is unverified.
+- **Status:** decided; `TARGET_DB` in `app.js` and the docs still say placeholder.
+
 ## 2026-11-14 · CSC21 tracker and fault table brought up to date
 - **From → to:** the tracker listed fusion's numeric table and the integer-vs-float fusion comparison as "To do", and fault F5 as "In progress". Now: both tracker rows are done, the PC half of the no-floats check is recorded, and F5 is ✅.
 - **Why:** a progress check before Week 13 (ZhiHao, in chat) found these rows were stale and made the project look further behind than it is.
