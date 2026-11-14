@@ -76,10 +76,10 @@ The dashboard runs the gateway and serves a plain-language web page with five pa
 | **Room map** | Where something is happening | A floor plan of the classroom (whiteboard, lecturer's desk, door, windows, desks, sensors) split into the lecturer's area and the front, middle and back rows, tinted by sound, air, temperature or movement; select an area for all its readings |
 | **History** | What happened | A timeline of changes and cleared alerts, and CO₂/temperature charts with a text summary |
 | **Sensors** | The team | Each sensor's readings, sound class, Wi-Fi signal, lost readings and response time |
-| **Setup** | Changing things | Class type, voice setup (lecturer calibration), how often sensors report, technical names, theme |
+| **Setup** | Changing things | Class type, voice setup (lecturer calibration), noise limit (excessive noise), how often sensors report, technical names, theme |
 
-When something needs action (ongoing chatter in a lecture, stuffy air in an occupied room, or
-fewer than half the sensors working), a banner with one suggested action appears on every
+When something needs action (ongoing chatter or excessive noise in a lecture, stuffy air in an
+occupied room, or fewer than half the sensors working), a banner with one suggested action appears on every
 page. It clears by itself when the situation ends; **Hide** removes it for 10 minutes but keeps
 it in History. Alerts are also written to `--events`. **Setup › Show technical names** adds the
 engine's state names (`FOCUSED_LECTURE`, …) and raw numbers, for testing and assessment.
@@ -133,6 +133,22 @@ configs; it no longer assigns the lecturer role.
 `pc/tests/test_fusion.py` holds the scripted scenarios (lecture, chatter, discussion,
 ventilation and so on) that check the rules.
 
+**Excessive noise.** Each student area can have a noise limit. Under it, a noisy area
+shows *Talking*; at or above it for long enough, it shows *Excessive noise* (zone state
+`LOUD`). To set a limit, play a steady sound next to the area's sensor at a target level
+read on a phone sound-meter app, and capture it: **Setup › Noise limit** walks through each
+area with a live meter, or POST `{"zone": "C"}` to `/api/loudness/capture` (and
+`/api/loudness/clear` to remove it). The limit is the sensor's mean `rms_x16` over
+`loud_capture_ms` (5 s). An area is `LOUD` while at least `loud_enter_pct` (70%) of its
+audio windows in `audio_smooth_ms` (10 s) reach the limit, `loud_exit_pct` (50%) to leave,
+after the usual `zone_dwell_ms`. Any sound class counts; the lecturer's area is never
+checked, since the lecturer speaks right next to it. Without a limit an area keeps today's
+rules. Pass `--loud-levels FILE` to keep the limits across restarts, or put them in the
+fusion config as `loud_levels_x16`. It's *Act now* with a banner in Lecture and Quiet
+work and a heads-up in Group work. The node reports unweighted AC RMS in ADC counts, not
+dB(A): describe a limit as "about 70 dB at the sensor". The 70 dB target on the Setup page
+is a placeholder until we cite a classroom noise limit (to verify).
+
 To demonstrate the states without hardware, run a scripted classroom:
 
 ```
@@ -140,7 +156,9 @@ python -m mosaic.dashboard --scenario demo
 ```
 
 Four simulated nodes play the scenario. The console announces each phase and the state it
-should produce, and prints every classroom state change. Scenarios (defined in
+should produce, and prints every classroom state change. With a scenario and no saved limits,
+each student area gets a stand-in noise limit (`SIM_LOUD_RMS`, 150 ADC RMS) so the rowdy
+phase shows *Excessive noise* without a sound meter. Scenarios (defined in
 `pc/mosaic/scenarios.py`):
 
 | Scenario | Shows | Length |
@@ -150,7 +168,7 @@ should produce, and prints every classroom state change. Scenarios (defined in
 | `ventilation` | CO₂ builds up → poor ventilation → window opened → normal | 6 min |
 | `comfort` | air-conditioning fails → out of range → restored | 6 min |
 | `exam` | silent, motionless exam stays occupied (PIR is motion, not presence) | 6 min |
-| `demo` | all of the above in one run | 18 min |
+| `demo` | all of the above in one run, plus the back rows getting rowdy (**Excessive noise**) | 20 min |
 | `reference` | lecturer-only calibration → attenuated lecture → local speech at node 3 → lecture | 7 min |
 
 `pc/tests/test_scenarios.py` plays each one through the fusion engine and fails if a phase no

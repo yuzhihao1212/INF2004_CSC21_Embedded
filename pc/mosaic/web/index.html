@@ -10,18 +10,39 @@
     if (saved === "light" || saved === "dark") document.documentElement.dataset.theme = saved;
     if (localStorage.getItem("mosaic-tech") === "1") document.documentElement.dataset.tech = "";
   } catch (e) {}
+  try {  // Intro plays once per browser tab (intro.js)
+    if (!sessionStorage.getItem("mosaic-intro")) document.documentElement.dataset.intro = "play";
+  } catch (e) {}
 </script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap">
 <link rel="stylesheet" href="style.css">
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect x='3' y='3' width='8' height='8' rx='2' fill='%23e8365f'/%3E%3Crect x='13' y='3' width='8' height='8' rx='2' fill='%23e8365f' opacity='.55'/%3E%3Crect x='3' y='13' width='8' height='8' rx='2' fill='%23e8365f' opacity='.55'/%3E%3Crect x='13' y='13' width='8' height='8' rx='2' fill='%23e8365f'/%3E%3C/svg%3E">
+<link rel="icon" href="logo.svg" type="image/svg+xml">
 </head>
 <body>
 <a class="skip-link" href="#main">Skip to content</a>
 
+<div class="intro" id="intro" aria-hidden="true">
+  <div class="intro-bg"></div>
+  <div class="intro-brand">
+    <svg class="intro-mark" viewBox="0 0 100 100" focusable="false">
+      <circle class="intro-ring" cx="50" cy="50" r="42"/>
+      <g class="intro-thud"><g class="intro-spin">
+        <polygon class="intro-shard" fill="#D85A30" points="12,10 88,10 52.5,44.5 50,42 47.5,44.5"/>
+        <polygon class="intro-shard" fill="#1D9E75" points="90,12 90,88 55.5,52.5 58,50 55.5,47.5"/>
+        <polygon class="intro-shard" fill="#7F77DD" points="88,90 12,90 47.5,55.5 50,58 52.5,55.5"/>
+        <polygon class="intro-shard" fill="#EF9F27" points="10,88 10,12 44.5,47.5 42,50 44.5,52.5"/>
+      </g></g>
+    </svg>
+    <span class="intro-word"><span>m</span><span>o</span><span>s</span><span>a</span><span>i</span><span>c</span></span>
+  </div>
+  <p class="intro-tag">Classroom sensing, fused into one view</p>
+  <p class="intro-status" data-state="wait"><span class="intro-dot"></span><span id="intro-status-text">Connecting to the sensors…</span></p>
+  <p class="intro-skip">Click or press any key to skip</p>
+</div>
+
 <svg class="sprite" aria-hidden="true" focusable="false">
-  <symbol id="i-logo" viewBox="0 0 24 24"><rect x="3" y="3" width="8" height="8" rx="2" fill="currentColor" stroke="none"/><rect x="13" y="3" width="8" height="8" rx="2" fill="currentColor" stroke="none" opacity=".5"/><rect x="3" y="13" width="8" height="8" rx="2" fill="currentColor" stroke="none" opacity=".5"/><rect x="13" y="13" width="8" height="8" rx="2" fill="currentColor" stroke="none"/></symbol>
   <symbol id="i-home" viewBox="0 0 24 24"><path d="M4 11 12 4l8 7M6 9.5V20h12V9.5"/><path d="M10 20v-5h4v5"/></symbol>
   <symbol id="i-map" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M12 4v16M3 12h18"/></symbol>
   <symbol id="i-history" viewBox="0 0 24 24"><path d="M4 12a8 8 0 1 0 2.3-5.7L4 8.5"/><path d="M4 4v4.5h4.5M12 8v4l3 2"/></symbol>
@@ -58,8 +79,16 @@
 <header class="topbar">
   <div class="wrap topbar-inner">
     <a class="brand" href="#/overview" aria-label="MOSAIC: go to overview">
-      <svg class="icon brand-mark" aria-hidden="true"><use href="#i-logo"/></svg>
-      <span class="wordmark">mosaic</span>
+      <svg class="brand-mark" viewBox="0 0 100 100" aria-hidden="true" focusable="false">
+        <circle class="bm-ring" cx="50" cy="50" r="42"/>
+        <g class="bm-thud"><g class="bm-spin">
+          <polygon class="bm-shard" style="--dx:0px;--dy:-34px" fill="#D85A30" points="12,10 88,10 52.5,44.5 50,42 47.5,44.5"/>
+          <polygon class="bm-shard" style="--dx:34px;--dy:0px" fill="#1D9E75" points="90,12 90,88 55.5,52.5 58,50 55.5,47.5"/>
+          <polygon class="bm-shard" style="--dx:0px;--dy:34px" fill="#7F77DD" points="88,90 12,90 47.5,55.5 50,58 52.5,55.5"/>
+          <polygon class="bm-shard" style="--dx:-34px;--dy:0px" fill="#EF9F27" points="10,88 10,12 44.5,47.5 42,50 44.5,52.5"/>
+        </g></g>
+      </svg>
+      <span class="wordmark"><span>m</span><span>o</span><span>s</span><span>a</span><span>i</span><span>c</span></span>
     </a>
     <nav class="pages" aria-label="Pages">
       <a href="#/overview" data-page="overview"><svg class="icon" aria-hidden="true"><use href="#i-home"/></svg><span>Overview</span></a>
@@ -153,6 +182,15 @@
         <label><input type="radio" name="map-metric" value="motion"><span>Movement</span></label>
       </fieldset>
     </div>
+    <section class="sim-strip" id="sim-strip" aria-label="Simulation" hidden>
+      <div class="sim-line">
+        <span class="sim-chip"><svg class="icon icon-xs" aria-hidden="true"><use href="#i-flask"/></svg><span id="sim-name">Simulated</span></span>
+        <span class="sim-phase" id="sim-phase"></span>
+        <span class="sim-left" id="sim-left"></span>
+      </div>
+      <div class="sim-bar" id="sim-bar" aria-hidden="true"></div>
+      <p class="tech sim-tech" id="sim-tech"></p>
+    </section>
     <div class="plan" id="zone-map" role="group"></div>
     <section class="card zone-detail" id="zone-detail" aria-labelledby="zone-detail-h">
       <h2 id="zone-detail-h">Select an area</h2>
@@ -221,7 +259,18 @@
       <p class="empty-title">Waiting for sensors</p>
       <p class="empty-hint">Switch a sensor on and connect it to the hotspot, or run <code>python3 -m mosaic.dashboard --scenario demo</code></p>
     </div>
-    <div class="nodes" id="nodes"></div>
+    <table class="sensor-table" id="nodes-table" hidden>
+      <caption class="sr-only">Latest reading from each sensor</caption>
+      <thead><tr>
+        <th scope="col">Sensor</th>
+        <th scope="col"><svg class="icon icon-sm" aria-hidden="true"><use href="#i-thermo"/></svg>Temperature</th>
+        <th scope="col"><svg class="icon icon-sm" aria-hidden="true"><use href="#i-drop"/></svg>Humidity</th>
+        <th scope="col"><svg class="icon icon-sm" aria-hidden="true"><use href="#i-air"/></svg>Air</th>
+        <th scope="col"><svg class="icon icon-sm" aria-hidden="true"><use href="#i-motion"/></svg>Movement</th>
+        <th scope="col"><svg class="icon icon-sm" aria-hidden="true"><use href="#i-sound"/></svg>Sound</th>
+      </tr></thead>
+      <tbody id="nodes"></tbody>
+    </table>
     <p class="footnote" id="footnote"></p>
   </section>
 
@@ -252,6 +301,17 @@
         <p class="error" id="voice-error" role="alert" hidden></p>
       </section>
 
+      <section class="card" aria-labelledby="h-loud">
+        <h2 id="h-loud">Noise limit</h2>
+        <p id="loud-text" class="hint"></p>
+        <ul class="loud-list" id="loud-zones"></ul>
+        <div class="actions">
+          <button class="btn primary" id="loud-open" type="button">Set noise limit</button>
+          <button class="btn" id="loud-clear" type="button">Remove all</button>
+        </div>
+        <p class="error" id="loud-error" role="alert" hidden></p>
+      </section>
+
       <section class="card" aria-labelledby="h-interval">
         <h2 id="h-interval">How often sensors report</h2>
         <p class="hint">More often reacts faster; every second is recommended.</p>
@@ -274,6 +334,7 @@
           <label><input type="radio" name="theme" value="light"><span>Light</span></label>
           <label><input type="radio" name="theme" value="dark"><span>Dark</span></label>
         </fieldset>
+        <div class="actions"><button class="btn" type="button" id="intro-replay">Play the intro again</button></div>
       </section>
     </div>
   </section>
@@ -303,47 +364,61 @@
   </div>
 </dialog>
 
+<dialog class="dialog" id="loud-dialog" aria-labelledby="loud-title">
+  <h2 id="loud-title">Set the noise limit</h2>
+  <div data-lstep="intro">
+    <p>This tells the system how loud is too loud in each area. Above the limit, the area shows <strong>Excessive noise</strong> instead of Talking.</p>
+    <ol class="steps">
+      <li>Open a sound-meter app on a phone.</li>
+      <li>Pick one steady sound you can play at <span data-target-db></span> dB, such as music or a recording of a busy room.</li>
+      <li>Go to each area's sensor in turn. Each one takes about 10 seconds.</li>
+    </ol>
+  </div>
+  <div data-lstep="area" hidden>
+    <p class="lstep-kicker" id="loud-step"></p>
+    <h3 class="lstep-title" id="loud-area-title">Make the sound now</h3>
+    <p id="loud-how"></p>
+    <div class="meter-row">
+      <span class="meter-label">Sensor hears</span>
+      <span class="meter" id="loud-meter" role="meter" aria-label="Sound level at the sensor" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><span class="meter-limit" id="loud-limit" hidden></span></span>
+    </div>
+    <p class="meter-word" id="loud-word" role="status"></p>
+    <p class="tech" id="loud-raw"></p>
+  </div>
+  <div data-lstep="done" hidden>
+    <p class="done-line"><svg class="icon lvl-fine" aria-hidden="true"><use href="#i-fine"/></svg><strong>Done.</strong> <span id="loud-done-text"></span></p>
+  </div>
+  <p class="error" id="loud-dialog-error" role="alert" hidden></p>
+  <div class="actions">
+    <button class="btn" type="button" id="loud-cancel">Cancel</button>
+    <button class="btn" type="button" id="loud-skip" hidden>Skip this area</button>
+    <button class="btn" type="button" id="loud-again" hidden>Capture again</button>
+    <button class="btn primary" type="button" id="loud-start">Start</button>
+    <button class="btn primary" type="button" id="loud-capture" hidden>Capture</button>
+    <button class="btn primary" type="button" id="loud-next" hidden>Next area</button>
+    <button class="btn primary" type="button" id="loud-close" hidden>Close</button>
+  </div>
+</dialog>
+
 <template id="node-tpl">
-  <article class="card node">
-    <header class="node-head">
-      <span class="badge"><svg class="icon" aria-hidden="true"><use href="#i-node"/></svg></span>
-      <h2 class="node-name"></h2>
-      <span class="series-key" aria-hidden="true"></span>
-      <span class="sim-chip" hidden title="Simulated: readings are generated, not measured"><svg class="icon icon-xs" aria-hidden="true"><use href="#i-flask"/></svg>Simulated</span>
-      <span class="status" data-status="online"><svg class="icon icon-sm" aria-hidden="true"><use href="#i-check"/></svg><span class="status-text">Working</span></span>
-    </header>
-    <div class="metrics">
-      <div class="metric" data-k="temp"><svg class="icon" aria-hidden="true"><use href="#i-thermo"/></svg><div><p class="value"><span class="v">—</span><span class="unit">°C</span></p><p class="mlabel">Temperature</p></div></div>
-      <div class="metric" data-k="hum"><svg class="icon" aria-hidden="true"><use href="#i-drop"/></svg><div><p class="value"><span class="v">—</span><span class="unit">%</span></p><p class="mlabel">Humidity</p></div></div>
-      <div class="metric" data-k="co2"><svg class="icon" aria-hidden="true"><use href="#i-air"/></svg>
-        <div class="grow"><p class="value"><span class="v">—</span><span class="unit">ppm</span><span class="chip chip-sm" data-level="none">—</span></p>
-        <div class="scale" aria-hidden="true"><span class="seg seg-good"></span><span class="seg seg-fair"></span><span class="seg seg-poor"></span><span class="marker"></span></div>
-        <p class="mlabel">CO₂</p></div></div>
-      <div class="metric" data-k="pir"><svg class="icon" aria-hidden="true"><use href="#i-motion"/></svg>
-        <div class="grow"><p class="value"><span class="v">—</span><span class="unit">%</span></p>
-        <div class="meter" aria-hidden="true"><span></span></div>
-        <p class="mlabel">Movement</p></div></div>
-    </div>
-    <div class="audio" data-k="audio">
-      <svg class="icon audio-icon" aria-hidden="true"><use href="#i-mute"/></svg>
-      <div class="grow"><p class="audio-class">No sound reading</p>
-        <div class="probs" aria-hidden="true">
-          <span title="Background"><svg class="icon icon-xs"><use href="#i-background"/></svg><i></i></span>
-          <span title="Speech"><svg class="icon icon-xs"><use href="#i-discussion"/></svg><i></i></span>
-          <span title="Sudden noise"><svg class="icon icon-xs"><use href="#i-transient"/></svg><i></i></span>
-        </div>
-      </div>
-      <span class="audio-conf"></span>
-    </div>
-    <footer class="link">
-      <span class="link-item" data-k="rssi"><span class="bars" aria-hidden="true"><i></i><i></i><i></i><i></i></span><span class="lv">—</span></span>
-      <span class="link-item" data-k="loss"><svg class="icon icon-sm" aria-hidden="true"><use href="#i-loss"/></svg><span class="lv">—</span></span>
-      <span class="link-item" data-k="rtt"><svg class="icon icon-sm" aria-hidden="true"><use href="#i-rtt"/></svg><span class="lv">—</span></span>
-      <span class="link-item" data-k="age"><svg class="icon icon-sm" aria-hidden="true"><use href="#i-clock"/></svg><span class="lv">—</span></span>
-    </footer>
-  </article>
+  <tr class="node-row">
+    <th scope="row" class="nr-sensor">
+      <span class="nr-area"></span>
+      <span class="nr-sub">
+        <span class="status" data-status="online"><svg class="icon icon-sm" aria-hidden="true"><use href="#i-check"/></svg><span class="status-text">Working</span></span>
+        <span class="nr-meta"></span>
+      </span>
+      <span class="tech nr-link"></span>
+    </th>
+    <td data-label="Temperature" data-k="temp"><span class="nr-val"><span class="v">—</span><span class="unit">°C</span></span></td>
+    <td data-label="Humidity" data-k="hum"><span class="nr-val"><span class="v">—</span><span class="unit">%</span></span></td>
+    <td data-label="Air" data-k="co2"><span class="chip" data-level="none">—</span><span class="nr-note"><span class="v">—</span> ppm</span></td>
+    <td data-label="Movement" data-k="pir"><span class="nr-val"><span class="v">—</span><span class="unit">%</span></span></td>
+    <td data-label="Sound" data-k="audio"><span class="nr-sound">—</span><span class="nr-note nr-conf"></span><span class="tech nr-probs"></span></td>
+  </tr>
 </template>
 
+<script src="intro.js"></script>
 <script src="app.js"></script>
 </body>
 </html>
