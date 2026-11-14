@@ -23,8 +23,16 @@ With no mapped reference zone, all zones are student zones and FOCUSED_LECTURE
 is unavailable; without a lecturer location, speech cannot identify a lecture.
 
 Per-zone activity (10 s configurable dwell): offline or no recent audio ->
-NO_DATA immediately; otherwise apply the zone's role above, then MOTION when
-motion meets motion_min_pct, else STILL.
+NO_DATA immediately; then LOUD for a student zone with a loud level (below);
+otherwise apply the zone's role above, then MOTION when motion meets
+motion_min_pct, else STILL.
+LOUD ("excessive noise"): the operator holds a steady sound at a target level
+(e.g. read on a phone sound meter) next to a node and captures it; the mean
+rms_x16 over loud_capture_ms becomes that zone's loud level. A student zone is
+LOUD while at least loud_enter_pct of its audio windows in audio_smooth_ms are
+at or above it (loud_exit_pct to leave), for any sound class. The lecturer zone
+is excluded: the lecturer speaks right next to it. RMS is unweighted ADC level,
+not dB(A). Zones without a loud level keep the rules above.
 STILL means no detected local talking/lecturer evidence or motion: attenuated
 lecturer speech at student desks does not imply local talking. Voice-only evidence
 below these classification gates also maps to STILL, rather than inventing a
@@ -46,7 +54,7 @@ from pathlib import Path
 from typing import Optional
 
 from mosaic import protocol as p
-from mosaic.reference import (ReferenceConfig, ReferenceFusion, ReferenceState,
+from mosaic.reference import (MAX_RMS_X16, ReferenceConfig, ReferenceFusion, ReferenceState,
                               WINDOW_MS, clamp_int, require_ms, round_ratio, seconds_to_ms)
 
 EVENT_HISTORY = 50
@@ -137,6 +145,12 @@ class FusionConfig:
     comfort_dwell_ms: int = 60000
     zone_dwell_ms: int = 10000
     zone_layout: Optional[dict[str, list[int]]] = None
+    # Excessive noise: zone -> loud level (rms_x16), captured per node.
+    loud_levels_x16: dict[str, int] = field(default_factory=dict)
+    loud_enter_pct: int = 70
+    loud_exit_pct: int = 50
+    loud_capture_ms: int = 5000
+    loud_capture_min_windows: int = 6
 
     def reference_settings(self) -> ReferenceConfig:
         return ReferenceConfig(**{f.name: vars(self)["reference_" + f.name]
@@ -151,7 +165,7 @@ class FusionConfig:
             raise ValueError("reference_zone must be a zone name or null")
         self.reference_settings()
         for name, value in vars(self).items():
-            if name in {'zones', 'front_zones', 'mode', 'reference_zone', 'zone_layout'}:
+            if name in {'zones', 'front_zones', 'mode', 'reference_zone', 'zone_layout', 'loud_levels_x16'}:
                 continue
             if type(value) is not int:
                 raise ValueError(f"{name} must be an integer")
@@ -163,6 +177,13 @@ class FusionConfig:
                 raise ValueError(f"{name} must be in 0..65535")
         if not 1 <= self.reference_talking_pct <= 100 or self.reference_min_known_windows < 1:
             raise ValueError("reference TALKING percent/minimum must be positive")
+        if not 0 <= self.loud_exit_pct <= self.loud_enter_pct or self.loud_capture_min_windows < 1:
+            raise ValueError("loud_exit_pct must not exceed loud_enter_pct; capture needs a window")
+        if (not isinstance(self.loud_levels_x16, dict)
+                or any(name not in self.zones.values() or type(level) is not int
+                       or not 1 <= level <= MAX_RMS_X16 for name, level in self.loud_levels_x16.items())):
+            raise ValueError("loud_levels_x16 maps configured zones to rms_x16 in 1..65535")
+        self.loud_levels_x16 = dict(self.loud_levels_x16)
         if not -32768 <= self.temp_min_x10 <= self.temp_max_x10 <= 32767:
             raise ValueError("temperature bounds must fit signed wire tenths")
         if not 0 <= self.humidity_min_x10 <= self.humidity_max_x10 <= 1000:
@@ -214,6 +235,7 @@ class ZoneActivity(enum.Enum):
     MOTION = "MOTION"
     LECTURER = "LECTURER"
     TALKING = "TALKING"
+    LOUD = "LOUD"            # Excessive noise: over the zone's captured loud level
 
 
 class ZoneAir(enum.Enum):
@@ -237,6 +259,7 @@ class ZoneView:
     humidity_x10: Optional[int]
     stale: bool
     rms_sum: int = 0  # Sum of rms_x16 over the same audio windows as prob_sums
+    loud_count: int = 0  # Audio windows at or above the zone's loud level
 
     def prob_sum(self, audio_class: p.AudioClass) -> int:
         return self.prob_sums[audio_class - 1]
@@ -274,6 +297,8 @@ class _Zone:
         self.activity = _Region("zone_activity", ZoneActivity.NO_DATA)
         self.air = _Region("zone_air", ZoneAir.UNKNOWN)
         self.comfort = _Region("zone_comfort", Comfort.UNKNOWN)
+        self.loud_capture_ms: Optional[int] = None  # Capture start, while capturing
+        self.loud_error: Optional[str] = None       # Why the last capture failed
 
 
 class _Region:
@@ -410,6 +435,42 @@ class FusionEngine:
     def reset_reference(self, zone: Optional[str] = None) -> None:
         self.reference.reset(zone)
 
+    def _student_node(self, zone: str) -> int:
+        node = next((n for n, name in self.config.zones.items() if name == zone), None)
+        if node is None or zone == self.config.reference_zone:
+            raise KeyError(zone)
+        return node
+
+    def capture_loud(self, now, zone: str) -> None:
+        """Start capturing a student zone's loud level: the mean rms_x16 of the
+        audio windows received in the next loud_capture_ms. KeyError if the
+        zone is unknown or is the lecturer zone."""
+        node = self._student_node(zone)
+        self._zones[node].loud_capture_ms = seconds_to_ms(now)
+        self._zones[node].loud_error = None
+
+    def clear_loud(self, zone: str) -> None:
+        node = self._student_node(zone)
+        self.config.loud_levels_x16.pop(zone, None)
+        self._zones[node].loud_capture_ms = None
+        self._zones[node].loud_error = None
+
+    def _finish_loud_captures(self, now_ms: int) -> None:
+        cfg = self.config
+        for node, zone in self._zones.items():
+            start = zone.loud_capture_ms
+            if start is None or now_ms - start < cfg.loud_capture_ms:
+                continue
+            zone.loud_capture_ms = None
+            levels = [rms for t, _, rms in zone.audio if start < t <= start + cfg.loud_capture_ms]
+            if len(levels) < cfg.loud_capture_min_windows:
+                zone.loud_error = "not enough sound readings; is the sensor online?"
+            elif sum(levels) < cfg.reference_min_rms_x16 * len(levels):
+                zone.loud_error = "too quiet to be a loud level"
+            else:
+                cfg.loud_levels_x16[cfg.zones[node]] = max(1, round_ratio(sum(levels), len(levels)))
+                zone.loud_error = None
+
     # ---- Evaluation ----------------------------------------------------------
 
     def evaluate(self, now, online: set[int], stale: set[int] = frozenset()) -> None:
@@ -423,6 +484,7 @@ class FusionEngine:
         self._now_ms, self._online = now_ms, set(online - stale)
         self.reference.evaluate_ms(now_ms, online - stale)
         self._collect_reference_results()
+        self._finish_loud_captures(now_ms)
         self._views = [self._view(node_id, now_ms, node_id in stale)
                        for node_id in sorted(self._zones)
                        if self._zones[node_id].received and (node_id in online or node_id in stale)]
@@ -440,9 +502,11 @@ class FusionEngine:
         _trim(zone.motion, now_ms - cfg.motion_window_ms)
         sums = tuple(sum(w[1][i] for w in zone.audio) for i in range(p.AUDIO_CLASS_COUNT))
         temp, hum = zone.temp_hum or (None, None)
+        level = cfg.loud_levels_x16.get(cfg.zones[node_id])
         return ZoneView(cfg.zones[node_id], node_id, sums, len(zone.audio),
                         sum(m for _, m in zone.motion), len(zone.motion), zone.co2, temp, hum, stale,
-                        sum(w[2] for w in zone.audio))
+                        sum(w[2] for w in zone.audio),
+                        sum(w[2] >= level for w in zone.audio) if level is not None else 0)
 
     def _step_activity(self, now_ms: int) -> None:
         cfg, views = self.config, self._views
@@ -566,9 +630,19 @@ class FusionEngine:
         return (view.rms_sum * 100 * lecturer.audio_count
                 < self.config.uncalibrated_local_rms_pct * lecturer.rms_sum * view.audio_count)
 
+    def _loud(self, view: ZoneView, previous: ZoneActivity) -> bool:
+        """Any sound class counts. Cross-multiplied share of windows over the level."""
+        cfg = self.config
+        if view.zone == cfg.reference_zone or view.zone not in cfg.loud_levels_x16:
+            return False
+        pct = cfg.loud_exit_pct if previous == ZoneActivity.LOUD else cfg.loud_enter_pct
+        return view.loud_count * 100 >= pct * view.audio_count
+
     def _zone_candidate(self, view: ZoneView, previous: ZoneActivity) -> ZoneActivity:
         if not view.audio_count:
             return ZoneActivity.NO_DATA
+        if self._loud(view, previous):
+            return ZoneActivity.LOUD
         if self._lecturer_speaking(view):
             return ZoneActivity.LECTURER
         if view.zone != self.config.reference_zone:
@@ -664,7 +738,23 @@ class FusionEngine:
             'temperature_x10': view.temperature_x10 if active else None,
             'humidity_x10': view.humidity_x10 if active else None,
             'reference': reference['zones'].get(view.zone),
+            'loud': self._loud_output(node, view),
         }
+
+    def _loud_output(self, node: int, view: ZoneView) -> Optional[dict]:
+        """None for the lecturer zone: it never reports LOUD."""
+        cfg, zone = self.config, self._zones[node]
+        if view.zone == cfg.reference_zone:
+            return None
+        capturing = zone.loud_capture_ms is not None
+        return {"level_x16": cfg.loud_levels_x16.get(view.zone),
+                "capturing": capturing,
+                "capture_left_ms": (max(0, zone.loud_capture_ms + cfg.loud_capture_ms - self._now_ms)
+                                    if capturing else None),
+                "error": zone.loud_error,
+                "loud_pct": round_ratio(view.loud_count * 100, view.audio_count)
+                            if view.zone in cfg.loud_levels_x16 and view.audio_count else None,
+                "enter_pct": cfg.loud_enter_pct}
 
 
 

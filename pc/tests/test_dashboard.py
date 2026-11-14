@@ -5,10 +5,12 @@ Run from the pc/ folder:  python -m unittest -v
 
 import io
 import json
+import tempfile
 import time
 import unittest
 import urllib.error
 import urllib.request
+from pathlib import Path
 
 from mosaic import protocol as p
 from mosaic.dashboard import Dashboard, start_http
@@ -55,7 +57,7 @@ class DashboardState(unittest.TestCase):
             p.AudioWindow(100, p.AudioClass.SPEECH, (5, 90, 0, 5)))))
         audio = self.dashboard.state()["nodes"][0]["telemetry"]["audio"]
         self.assertEqual(audio, {"class": "speech", "confidence": 90,
-                                 "probs": [5, 90, 0, 5]})
+                                 "probs": [5, 90, 0, 5], "rms": 6.25})
 
     def test_history_keeps_window(self):
         dashboard = Dashboard(self.server, history_s=0.05)
@@ -73,6 +75,19 @@ class DashboardState(unittest.TestCase):
         state = self.dashboard.state()
         self.assertEqual(state["source"], "mixed")
         self.assertEqual([n["simulated"] for n in state["nodes"]], [False, True])
+
+    def test_simulation_phase(self):
+        self.assertIsNone(self.dashboard.state()["simulation"])  # Real sensors only: no strip
+        self.dashboard.simulating(2, None, 100.0)
+        self.assertEqual(self.dashboard.simulation(105.0), {"nodes": 2, "scenario": None})
+
+        self.dashboard.simulating(4, "lecture", 100.0)  # Phases: 40 s, 120 s, 200 s, 90 s
+        sim = self.dashboard.simulation(100.0 + 40 + 30)
+        self.assertEqual((sim["phase"], sim["left_s"], sim["finished"]), (1, 90.0, False))
+        self.assertEqual(sim["label"], "Lecturer teaching, students seated")
+        self.assertEqual([ph["seconds"] for ph in sim["phases"]], [40, 120, 200, 90])
+        done = self.dashboard.simulation(100.0 + 450 + 10)  # Past the end: last phase holds
+        self.assertEqual((done["phase"], done["left_s"], done["finished"]), (3, 0.0, True))
 
     def test_state_is_json(self):
         self.receive(telemetry(valid_flags=p.Valid.TEMP_HUM, temperature_x10=200))
@@ -225,6 +240,67 @@ class ModeApi(unittest.TestCase):
         self.assertEqual((a['node_id'], a['layout'], a['reference_zone'], a['motion_pct']), (1, [0, 0], True, 20))
         self.assertEqual((c['state'], c['status'], c['co2_ppm']), ('NO_DATA', 'OFFLINE', None))
         self.assertIsInstance(classroom['confidence_pct'], int)
+
+
+class LoudnessApi(unittest.TestCase):
+    def setUp(self):
+        self.dir = tempfile.TemporaryDirectory()
+        self.addCleanup(self.dir.cleanup)
+        self.path = Path(self.dir.name) / "loud.json"
+        self.server = GatewayServer(bind=("127.0.0.1", 0), out=io.StringIO(), fusion=FusionEngine())
+        self.addCleanup(self.server.close)
+
+    def start(self):
+        self.dashboard = Dashboard(self.server, loud_levels_path=self.path)
+        self.httpd = start_http(self.dashboard, "127.0.0.1", 0)
+        self.addCleanup(self.httpd.server_close)
+        self.addCleanup(self.httpd.shutdown)
+        self.base = f"http://127.0.0.1:{self.httpd.server_address[1]}"
+
+    def post(self, body, path="/api/loudness/capture"):
+        data = body if isinstance(body, bytes) else json.dumps(body).encode()
+        try:
+            with urllib.request.urlopen(self.base + path, data=data, timeout=2) as r:
+                return r.status, json.loads(r.read())
+        except urllib.error.HTTPError as e:
+            with e:
+                return e.code, json.loads(e.read())
+
+    def test_capture_saves_and_clear_removes(self):
+        self.start()
+        self.assertEqual(self.post({"zone": "C"})[0], 202)
+        fusion = self.server.fusion
+        self.assertTrue(fusion.state()["zones"][2]["loud"]["capturing"])
+        # Finish a capture directly, as if 5 s of loud windows had arrived.
+        fusion.config.loud_levels_x16["C"] = 2400
+        self.dashboard.state()
+        self.assertEqual(json.loads(self.path.read_text()), {"version": 1, "levels_x16": {"C": 2400}})
+        self.assertEqual(self.post({"zone": "C"}, "/api/loudness/clear")[0], 202)
+        self.assertEqual(json.loads(self.path.read_text())["levels_x16"], {})
+
+    def test_bad_requests(self):
+        self.start()
+        for body in (b"not json", {}, {"zone": 3}, {"zone": "C", "extra": 1}):
+            with self.subTest(body=body):
+                self.assertEqual(self.post(body)[0], 400)
+        for zone in ("A", "missing"):
+            self.assertEqual(self.post({"zone": zone})[0], 404)
+        self.server.fusion = None
+        self.assertEqual(self.post({"zone": "C"})[0], 409)
+
+    def test_loads_saved_levels_for_student_zones_only(self):
+        self.path.write_text(json.dumps({"version": 1, "levels_x16": {"A": 9, "C": 2400, "Z": 5, "D": "x"}}))
+        self.start()
+        self.assertEqual(self.server.fusion.config.loud_levels_x16, {"C": 2400})
+        self.path.write_text("[]")
+        with self.assertRaises(ValueError):
+            Dashboard(self.server, loud_levels_path=self.path)
+
+    def test_state_has_loudness_setup(self):
+        self.start()
+        state = self.dashboard.state()
+        self.assertEqual(state["feedback"]["loudness"]["state"], "not_set_up")
+        self.assertEqual([a["zone"] for a in state["feedback"]["loudness"]["areas"]], ["B", "C", "D"])
 
 
 class CalibrationApi(unittest.TestCase):

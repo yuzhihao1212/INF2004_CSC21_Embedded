@@ -51,7 +51,9 @@ Enums and booleans represent discrete state, validity and persistence flags.
 | `ZoneView.motion_sum`, `motion_count` | 0..100*N; N >=0 | Exact integer sums/count | No divide in rules; missing samples do not become zero samples |
 | Classroom temperature/humidity sums, sample count | Sum of valid scaled readings; count 0..8 | int x10 sums | Compare sum to bound * count; no rounded average in rules |
 | Known reference count, TALKING count | 0..N windows in smoothing period | int | QUIET negative; PENDING/TALKING/HOLD positive; UNKNOWN/calibration excluded; each paired result consumed once |
-| `talking_pct`, `probs_pct`, `motion_pct` outputs | 0..100 percent or null | Rounded integer percentages | Half away from zero, presentation metrics only |
+| `loud_levels_x16` (per student zone) | 1..65535 (Q12.4 ADC RMS) | int; mean of captured `rms_x16` rounded half away | Captured windows strictly after the start, up to `loud_capture_ms`; needs `loud_capture_min_windows` and mean >= `reference_min_rms_x16`, else no change |
+| `ZoneView.loud_count` vs `audio_count` | 0..N windows in smoothing period | Exact integer count of windows with `rms_x16 >= level` | LOUD when `loud_count * 100 >= pct * audio_count`; pct is `loud_enter_pct`, or `loud_exit_pct` while LOUD; no divide in rules |
+| `talking_pct`, `probs_pct`, `motion_pct`, `loud_pct` outputs | 0..100 percent or null | Rounded integer percentages | Half away from zero, presentation metrics only |
 | `confidence_pct` | 0..100 percent | int; ONLINE weight 100, STALE weight 50, missing weight 0 | Exact weighted sum / configured count, rounded half away; decision rules do not use confidence |
 | Calibration `powers`: x, y | 0..4294836225 ADC²*256 | int = rms_x16² (Q24.8 power) | Exact square; no overflow |
 | Least-squares `sx`, `sy`, `sxx`, `sxy`, covariance numerator and denominator | Nonnegative sums; covariance can be signed before clamp | Exact arbitrary-precision int | No intermediate rounding or overflow; <=64 pairs |

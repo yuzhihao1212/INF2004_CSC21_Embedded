@@ -22,6 +22,7 @@ from typing import Optional
 SILENT = (90, 7, 0, 3)
 SPEECH = (8, 87, 0, 5)
 SETTLING = (60, 35, 0, 5)  # People arriving: some voices, nothing dominant
+ROWDY = (5, 75, 0, 20)     # Shouting over each other, chairs scraping
 
 # ADC RMS levels: lecturer at node 1, the same voice heard further away, and
 # students talking next to a node (louder there than the far-away lecturer).
@@ -29,6 +30,10 @@ LECTURER_RMS = 100
 FRONT_BLEED_RMS = 60
 REAR_BLEED_RMS = 35
 STUDENT_TALK_RMS = 95
+ROWDY_RMS = 220
+# Stand-in for a loud level captured with a sound meter at each student node.
+# Above talking (95, swinging up to about 119) and below rowdy (down to about 165).
+SIM_LOUD_RMS = 150
 
 
 @dataclass(frozen=True)
@@ -91,6 +96,8 @@ LECTURE = _phase(120, "Lecturer teaching, students seated", "QUIET, then FOCUSED
                  **_lecture())
 REAR_CHATTER = _phase(200, "Rear students start chatting", "NOISE_RISING, then SUSTAINED_CHATTER",
                       **_lecture(co2=850, rear=Zone(SPEECH, pir_pct=20, co2_ppm=850, rms=STUDENT_TALK_RMS)))
+ROWDY_REAR = _phase(60, "Back rows get rowdy", "SUSTAINED_CHATTER; zones C and D LOUD (Excessive noise)",
+                    **_lecture(co2=900, rear=Zone(ROWDY, pir_pct=40, co2_ppm=900, rms=ROWDY_RMS)))
 SETTLED = _phase(90, "Class settles down", "FOCUSED_LECTURE", **_lecture())
 CO2_BUILDS = _phase(180, "Door and windows closed: CO2 builds up", "air POOR_VENTILATION",
                     **_lecture(co2=1450))
@@ -150,9 +157,14 @@ SCENARIOS: dict[str, Scenario] = {
                 default=Zone(SILENT, pir_pct=0, co2_ppm=950)))),
     "demo": Scenario(
         "Every state in one run, for a live demonstration.",
-        (EMPTY, LECTURE, REAR_CHATTER, SETTLED, CO2_BUILDS, WINDOW_OPEN, AIRCON_FAILS,
+        (EMPTY, LECTURE, REAR_CHATTER, ROWDY_REAR, SETTLED, CO2_BUILDS, WINDOW_OPEN, AIRCON_FAILS,
          AIRCON_BACK)),
 }
+
+
+def sim_loud_levels(zones: dict[int, str], reference_zone: Optional[str]) -> dict[str, int]:
+    """Loud levels (rms_x16) for simulated student zones, as if captured."""
+    return {name: round(SIM_LOUD_RMS * 16) for name in zones.values() if name != reference_zone}
 
 
 def get(name: Optional[str]) -> Optional[Scenario]:
