@@ -80,7 +80,7 @@ clears the value's `valid_flags` bit, and the PC ignores invalid fields and offl
 | F2 | Some zones stale or missing | Gateway node status | Stale zones count half; missing zones lower confidence | Confidence % | Automatic | ✅ | `fusion.py` `evaluate()` |
 | F3 | Reading hovers at a threshold | Separate enter/exit thresholds (hysteresis) + dwell | State does not flicker | Stable state | n/a | ✅ | `test_fusion.py` murmur, ventilation and comfort tests |
 | F4 | Fusion thresholds are wrong for the room | Scenario tests | Thresholds are tunable without code (`--fusion-config`) | n/a | Re-tune | 🟡 | `test_scenarios.py`; real classroom tuning still to do |
-| F5 | Reference node offline or not calibrated | — | Student zones fall back to the probability-based rule | Reference status | Calibrate | 🟡 | In progress (reference-comparison PR) |
+| F5 | Reference node offline or not calibrated | Reference status per zone | Student zones fall back to the probability-based rule, with a loudness check against lecturer bleed | Reference status; Setup › Voice setup | Calibrate | ✅ | Merged in PR #14. `test_reference.py`; `test_scenarios.py` `test_every_phase_without_voice_setup` and `test_every_phase_with_voice_setup`. Real-room calibration still to do (M4). |
 | F6 | Gateway/dashboard crashes | Process exits | Nodes keep sensing and sending; the CSV log is appended on restart; nodes' config is re-sent on mismatch | Gap in the log | Restart the dashboard | 🟡 | No auto-restart; acceptable for a supervised demo |
 
 ## Summary of gaps (owners)
