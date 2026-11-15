@@ -104,7 +104,7 @@ Fix any conflicts VS Code shows, then `git add` the files, `git commit` and `git
 
 ## Colour rules (dashboard)
 
-The dashboard (`pc/mosaic/web/`) uses four colour families. Each one has a single job, so a colour always means the same thing wherever it shows up. The tokens live at the top of `style.css` in both light and dark mode. Use the tokens and never write a hex value in a component rule.
+The dashboard (`pc/mosaic/web/`) uses five colour families. Each one has a single job, so a colour always means the same thing wherever it shows up. The tokens live at the top of `style.css` in both light and dark mode. Use the tokens and never write a hex value in a component rule.
 
 | Family | Tokens | Use it for | Never for |
 |---|---|---|---|
@@ -112,6 +112,7 @@ The dashboard (`pc/mosaic/web/`) uses four colour families. Each one has a singl
 | Brand purple | `--accent`, `--accent-text`, `--accent-control`, `--accent-soft` | Things you can click or that are selected: active page, chosen class type, buttons, links, focus ring | Data, status or decoration |
 | Status | `--ok-*`, `--warn-*`, `--error*` | Room health (fine, keep an eye on it, act now) and sensor link health | Anything that isn't a health state |
 | Sensor tints | `--sense-comfort`, `--sense-air`, `--sense-motion`, `--sense-sound` | Which sensor: the icon next to a reading, and sensor bars | Tag or card backgrounds (amber and coral would read as alerts) |
+| Area looks | `--look-speak`, `--look-settled`, `--look-talk`, `--look-loud`, `--look-none` (and `-text` pairs) | What an area is doing right now on the Live room map, its key, the loudness bar and the last-10-minutes bar. Settled, talk and loud follow the status colours; speak (blue) is the lecturer's voice | Anything outside those four places |
 
 Chart lines use `--series-1` to `--series-6`, one per node, together with a dash pattern. Series colours appear only inside charts and in the node key on the Sensors page.
 

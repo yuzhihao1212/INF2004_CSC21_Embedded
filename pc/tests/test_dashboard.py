@@ -118,7 +118,8 @@ class Http(unittest.TestCase):
 
     def test_page_and_assets(self):
         for path, ctype in [("/", "text/html"), ("/app.js", "text/javascript"),
-                            ("/style.css", "text/css")]:
+                            ("/style.css", "text/css"),
+                            ("/plus-jakarta-sans-latin.woff2", "font/woff2")]:
             with self.subTest(path):
                 status, got, body = self.get(path)
                 self.assertEqual(status, 200)
@@ -126,7 +127,8 @@ class Http(unittest.TestCase):
                 self.assertTrue(body)
 
     def test_no_files_outside_web(self):
-        for path in ["/../dashboard.py", "/%2e%2e/dashboard.py", "/missing.js", "/../__init__.py"]:
+        for path in ["/../dashboard.py", "/%2e%2e/dashboard.py", "/missing.js", "/../__init__.py",
+                     "/OFL-plus-jakarta-sans.txt"]:
             with self.subTest(path), self.assertRaises(urllib.error.HTTPError) as err:
                 self.get(path)
             self.assertEqual(err.exception.code, 404)

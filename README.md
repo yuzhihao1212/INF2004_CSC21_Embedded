@@ -67,24 +67,24 @@ python -m mosaic.dashboard                 # then open http://localhost:8050
 python -m mosaic.dashboard --simulate 3    # rehearse with simulated nodes, no second terminal
 ```
 
-The dashboard runs the gateway and serves a plain-language web page with five pages
+The dashboard runs the gateway and serves a plain-language web page with four pages
 (design and accessibility rationale: [docs/ui_design.md](docs/ui_design.md)):
 
 | Page | For | Shows |
 |---|---|---|
-| **Overview** | The lecturer, at a glance | One headline ("Lecture in progress"), a one-line summary, Sound / Air / Comfort tiles, the class type, the room at a glance and the latest changes |
-| **Room map** | Where something is happening | A floor plan of the classroom (whiteboard, lecturer's desk, door, windows, desks, sensors) split into the lecturer's area and the front, middle and back rows, tinted by sound, air, temperature or movement; select an area for all its readings |
+| **Live room** | The lecturer, at a glance | One headline ("Lecture in progress") and summary, the class type, and a live floor plan of the room where each area shows what it's doing (sound rings for voices and noise, a haze for stuffy air). Beside it: the alert with one suggested action, loudness against the noise limit, air, comfort and the latest changes. Below: the last 10 minutes as one coloured bar. Select an area for all its readings. The map has a **Flat / 3D** switch (3D is an isometric diorama of the room). Press **P** for presenter mode |
 | **History** | What happened | A timeline of changes and cleared alerts, and CO₂/temperature charts with a text summary |
 | **Sensors** | The team | Each sensor's readings, sound class, Wi-Fi signal, lost readings and response time |
 | **Setup** | Changing things | Class type, voice setup (lecturer calibration), noise limit (excessive noise), how often sensors report, technical names, theme |
 
 When something needs action (ongoing chatter or excessive noise in a lecture, stuffy air in an
-occupied room, or fewer than half the sensors working), a banner with one suggested action appears on every
-page. It clears by itself when the situation ends; **Hide** removes it for 10 minutes but keeps
+occupied room, or fewer than half the sensors working), a card with one suggested action appears beside
+the map on the Live room, and as a banner on top of every other page. It clears by itself when the situation ends; **Hide** removes it for 10 minutes but keeps
 it in History. Alerts are also written to `--events`. **Setup › Show technical names** adds the
 engine's state names (`FOCUSED_LECTURE`, …) and raw numbers, for testing and assessment.
 A pill in the top bar says whether the data is **Simulated** (sent from this computer) or
-**Partly simulated**. Add `--http-host 0.0.0.0` to open it from another device on the same
+**Partly simulated**. The page loads nothing from the internet (its font, Plus Jakarta Sans
+under the SIL OFL, ships in `pc/mosaic/web/`), so it works on a hotspot. Add `--http-host 0.0.0.0` to open it from another device on the same
 network, `--csv FILE` to log readings, and `--verbose` to also print every packet.
 
 To change a node's settings, POST only the fields you want to change. The gateway then delivers
