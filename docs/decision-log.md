@@ -5,6 +5,16 @@ ideas we dropped. Status lines get updated in place; a reversed decision gets a 
 that links back. Entries dated before 14 Nov 2026 were backfilled on 14 Nov from the chat
 where they were decided and the commits that built them.
 
+## 2026-11-16 · Area card and room map get animated scenes
+- **From → to:** the area card was a label/value list (Sound, Air, Temperature, Movement, each with a rainbow icon and a sentence). Now it's one big word for sound with a live sound meter, then three tiles whose effects show the state: haze that thickens as CO₂ rises, heat lines when it's warm, and footsteps for movement. The room map uses the same effects: haze and heat always show where there's a problem, footsteps only in the Movement view.
+- **Why:** ZhiHao found the card looked "AI-generated", then asked for something direct and visual for non-technical users. He chose option 1 from a mockup, asked for premium animated effects, and asked for footprints after the first version looked like raindrops (chat, 16 Nov).
+- **Problem it solves:** every row had the same weight, so nothing said what mattered. The wording was long, and movement showed an amber warning even in the lecturer's area, where walking is normal.
+- **Why this way:** traffic-light gauges (option 2) and a "Now · Why · Next" card with a timeline and CO₂ forecast were dropped: the gauges read as technical, the long card was wordy, and a wrong forecast during the demo would look worse than none. Filling "glass" tiles were dropped because a full glass reads as good. All effects are CSS on elements built once, so the 1 s refresh never restarts an animation; there are no new libraries.
+- **Also:** movement is now information, never a warning (`feedback.py`: its level is "fine" whenever there's a reading). Footprints are bare feet with toes, the shape people read as footsteps; the first shoe-print version looked like drops.
+- **Risks to watch:** constant motion on the projector could distract; effects are low-opacity and scale with the problem, so calm areas barely move. This is dashboard work after the evidence plan said the UI stops; kept small (front end plus one line of Python).
+- **Verified:** in the browser at 1280 and 800 wide and on a 375 px phone, light and dark, 3D and flat; effects checked at full strength by forcing them, then on live demo data (lecturer speaking, air getting stuffy, some movement); card focus goes to Close; no console errors; 265 tests pass. Not verified: the reduced-motion fallback (written, but the browser here can't emulate the setting).
+- **Status:** built, not committed; branch `feat/live-room-ui` (PR #25).
+
 ## 2026-11-16 · Firmware flash/RAM budget and float check, run by CI
 - **From → to:** no measured memory figures and no build-level float check (the tracker row said "to do"). Now `firmware/tools/fw_budget.py` reports flash, RAM, what fills them, and every float call in our code by function; CI runs it on every PR and puts the report on the run's summary page. First results are in `docs/resource_budget.md`.
 - **Why:** first item ZhiHao picked from the evidence plan (chat, 16 Nov): it needs no Pico or teammate, and the brief asks for the no-floats evidence directly.
