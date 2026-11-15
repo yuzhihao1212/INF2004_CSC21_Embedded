@@ -5,6 +5,15 @@ ideas we dropped. Status lines get updated in place; a reversed decision gets a 
 that links back. Entries dated before 14 Nov 2026 were backfilled on 14 Nov from the chat
 where they were decided and the commits that built them.
 
+## 2026-11-16 · Week 13 evidence plan: the node gets measured, the UI stops
+- **From → to:** no plan for the node-side evidence; the CSC21 tracker listed what was missing but not who does it or how. Now `docs/evidence_plan_week13.md` lists each item with an owner, a method and a "done when", and dashboard work stops.
+- **Why:** ZhiHao asked for an honest rating and what would lift the project to A+ (chat, 16 Nov). The estimate was about 70/100: the PC side is strong, but audio isn't on the node and none of the 21 Week 10 hardware tests has a result.
+- **Problem it solves:** an embedded project is judged on the node. Without measured timing, memory, accuracy and reliability numbers, the brief's Week 13 evidence can't be shown.
+- **Why this way:** taking over teammates' parts was considered and dropped: tribunals mark each person on their own work. Instead ZhiHao pairs on the audio hookup (ZhiHao co-owns the protocol and node config) and takes the system-evaluation items already in his role. Reassignment only happens if the team agrees it in writing after a missed date.
+- **Risks to watch:** the plan runs into Week 12, which was meant to be free for individual assessments. Dates are proposals until the team agrees them. If audio misses its date, the fallback is the Week 10 plan's: demo sensors, CONFIG and recovery on real nodes, audio from the simulator, and say so openly.
+- **Verified:** read in the repo on 16 Nov: the tracker, the Week 10 test plan (results blank), `MOSAIC_NODE_AUDIO_SOURCES` empty, and the RTOS build already printing watchdog reset reason and heap/stack high-water marks every 10 s. CPU load isn't measured anywhere. The ~70/100 is an estimate; the brief has no rubric.
+- **Status:** proposed; needs the team's OK in the group chat.
+
 ## 2026-11-16 · Room map gets a 3D view (isometric diorama)
 - **From → to:** the Live room map was a flat floor plan. Now a Flat / 3D switch tilts it into an isometric diorama: far walls, whiteboard and desks are extruded, rings lie on the floor, and labels float upright above each area. 3D is the default; phones stay flat.
 - **Why:** ZhiHao asked whether the classroom could look like a premium 3D illustration for demo day, and picked option A from a mockup (chat, 16 Nov).
