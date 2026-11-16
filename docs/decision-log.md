@@ -5,6 +5,15 @@ ideas we dropped. Status lines get updated in place; a reversed decision gets a 
 that links back. Entries dated before 14 Nov 2026 were backfilled on 14 Nov from the chat
 where they were decided and the commits that built them.
 
+## 2026-11-16 · Live room: readings strip above the map, no blank under it
+- **From → to:** the map sat on the left with one tall column on the right (alerts, Loudness, Air and Comfort, What happened). Now Loudness, Air and Comfort sit in a strip above the map, and the right column (alerts, area details, What happened) runs beside both and ends level with the map. What happened lists up to 12 recent events on wide screens, scrolling inside the card if needed, and 4 when it stacks under the map.
+- **Why:** ZhiHao flagged the empty space on a full-screen browser and picked option A from a mockup of three layouts (chat, 16 Nov).
+- **Problem it solves:** the map keeps its floor-plan shape, so its height follows its width; the right column was about twice as tall, which left a large blank area under the map at 1920 px.
+- **Why this way:** three columns (map, readings, events) lost because the readings column still ran taller in some states. Stretching the map lost because the floor plan has a fixed shape, so the blank space would only move inside the panel.
+- **Risks to watch:** at 901–1180 px Loudness takes its own row, so the map starts lower on laptops. Many alerts at once can make the right column taller than the map again.
+- **Verified:** in the browser with the demo simulator at 1920, 1600, 1000 and 375 px wide: the map and right column end on the same line at the three wide sizes, no sideways scroll, no console errors; presentation mode drops the empty right column and the map takes the full width; dashboard tests pass (23). Not checked with alerts showing on a wide screen.
+- **Status:** built, not committed.
+
 ## 2026-11-16 · PC side speaks MQTT: gateway, dashboard and simulator
 - **From → to:** the PC side only spoke UDP. Now `pc/mosaic/mqtt.py` is a small MQTT 3.1.1 client (standard library only) plus an MQTT transport for the gateway, and `--mqtt HOST[:PORT]` on the gateway, dashboard and simulator switches to the broker. UDP stays the default for the existing firmware and tests. In MQTT mode each simulated node is its own client with its own last will, like a real node.
 - **Why:** ZhiHao asked to start the PC side of the MQTT design (chat, 16 Nov).

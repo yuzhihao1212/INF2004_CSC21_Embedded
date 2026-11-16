@@ -156,6 +156,30 @@
     </section>
 
     <div class="live-grid">
+      <div class="reading-strip" role="group" aria-label="Readings now">
+        <section class="card metric" id="m-loud" aria-labelledby="h-loudness" data-tone="none">
+          <div class="metric-head"><h2 id="h-loudness" class="metric-title" data-sense="sound"><svg class="icon icon-sm" aria-hidden="true"><use href="#i-sound"/></svg>Loudness</h2><span class="metric-note">loudest area vs its limit</span></div>
+          <p class="metric-main"><span class="metric-num" id="loud-num">—</span><span class="metric-where" id="loud-where"></span></p>
+          <div class="limit-bar" aria-hidden="true"><span class="limit-fill" id="loud-fill"></span><span class="limit-tick" title="Noise limit"></span></div>
+          <svg class="spark" id="loud-spark" viewBox="0 0 300 44" preserveAspectRatio="none" aria-hidden="true"><polyline points=""/></svg>
+          <p class="hint" id="loud-hint" hidden>No noise limit set yet. <a href="#/setup">Set it in Setup</a>.</p>
+        </section>
+
+        <section class="card metric" id="m-air" aria-labelledby="h-air" data-tone="none">
+          <h2 id="h-air" class="metric-title" data-sense="air"><svg class="icon icon-sm" aria-hidden="true"><use href="#i-air"/></svg>Air</h2>
+          <p class="metric-num small"><span id="air-num">—</span><span class="unit">ppm</span></p>
+          <p class="metric-sub" id="air-where"></p>
+          <p class="metric-word" id="air-word"></p>
+          <svg class="spark" id="air-spark" viewBox="0 0 140 34" preserveAspectRatio="none" aria-hidden="true"><polyline points=""/></svg>
+        </section>
+        <section class="card metric" id="m-comfort" aria-labelledby="h-comfort" data-tone="none">
+          <h2 id="h-comfort" class="metric-title" data-sense="comfort"><svg class="icon icon-sm" aria-hidden="true"><use href="#i-thermo"/></svg>Comfort</h2>
+          <p class="metric-num small"><span id="temp-num">—</span><span class="unit">°C</span></p>
+          <p class="metric-sub" id="hum-num"></p>
+          <p class="metric-word" id="comfort-word"></p>
+        </section>
+      </div>
+
       <section class="map-panel" aria-labelledby="h-map">
         <div class="map-bar">
           <h2 id="h-map" class="map-title">The room now <span class="map-front" id="map-front">Front of the room on the left</span></h2>
@@ -208,30 +232,6 @@
           <p class="hint zd-foot" id="zone-detail-sensor"></p>
           <p class="tech" id="zone-detail-tech"></p>
         </section>
-
-        <section class="card metric" id="m-loud" aria-labelledby="h-loudness" data-tone="none">
-          <div class="metric-head"><h2 id="h-loudness" class="metric-title" data-sense="sound"><svg class="icon icon-sm" aria-hidden="true"><use href="#i-sound"/></svg>Loudness</h2><span class="metric-note">loudest area vs its limit</span></div>
-          <p class="metric-main"><span class="metric-num" id="loud-num">—</span><span class="metric-where" id="loud-where"></span></p>
-          <div class="limit-bar" aria-hidden="true"><span class="limit-fill" id="loud-fill"></span><span class="limit-tick" title="Noise limit"></span></div>
-          <svg class="spark" id="loud-spark" viewBox="0 0 300 44" preserveAspectRatio="none" aria-hidden="true"><polyline points=""/></svg>
-          <p class="hint" id="loud-hint" hidden>No noise limit set yet. <a href="#/setup">Set it in Setup</a>.</p>
-        </section>
-
-        <div class="metric-pair">
-          <section class="card metric" id="m-air" aria-labelledby="h-air" data-tone="none">
-            <h2 id="h-air" class="metric-title" data-sense="air"><svg class="icon icon-sm" aria-hidden="true"><use href="#i-air"/></svg>Air</h2>
-            <p class="metric-num small"><span id="air-num">—</span><span class="unit">ppm</span></p>
-            <p class="metric-sub" id="air-where"></p>
-            <p class="metric-word" id="air-word"></p>
-            <svg class="spark" id="air-spark" viewBox="0 0 140 34" preserveAspectRatio="none" aria-hidden="true"><polyline points=""/></svg>
-          </section>
-          <section class="card metric" id="m-comfort" aria-labelledby="h-comfort" data-tone="none">
-            <h2 id="h-comfort" class="metric-title" data-sense="comfort"><svg class="icon icon-sm" aria-hidden="true"><use href="#i-thermo"/></svg>Comfort</h2>
-            <p class="metric-num small"><span id="temp-num">—</span><span class="unit">°C</span></p>
-            <p class="metric-sub" id="hum-num"></p>
-            <p class="metric-word" id="comfort-word"></p>
-          </section>
-        </div>
 
         <section class="card events" aria-labelledby="h-latest">
           <div class="card-head"><h2 id="h-latest">What happened</h2><a class="more" href="#/history">History<svg class="icon icon-sm" aria-hidden="true"><use href="#i-arrow"/></svg></a></div>
