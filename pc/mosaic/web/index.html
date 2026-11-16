@@ -3,20 +3,19 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Overview · MOSAIC</title>
+<title>Live room · MOSAIC</title>
 <script>
   try {
     var saved = localStorage.getItem("mosaic-theme");
     if (saved === "light" || saved === "dark") document.documentElement.dataset.theme = saved;
     if (localStorage.getItem("mosaic-tech") === "1") document.documentElement.dataset.tech = "";
+    if (localStorage.getItem("mosaic-present") === "1") document.documentElement.dataset.present = "";
   } catch (e) {}
   try {  // Intro plays once per browser tab (intro.js)
     if (!sessionStorage.getItem("mosaic-intro")) document.documentElement.dataset.intro = "play";
   } catch (e) {}
 </script>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap">
+<link rel="preload" href="plus-jakarta-sans-latin.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="style.css">
 <link rel="icon" href="logo.svg" type="image/svg+xml">
 </head>
@@ -73,12 +72,14 @@
   <symbol id="i-arrow" viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></symbol>
   <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></symbol>
   <symbol id="i-moon" viewBox="0 0 24 24"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5Z"/></symbol>
+  <symbol id="i-present" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M12 16v4M8 20h8M8 9l2.5 2.5L8 14"/></symbol>
+  <symbol id="i-close" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></symbol>
   <symbol id="i-auto" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 4v16" /><path d="M12 4a8 8 0 0 1 0 16Z" fill="currentColor" stroke="none"/></symbol>
 </svg>
 
 <header class="topbar">
   <div class="wrap topbar-inner">
-    <a class="brand" href="#/overview" aria-label="MOSAIC: go to overview">
+    <a class="brand" href="#/live" aria-label="MOSAIC: go to the live room">
       <svg class="brand-mark" viewBox="0 0 100 100" aria-hidden="true" focusable="false">
         <circle class="bm-ring" cx="50" cy="50" r="42"/>
         <g class="bm-thud"><g class="bm-spin">
@@ -91,8 +92,7 @@
       <span class="wordmark"><span>m</span><span>o</span><span>s</span><span>a</span><span>i</span><span>c</span></span>
     </a>
     <nav class="pages" aria-label="Pages">
-      <a href="#/overview" data-page="overview"><svg class="icon" aria-hidden="true"><use href="#i-home"/></svg><span>Overview</span></a>
-      <a href="#/map" data-page="map"><svg class="icon" aria-hidden="true"><use href="#i-map"/></svg><span>Room map</span></a>
+      <a href="#/live" data-page="live"><svg class="icon" aria-hidden="true"><use href="#i-map"/></svg><span>Live room</span></a>
       <a href="#/history" data-page="history"><svg class="icon" aria-hidden="true"><use href="#i-history"/></svg><span>History</span></a>
       <a href="#/sensors" data-page="sensors"><svg class="icon" aria-hidden="true"><use href="#i-node"/></svg><span>Sensors</span></a>
       <a href="#/setup" data-page="setup"><svg class="icon" aria-hidden="true"><use href="#i-setup"/></svg><span>Setup</span></a>
@@ -107,6 +107,9 @@
       <span class="live" id="live" data-state="connecting" role="status">
         <span class="live-dot" aria-hidden="true"></span><span id="live-text">Connecting</span>
       </span>
+      <button class="icon-btn" id="present-btn" type="button" aria-pressed="false" aria-label="Presenter mode" title="Presenter mode (P)">
+        <svg class="icon" aria-hidden="true"><use href="#i-present"/></svg>
+      </button>
       <button class="icon-btn" id="theme-btn" type="button" aria-label="Theme: automatic. Change theme">
         <svg class="icon" aria-hidden="true"><use href="#i-auto"/></svg>
       </button>
@@ -121,67 +124,26 @@
 
 <main id="main" class="wrap" tabindex="-1">
 
-  <!-- 1. Overview: one answer for the lecturer -->
-  <section class="page" data-page="overview" aria-labelledby="h-overview">
-    <div class="page-head">
-      <h1 id="h-overview" class="page-title" tabindex="-1">Overview</h1>
-      <fieldset class="segmented mode-control">
-        <legend>Class type</legend>
-        <label><input type="radio" name="mode-overview" value="LECTURE"><span>Lecture</span></label>
-        <label><input type="radio" name="mode-overview" value="DISCUSSION"><span>Group work</span></label>
-        <label><input type="radio" name="mode-overview" value="QUIET_WORK"><span>Quiet work</span></label>
-      </fieldset>
-    </div>
-    <p class="mode-status" role="status" data-mode-status></p>
-
-    <div class="hero" id="hero" data-level="fine">
-      <p class="headline" id="headline">Checking the room…</p>
-      <p class="summary" id="summary">Waiting for the first readings.</p>
-      <p class="tech" id="hero-tech"></p>
-    </div>
-
-    <div class="tiles">
-      <article class="tile status-tile" id="tile-sound" data-level="fine">
-        <h2 class="tile-title"><svg class="icon" aria-hidden="true"><use href="#i-sound"/></svg>Sound</h2>
-        <p class="tile-label"><svg class="icon level-icon" aria-hidden="true"><use href="#i-fine"/></svg><span class="lt">—</span></p>
-        <p class="tile-why"></p><p class="tech"></p>
-      </article>
-      <article class="tile status-tile" id="tile-air" data-level="fine">
-        <h2 class="tile-title"><svg class="icon" aria-hidden="true"><use href="#i-air"/></svg>Air</h2>
-        <p class="tile-label"><svg class="icon level-icon" aria-hidden="true"><use href="#i-fine"/></svg><span class="lt">—</span></p>
-        <p class="tile-why"></p><p class="tech"></p>
-      </article>
-      <article class="tile status-tile" id="tile-comfort" data-level="fine">
-        <h2 class="tile-title"><svg class="icon" aria-hidden="true"><use href="#i-thermo"/></svg>Comfort</h2>
-        <p class="tile-label"><svg class="icon level-icon" aria-hidden="true"><use href="#i-fine"/></svg><span class="lt">—</span></p>
-        <p class="tile-why"></p><p class="tech"></p>
-      </article>
+  <!-- 1. Live room: the headline, the room as it is now, and what to do -->
+  <section class="page live-room" data-page="live" aria-labelledby="h-live">
+    <div class="live-head">
+      <div class="hero" id="hero" data-level="fine">
+        <p class="kicker" id="kicker">Connecting</p>
+        <h1 id="h-live" class="headline page-title" tabindex="-1">Checking the room…</h1>
+        <p class="summary" id="summary">Waiting for the first readings.</p>
+        <p class="tech" id="hero-tech"></p>
+      </div>
+      <div class="live-controls">
+        <fieldset class="segmented mode-control">
+          <legend>Class type</legend>
+          <label><input type="radio" name="mode-live" value="LECTURE"><span>Lecture</span></label>
+          <label><input type="radio" name="mode-live" value="DISCUSSION"><span>Group work</span></label>
+          <label><input type="radio" name="mode-live" value="QUIET_WORK"><span>Quiet work</span></label>
+        </fieldset>
+        <p class="mode-status" role="status" data-mode-status></p>
+      </div>
     </div>
 
-    <div class="overview-split">
-      <section class="card" aria-labelledby="h-glance">
-        <div class="card-head"><h2 id="h-glance">Room at a glance</h2><a class="more" href="#/map">Room map<svg class="icon icon-sm" aria-hidden="true"><use href="#i-arrow"/></svg></a></div>
-        <div class="plan compact" id="mini-map" role="group"></div>
-      </section>
-      <section class="card" aria-labelledby="h-latest">
-        <div class="card-head"><h2 id="h-latest">What happened</h2><a class="more" href="#/history">History<svg class="icon icon-sm" aria-hidden="true"><use href="#i-arrow"/></svg></a></div>
-        <ol class="timeline" id="latest"></ol>
-      </section>
-    </div>
-  </section>
-
-  <!-- 2. Room map -->
-  <section class="page" data-page="map" aria-labelledby="h-map" hidden>
-    <div class="page-head">
-      <h1 id="h-map" class="page-title" tabindex="-1">Room map</h1>
-      <fieldset class="segmented" id="map-metric">
-        <legend>Show</legend>
-        <label><input type="radio" name="map-metric" value="activity" checked><span>Sound</span></label>
-        <label><input type="radio" name="map-metric" value="air"><span>Air</span></label>
-        <label><input type="radio" name="map-metric" value="comfort"><span>Temperature</span></label>
-        <label><input type="radio" name="map-metric" value="motion"><span>Movement</span></label>
-      </fieldset>
-    </div>
     <section class="sim-strip" id="sim-strip" aria-label="Simulation" hidden>
       <div class="sim-line">
         <span class="sim-chip"><svg class="icon icon-xs" aria-hidden="true"><use href="#i-flask"/></svg><span id="sim-name">Simulated</span></span>
@@ -191,20 +153,77 @@
       <div class="sim-bar" id="sim-bar" aria-hidden="true"></div>
       <p class="tech sim-tech" id="sim-tech"></p>
     </section>
-    <div class="plan" id="zone-map" role="group"></div>
-    <section class="card zone-detail" id="zone-detail" aria-labelledby="zone-detail-h">
-      <h2 id="zone-detail-h">Select an area</h2>
-      <p class="hint" id="zone-detail-sensor"></p>
-      <dl class="readings" id="zone-detail-list"></dl>
-      <p class="tech" id="zone-detail-tech"></p>
+
+    <div class="live-grid">
+      <section class="map-panel" aria-labelledby="h-map">
+        <div class="map-bar">
+          <h2 id="h-map" class="map-title">The room now <span class="map-front" id="map-front">Front of the room on the left</span></h2>
+          <fieldset class="segmented small" id="map-metric">
+            <legend class="sr-only">Show on the map</legend>
+            <label><input type="radio" name="map-metric" value="activity" checked><span>Sound</span></label>
+            <label><input type="radio" name="map-metric" value="air"><span>Air</span></label>
+            <label><input type="radio" name="map-metric" value="comfort"><span>Temperature</span></label>
+            <label><input type="radio" name="map-metric" value="motion"><span>Movement</span></label>
+          </fieldset>
+          <fieldset class="segmented small" id="map-view">
+            <legend class="sr-only">Map view</legend>
+            <label><input type="radio" name="map-view" value="flat"><span>Flat</span></label>
+            <label><input type="radio" name="map-view" value="3d"><span>3D</span></label>
+          </fieldset>
+        </div>
+        <div class="plan" id="zone-map" role="group"></div>
+        <ul class="key" id="map-key" aria-label="Key"></ul>
+      </section>
+
+      <aside class="live-side" aria-label="Details">
+        <div class="alert-slot" id="alert-slot" role="region" aria-label="Things to act on"></div>
+
+        <section class="card zone-detail" id="zone-detail" aria-labelledby="zone-detail-h" hidden>
+          <div class="card-head">
+            <h2 id="zone-detail-h">Area</h2>
+            <button class="icon-btn small" id="zone-close" type="button" aria-label="Close area details"><svg class="icon" aria-hidden="true"><use href="#i-close"/></svg></button>
+          </div>
+          <p class="hint" id="zone-detail-sensor"></p>
+          <dl class="readings" id="zone-detail-list"></dl>
+          <p class="tech" id="zone-detail-tech"></p>
+        </section>
+
+        <section class="card metric" id="m-loud" aria-labelledby="h-loudness" data-tone="none">
+          <div class="metric-head"><h2 id="h-loudness" class="metric-title" data-sense="sound"><svg class="icon icon-sm" aria-hidden="true"><use href="#i-sound"/></svg>Loudness</h2><span class="metric-note">loudest area vs its limit</span></div>
+          <p class="metric-main"><span class="metric-num" id="loud-num">—</span><span class="metric-where" id="loud-where"></span></p>
+          <div class="limit-bar" aria-hidden="true"><span class="limit-fill" id="loud-fill"></span><span class="limit-tick" title="Noise limit"></span></div>
+          <svg class="spark" id="loud-spark" viewBox="0 0 300 44" preserveAspectRatio="none" aria-hidden="true"><polyline points=""/></svg>
+          <p class="hint" id="loud-hint" hidden>No noise limit set yet. <a href="#/setup">Set it in Setup</a>.</p>
+        </section>
+
+        <div class="metric-pair">
+          <section class="card metric" id="m-air" aria-labelledby="h-air" data-tone="none">
+            <h2 id="h-air" class="metric-title" data-sense="air"><svg class="icon icon-sm" aria-hidden="true"><use href="#i-air"/></svg>Air</h2>
+            <p class="metric-num small"><span id="air-num">—</span><span class="unit">ppm</span></p>
+            <p class="metric-sub" id="air-where"></p>
+            <p class="metric-word" id="air-word"></p>
+            <svg class="spark" id="air-spark" viewBox="0 0 140 34" preserveAspectRatio="none" aria-hidden="true"><polyline points=""/></svg>
+          </section>
+          <section class="card metric" id="m-comfort" aria-labelledby="h-comfort" data-tone="none">
+            <h2 id="h-comfort" class="metric-title" data-sense="comfort"><svg class="icon icon-sm" aria-hidden="true"><use href="#i-thermo"/></svg>Comfort</h2>
+            <p class="metric-num small"><span id="temp-num">—</span><span class="unit">°C</span></p>
+            <p class="metric-sub" id="hum-num"></p>
+            <p class="metric-word" id="comfort-word"></p>
+          </section>
+        </div>
+
+        <section class="card events" aria-labelledby="h-latest">
+          <div class="card-head"><h2 id="h-latest">What happened</h2><a class="more" href="#/history">History<svg class="icon icon-sm" aria-hidden="true"><use href="#i-arrow"/></svg></a></div>
+          <ol class="timeline compact" id="latest"></ol>
+        </section>
+      </aside>
+    </div>
+
+    <section class="card lesson" aria-labelledby="h-lesson">
+      <div class="card-head"><h2 id="h-lesson">Last <span id="lesson-span">10 minutes</span></h2><span class="metric-note">Hover or tap a stretch to see what happened</span></div>
+      <div class="lesson-bar" id="lesson-bar"></div>
+      <div class="lesson-axis" id="lesson-axis" aria-hidden="true"></div>
     </section>
-    <ul class="key" aria-label="Key">
-      <li><svg class="icon icon-sm lvl-fine" aria-hidden="true"><use href="#i-fine"/></svg>Fine</li>
-      <li><svg class="icon icon-sm lvl-heads_up" aria-hidden="true"><use href="#i-alert"/></svg>Keep an eye on it</li>
-      <li><svg class="icon icon-sm lvl-act_now" aria-hidden="true"><use href="#i-stop"/></svg>Act now</li>
-      <li><svg class="icon icon-sm lvl-none" aria-hidden="true"><use href="#i-none"/></svg>No reading</li>
-    </ul>
-    <p class="hint">Select an area for all its readings. Dots mark the sensors. Each area updates after about 10 seconds, so a short noise doesn't count.</p>
   </section>
 
   <!-- 3. History -->

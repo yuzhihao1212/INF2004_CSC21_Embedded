@@ -56,7 +56,8 @@ _CONFIG_PATH = re.compile(r"/api/nodes/(\d+)/config")
 _HIDE_PATH = re.compile(r"/api/alerts/(\d+)/hide")
 _MAX_BODY = 4096
 _CONTENT_TYPES = {".html": "text/html; charset=utf-8", ".css": "text/css; charset=utf-8",
-                  ".js": "text/javascript; charset=utf-8", ".svg": "image/svg+xml"}
+                  ".js": "text/javascript; charset=utf-8", ".svg": "image/svg+xml",
+                  ".woff2": "font/woff2"}  # Self-hosted font: the demo hotspot has no internet
 
 
 class Dashboard:
