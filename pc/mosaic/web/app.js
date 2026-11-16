@@ -818,7 +818,8 @@
       $("#sim-name").textContent = "Simulated";
       $("#sim-phase").textContent = `${sim.nodes} sensors with random readings, no script`;
       $("#sim-left").textContent = "";
-      $("#sim-keys").hidden = true;  // No script to control
+      $("#sim-toggle").hidden = true;  // No script to control
+      $("#sim-controls").hidden = true;
       bar.hidden = true;
       $("#sim-tech").textContent = "";
       return;
@@ -831,7 +832,7 @@
     const speed = sim.paused ? "Paused" : sim.rate > 1 ? `${sim.rate}×` : "";
     left.replaceChildren(...(speed ? [make("b", "", speed), document.createTextNode(sim.finished ? "" : " · ")] : []),
                          document.createTextNode(sim.finished ? "" : `${mmss(sim.left_s)} left`));
-    $("#sim-keys").hidden = false;
+    renderSimControls(sim);
     bar.hidden = false;
     if (bar.dataset.scenario !== sim.scenario) {
       bar.dataset.scenario = sim.scenario;
@@ -852,9 +853,51 @@
     $("#sim-tech").textContent = `expected ${sim.expect} · now activity ${c ? c.activity : "—"}, air ${c ? c.air : "—"}, comfort ${c ? c.comfort : "—"}`;
   }
 
-  /* Presenter keys for a scripted simulation: Space pause/play, right arrow next
-   * phase, 1/2/4 speed. Nothing on screen; the strip shows the hint on hover/focus. */
-  document.addEventListener("keydown", async (e) => {
+  /* Demo controls for a scripted simulation: a toggle opens a clickable row
+   * (closed by default and in presenter mode), and the same actions have keys:
+   * Space pause/play, right arrow next phase, 1/2/4 speed. */
+  let simOpen = false, simOpenPresent = false;  // Presenter mode starts closed and isn't remembered
+  const presenting = () => "present" in document.documentElement.dataset;
+  try { simOpen = localStorage.getItem("mosaic-sim-controls") === "open"; } catch (e) { /* Blocked */ }
+  function renderSimControls(sim) {
+    const toggle = $("#sim-toggle");
+    toggle.hidden = false;
+    const open = presenting() ? simOpenPresent : simOpen;
+    toggle.setAttribute("aria-expanded", String(open));
+    toggle.setAttribute("aria-label", open ? "Hide demo controls" : "Show demo controls");
+    toggle.title = toggle.getAttribute("aria-label");
+    $("#sim-controls").hidden = !open;
+    const play = $("#sim-play");
+    play.setAttribute("aria-label", sim.paused ? "Play the script" : "Pause the script");
+    play.title = play.getAttribute("aria-label");
+    $("use", play).setAttribute("href", sim.paused ? "#i-play" : "#i-pause");
+    const last = sim.finished || sim.phase >= sim.phases.length - 1;
+    $("#sim-next").disabled = last;
+    $("#sim-next").title = last ? "Already on the last phase" : "Next phase";
+    document.querySelectorAll('input[name="sim-rate"]').forEach((r) => { r.checked = Number(r.value) === sim.rate; });
+  }
+  async function simControl(body) {
+    try {
+      state.simulation = await post("/api/simulation", body);
+      renderSim();
+      const s = state.simulation;
+      announcer.textContent = body.pause !== undefined ? (s.paused ? "Script paused" : "Script playing")
+        : body.rate ? `Script speed ${s.rate}×` : `Phase ${s.phase + 1}: ${s.label}`;
+    } catch (err) {
+      announcer.textContent = err.message;
+    }
+  }
+  $("#sim-toggle").addEventListener("click", () => {
+    const open = $("#sim-toggle").getAttribute("aria-expanded") !== "true";
+    if (presenting()) simOpenPresent = open;
+    else { simOpen = open; store("mosaic-sim-controls", open ? "open" : null); }
+    if (state && state.simulation) renderSim();
+  });
+  $("#sim-play").addEventListener("click", () => state.simulation && simControl({ pause: !state.simulation.paused }));
+  $("#sim-next").addEventListener("click", () => simControl({ next: true }));
+  document.querySelectorAll('input[name="sim-rate"]').forEach((r) =>
+    r.addEventListener("change", () => simControl({ rate: Number(r.value) })));
+  document.addEventListener("keydown", (e) => {
     const sim = state && state.simulation;
     const strip = $("#sim-strip");
     if (!sim || !sim.scenario || strip.hidden || !strip.offsetParent) return;  // Live room with a script only
@@ -868,15 +911,7 @@
     else if (["1", "2", "4"].includes(e.key)) body = { rate: Number(e.key) };
     else return;
     e.preventDefault();
-    try {
-      state.simulation = await post("/api/simulation", body);
-      renderSim();
-      const s = state.simulation;
-      announcer.textContent = body.pause !== undefined ? (s.paused ? "Script paused" : "Script playing")
-        : body.rate ? `Script speed ${s.rate}×` : `Phase ${s.phase + 1}: ${s.label}`;
-    } catch (err) {
-      announcer.textContent = err.message;
-    }
+    simControl(body);
   });
 
   /* Area details: a card in the side column; Escape or the close button hides it */
