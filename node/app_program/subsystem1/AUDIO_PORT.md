@@ -54,3 +54,10 @@ make NET=lwip MQTT=1 -j8
 Default artifact: `mtk3pico_smp1_usb_cdc_wifi.uf2`. Test definitions and logs
 live in `node/testing/subsystem1/` and `subsystem2/`. Cross-building and host
 replay do not establish real microphone timing or MQTT delivery.
+
+Validated locally: USB/Wi-Fi and MQTT profiles link against SDK 2.2.0; host
+replay matches all 20 reference DSP outputs and the reference classifier.
+The private `node/config/wifi_secrets.h` is absent. The MQTT compile check
+used the public example via an ignored build include directory, so that
+MQTT image has placeholder settings and is not a configured deployment.
+The default USB/Wi-Fi UF2 is suitable for the next bench test of audio output.
