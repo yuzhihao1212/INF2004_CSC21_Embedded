@@ -5,6 +5,16 @@ ideas we dropped. Status lines get updated in place; a reversed decision gets a 
 that links back. Entries dated before 14 Nov 2026 were backfilled on 14 Nov from the chat
 where they were decided and the commits that built them.
 
+## 2026-11-16 · Firmware flash/RAM budget and float check, run by CI
+- **From → to:** no measured memory figures and no build-level float check (the tracker row said "to do"). Now `firmware/tools/fw_budget.py` reports flash, RAM, what fills them, and every float call in our code by function; CI runs it on every PR and puts the report on the run's summary page. First results are in `docs/resource_budget.md`.
+- **Why:** first item ZhiHao picked from the evidence plan (chat, 16 Nov): it needs no Pico or teammate, and the brief asks for the no-floats evidence directly.
+- **Problem it solves:** the CSC21 claim "no floats in the processing path" rested on reading the source. The build now shows it: node, classifier and the per-window DSP have none; `audio_dsp_init` uses float maths once at start-up to build integer tables.
+- **Why this way:** plain `arm-none-eabi-size` gives section totals but not who uses the RAM or where floats come from. The script reads the linker map and object files instead. Running it in CI gives numbers from the team's SDK 1.5.1 build with no extra setup. Changing the DSP tables to `const` and shrinking lwIP's 36 KB packet pool were left to Moe and Arif, since those are their parts.
+- **Fix after the first CI run (16 Nov):** CI's SDK 1.5.1 report showed 2 KB of heap and no breakdown. In 1.5.1 `__HeapLimit` only marks a 2 KB placeholder (the heap really grows to `__StackLimit`), and the map can be named `<name>.map`. Both fixed; the same report showed the RTOS node at 121.7 KB static RAM, so the node-plus-audio estimate went from 138 KB to about 200 KB of 256 KB.
+- **Risks to watch:** the local figures come from SDK 2.3.0/GCC 15.2 and may differ by a few KB from CI's; use CI's in the write-up. The CI step can't fail the build (`continue-on-error`), so check that its summary appears. The ~200 KB node-plus-audio RAM figure is an estimate until audio is linked.
+- **Verified:** built `mosaic_node`, `audio_talking` and `audio_benchmark` locally and ran the script; flash and RAM totals match the linker symbols by hand; float calls confirmed with `objdump`. 4 new parser tests; 265 tests pass. Not verified: the CI step itself (runs on the next push) and the RTOS build (FreeRTOS isn't installed locally).
+- **Status:** built, not committed; branch `feat/firmware-budget` (from `feat/live-room-ui`).
+
 ## 2026-11-16 · Week 13 evidence plan: the node gets measured, the UI stops
 - **From → to:** no plan for the node-side evidence; the CSC21 tracker listed what was missing but not who does it or how. Now `docs/evidence_plan_week13.md` lists each item with an owner, a method and a "done when", and dashboard work stops.
 - **Why:** ZhiHao asked for an honest rating and what would lift the project to A+ (chat, 16 Nov). The estimate was about 70/100: the PC side is strong, but audio isn't on the node and none of the 21 Week 10 hardware tests has a result.
