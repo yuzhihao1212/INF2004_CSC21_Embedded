@@ -5,6 +5,15 @@ ideas we dropped. Status lines get updated in place; a reversed decision gets a 
 that links back. Entries dated before 14 Nov 2026 were backfilled on 14 Nov from the chat
 where they were decided and the commits that built them.
 
+## 2026-11-16 · Node code uses the C library's `size_t` (`app.h`)
+- **From → to:** in the template, any file that included `app.h` and then `<string.h>` (or a header that pulls in `<stddef.h>`, such as `mosaic_protocol.h`) failed with `conflicting types for 'size_t'`: the kernel's `tk/syslib.h` makes its own `size_t` (unsigned long) and the toolchain's is unsigned int. Now the shared `node/app_program/app.h` defines `PROHIBIT_DEF_SIZE_T` and includes `<stddef.h>` before the kernel headers, so every subsystem gets the C library's `size_t` in any include order.
+- **Why:** found while reviewing the subsystem 5 port (PR #33); ZhiHao asked to fix it for the whole team (chat, 16 Nov). It would have hit whoever first used `memcpy` or the protocol header after `app.h`.
+- **Why this way:** it's the kernel's own switch, and the template's lwIP glue (`sys_arch.c`) already uses it the same way. Telling every owner to include headers in a set order was the alternative; it's easy to forget and the compiler error doesn't explain it. A makefile flag would also work, but the makefile is shared template build code; `app.h` is the team's shared header.
+- **Risks to watch:** `app.h` is template code, so a later `git subtree pull` from the instructor could conflict on these lines; keep ours. Both types are 32 bits on the RP2040, so nothing changes at run time.
+- **Follow-up:** once this and PR #33 are both merged, `subsystem5.h` no longer needs its include-order workaround, and the "include `subsystem5.h` first" notes in `subsystem5.h`, `TEST_LOG.md` and the subsystem 5 entry can go.
+- **Verified:** with Pico SDK 2.3.0 and Arm GCC 15.2, using the template's own compiler flags plus `-Wall -Wextra -Werror`: `app.h` then `<string.h>`, `<string.h>` then `app.h`, a subsystem's own header then `subsystem5.h`, and `subsystem5.h` first all compile (the first and third failed before). The four subsystem 5 files from PR #33 compile cleanly against the new `app.h`. `make TEST=1`, `make NET=lwip` and `make` build with 0 warnings. Not run on a Pico.
+- **Status:** built, not committed.
+
 ## 2026-11-16 · PC side speaks MQTT: gateway, dashboard and simulator
 - **From → to:** the PC side only spoke UDP. Now `pc/mosaic/mqtt.py` is a small MQTT 3.1.1 client (standard library only) plus an MQTT transport for the gateway, and `--mqtt HOST[:PORT]` on the gateway, dashboard and simulator switches to the broker. UDP stays the default for the existing firmware and tests. In MQTT mode each simulated node is its own client with its own last will, like a real node.
 - **Why:** ZhiHao asked to start the PC side of the MQTT design (chat, 16 Nov).
