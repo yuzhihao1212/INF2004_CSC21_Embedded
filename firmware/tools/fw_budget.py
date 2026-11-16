@@ -272,13 +272,22 @@ def object_variables(prefix: str, obj_path: str, build_dir: Path, section: str) 
     return found
 
 
+def find_map(elf: Path) -> Path | None:
+    """SDK 2.x writes <name>.elf.map; SDK 1.5.1 writes <name><CMAKE_EXECUTABLE_SUFFIX>.map,
+    which can come out as <name>.map."""
+    for candidate in (elf.with_suffix(".elf.map"), elf.with_suffix(".map")):
+        if candidate.is_file():
+            return candidate
+    return None
+
+
 def report_elf(build_dir: Path, rel: str, prefix: str) -> list[str]:
     elf = build_dir / rel
     out = [f"## `{elf.stem}`", ""]
     syms = linker_symbols(prefix, elf)
     flash_used = syms["__flash_binary_end"] - FLASH_BASE
     static_ram = syms["end"] - RAM_BASE
-    heap_free = syms["__HeapLimit"] - syms["end"]
+    heap_free = syms["__StackLimit"] - syms["end"]  # _sbrk grows the heap from `end` up to __StackLimit (SDK 1.5 and 2.x)
     core0_stack = syms["__StackTop"] - syms["__StackOneTop"]
     core1_stack = syms["__StackOneTop"] - syms["__StackLimit"]
     out += [
@@ -297,8 +306,8 @@ def report_elf(build_dir: Path, rel: str, prefix: str) -> list[str]:
             out.append(f"| of which FreeRTOS heap (task stacks, queues), inside static RAM | {kb(heap_bytes)} | | |")
     out.append("")
 
-    map_path = elf.with_suffix(".elf.map")
-    if not map_path.is_file():
+    map_path = find_map(elf)
+    if map_path is None:
         return out + ["No linker map found, so no breakdown.", ""]
     placed = parse_map(map_path.read_text(errors="replace"))
     b = breakdown(placed, build_dir)

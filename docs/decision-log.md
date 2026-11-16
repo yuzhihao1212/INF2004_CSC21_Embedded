@@ -19,7 +19,8 @@ where they were decided and the commits that built them.
 - **Why:** first item ZhiHao picked from the evidence plan (chat, 16 Nov): it needs no Pico or teammate, and the brief asks for the no-floats evidence directly.
 - **Problem it solves:** the CSC21 claim "no floats in the processing path" rested on reading the source. The build now shows it: node, classifier and the per-window DSP have none; `audio_dsp_init` uses float maths once at start-up to build integer tables.
 - **Why this way:** plain `arm-none-eabi-size` gives section totals but not who uses the RAM or where floats come from. The script reads the linker map and object files instead. Running it in CI gives numbers from the team's SDK 1.5.1 build with no extra setup. Changing the DSP tables to `const` and shrinking lwIP's 36 KB packet pool were left to Moe and Arif, since those are their parts.
-- **Risks to watch:** the local figures come from SDK 2.3.0/GCC 15.2 and may differ by a few KB from CI's; use CI's in the write-up. The CI step can't fail the build (`continue-on-error`), so check that its summary appears. The 138 KB node-plus-audio RAM figure is an estimate until audio is linked.
+- **Fix after the first CI run (16 Nov):** CI's SDK 1.5.1 report showed 2 KB of heap and no breakdown. In 1.5.1 `__HeapLimit` only marks a 2 KB placeholder (the heap really grows to `__StackLimit`), and the map can be named `<name>.map`. Both fixed; the same report showed the RTOS node at 121.7 KB static RAM, so the node-plus-audio estimate went from 138 KB to about 200 KB of 256 KB.
+- **Risks to watch:** the local figures come from SDK 2.3.0/GCC 15.2 and may differ by a few KB from CI's; use CI's in the write-up. The CI step can't fail the build (`continue-on-error`), so check that its summary appears. The ~200 KB node-plus-audio RAM figure is an estimate until audio is linked.
 - **Verified:** built `mosaic_node`, `audio_talking` and `audio_benchmark` locally and ran the script; flash and RAM totals match the linker symbols by hand; float calls confirmed with `objdump`. 4 new parser tests; 265 tests pass. Not verified: the CI step itself (runs on the next push) and the RTOS build (FreeRTOS isn't installed locally).
 - **Status:** built, not committed; branch `feat/firmware-budget` (from `feat/live-room-ui`).
 
@@ -58,7 +59,7 @@ where they were decided and the commits that built them.
 - **Why this way:** a literature search suggested 65 dB, the top of measured occupied lessons (about 55–65 dB LAeq; one survey mean 64.2). Only WHO 1999 was verified, and it gives 35 dB LAeq during teaching, a background goal rather than an activity level. The other figures came from search summaries and stay "to verify".
 - **Risks to watch:** 70 dB may flag too rarely in a real room. The studies average over minutes while our check uses 10 s, so the report needs to state that difference. Revisit once the occupied-classroom survey is opened, or after the first real-room capture.
 - **Verified:** WHO text read. Everything else is unverified.
-- **Status:** decided; `TARGET_DB` in `app.js` and the docs still say placeholder.
+- **Status:** decided; logged in PR #23 (`55def5f`). `TARGET_DB` in `app.js` and the docs still say placeholder.
 
 ## 2026-11-14 · CSC21 tracker and fault table brought up to date
 - **From → to:** the tracker listed fusion's numeric table and the integer-vs-float fusion comparison as "To do", and fault F5 as "In progress". Now: both tracker rows are done, the PC half of the no-floats check is recorded, and F5 is ✅.
@@ -67,7 +68,7 @@ where they were decided and the commits that built them.
 - **Why this way:** the rows were updated in place and point at the existing evidence. No new document was written.
 - **Risks to watch:** the fusion comparison uses simulated scenarios only. If real-room data disagrees, the row needs a real-data comparison.
 - **Verified:** reran `test_integer_accuracy.py` and `test_integer_enforcement.py` on 14 Nov. Same state sequence; 93 activity transitions at most 500 ms apart; the allow-list holds `seconds_to_ms` only.
-- **Status:** built, not committed.
+- **Status:** merged in PR #23 (`fb51677`).
 
 ## 2026-11-13 · Loss tooltip moved onto the new Sensors row
 - **From → to:** `main` (Kendrick) added a loss explanation to the old Sensors card. The redesigned page has no cards, so the explanation now shows on hover over each row's link line.
