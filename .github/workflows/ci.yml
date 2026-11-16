@@ -70,6 +70,66 @@ jobs:
             firmware/build/node/*.uf2
             firmware/build/resource_budget.md
 
+  node:
+    name: Build node (micro T-Kernel template, Pico SDK 2.2.0)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      # The SDK version the template's README asks for, with only the
+      # submodules it uses (USB, Wi-Fi, lwIP).
+      - uses: actions/checkout@v4
+        with:
+          repository: raspberrypi/pico-sdk
+          ref: 2.2.0
+          path: pico-sdk
+      - name: Pico SDK submodules
+        run: git -C pico-sdk submodule update --init --depth 1 lib/tinyusb lib/cyw43-driver lib/lwip
+
+      # Arm GNU Toolchain 15.2.rel1: the compiler the template was checked with locally.
+      - name: Cache Arm toolchain
+        id: node-toolchain-cache
+        uses: actions/cache@v4
+        with:
+          path: arm-toolchain-15
+          key: arm-gnu-toolchain-15.2.rel1-x86_64
+
+      - name: Download Arm toolchain
+        if: steps.node-toolchain-cache.outputs.cache-hit != 'true'
+        run: |
+          mkdir arm-toolchain-15
+          curl -fsSL https://developer.arm.com/-/media/Files/downloads/gnu/15.2.rel1/binrel/arm-gnu-toolchain-15.2.rel1-x86_64-arm-none-eabi.tar.xz \
+            | tar -xJ -C arm-toolchain-15 --strip-components=1
+
+      - name: Add toolchain to PATH
+        run: echo "$GITHUB_WORKSPACE/arm-toolchain-15/bin" >> "$GITHUB_PATH"
+
+      # Default image last, so the objects left on disk match it for the float check.
+      - name: Build (self-tests, lwIP, default)
+        working-directory: node/build_make
+        env:
+          PICO_SDK_PATH: ${{ github.workspace }}/pico-sdk
+        run: |
+          cp ../config/wifi_secrets.example.h ../config/wifi_secrets.h  # placeholder credentials for CI only
+          make TEST=1 -j4
+          make NET=lwip -j4
+          make -j4
+
+      - name: Resource budget
+        continue-on-error: true # a report, never a reason to fail the build
+        env:
+          PICO_SDK_PATH: ${{ github.workspace }}/pico-sdk
+        run: |
+          python3 firmware/tools/fw_budget.py node/build_make --out node/build_make/resource_budget.md
+          cat node/build_make/resource_budget.md >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: node-uf2
+          path: |
+            node/build_make/*.uf2
+            node/build_make/resource_budget.md
+
   python:
     name: Python syntax check
     runs-on: ubuntu-24.04
