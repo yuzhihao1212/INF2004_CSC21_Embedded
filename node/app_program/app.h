@@ -9,6 +9,17 @@
 #ifndef APP_H
 #define APP_H
 
+/* Use the C library's size_t everywhere.  Without this, tk/syslib.h makes
+   its own size_t (from SZ, unsigned long), which clashes with <stddef.h>'s
+   (unsigned int) the moment a file also includes <string.h>, <stddef.h> or
+   any header that does, in either order.  Both are 32 bits on the RP2040,
+   so nothing changes at run time.  The template's own lwIP glue
+   (lib/liblwip/sysdepend/pico_rp2040/sys_arch.c) does the same. */
+#ifndef PROHIBIT_DEF_SIZE_T
+#define PROHIBIT_DEF_SIZE_T
+#endif
+#include <stddef.h>
+
 #include <tk/tkernel.h>		/* micro T-Kernel API (tk_xxx_yyy) */
 #include <tm/tmonitor.h>	/* T-Monitor API: tm_printf() console output */
 #include <bsp/libbsp.h>		/* Board helpers: gpio_set_pin/val, pwm_... */

@@ -25,3 +25,5 @@ firmware/node/node_config.cmake
 
 # Local AI-assistant workspace: worktrees, prompts, preview config (rules live in AGENTS.md)
 .claude/
+# Local node identity (copy s5_node_id.example.h and set 1..8)
+node/app_program/subsystem5/s5_node_id.h
