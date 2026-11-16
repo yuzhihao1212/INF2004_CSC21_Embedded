@@ -503,6 +503,57 @@
     }));
   }
 
+  /* Ambient effects, shared by the area card and the room map: haze for stuffy
+   * air, rising heat lines, footsteps for movement, sound-meter bars for voices.
+   * Built once; renders only change their strength through CSS variables
+   * (--haze, --heat, --steps) and data attributes, so the 1 s refresh never
+   * restarts an animation. The words beside them always carry the meaning. */
+  const seeded = (i, k) => ((i * 73 + k * 37) % 97) / 97;  // Stable "random" positions
+  function fillHaze(el, n) {
+    for (let i = 0; i < n; i++) {
+      const m = make("i", "mote");
+      const size = 18 + seeded(i, 1) * 26;
+      Object.assign(m.style, { left: `${seeded(i, 2) * 88}%`, top: `${45 + seeded(i, 3) * 50}%`,
+                               width: `${size}px`, height: `${size}px`, animationDelay: `${-seeded(i, 4) * 9}s` });
+      m.style.setProperty("--i", i / n);  // Motes appear one by one as the haze thickens
+      el.append(m);
+    }
+  }
+  function fillHeat(el) {
+    const s = svg("svg", { viewBox: "0 0 60 40", preserveAspectRatio: "none" });
+    [12, 30, 48].forEach((x, i) => {
+      const p = svg("path", { d: `M${x} 40c-5-6 5-10 0-16s5-10 0-16`, class: "heat-line" }, s);
+      p.style.animationDelay = `${-i * 0.8}s`;
+    });
+    el.append(s);
+  }
+  function fillSteps(el, n, from, to, aspect = 1, gait = 6) {  // Alternate left and right prints along a walk
+    // Points are in % of the box; aspect (width / height) turns them into a real angle.
+    const ang = (Math.atan2((to[0] - from[0]) * aspect, -(to[1] - from[1])) * 180) / Math.PI;
+    for (let i = 0; i < n; i++) {
+      const t = (i + 0.5) / n, side = i % 2 ? 1 : -1;
+      const x = from[0] + (to[0] - from[0]) * t + (side * gait * Math.cos((ang * Math.PI) / 180)) / aspect;
+      const y = from[1] + (to[1] - from[1]) * t + side * gait * Math.sin((ang * Math.PI) / 180);
+      const foot = icon("i-foot", "foot");
+      foot.style.left = `${x}%`;
+      foot.style.top = `${y}%`;
+      foot.style.setProperty("--r", `${ang}deg`);
+      foot.style.setProperty("--flip", side > 0 ? "-1" : "1");
+      foot.style.animationDelay = `calc(var(--pace, 3s) * ${i / n})`;
+      el.append(foot);
+    }
+  }
+  function co2Trend(nodeId) {  // Last 3 minutes of this sensor: up, down or steady
+    const node = state.nodes.find((n) => n.id === nodeId);
+    const pts = node ? node.history.filter((p) => p[3] != null && p[0] >= state.time_ms - 180000) : [];
+    if (pts.length < 2 || pts[pts.length - 1][0] - pts[0][0] < 60000) return "steady";
+    const d = pts[pts.length - 1][3] - pts[0][3];
+    return d > 40 ? "rising" : d < -40 ? "falling" : "steady";
+  }
+  const heatOf = (t) => (t == null ? 0 : clamp((t - 25) / 3, 0, 1));
+  const stepsOf = (pct) => (pct == null || pct < 3 ? 0 : clamp(pct / 30, 0.3, 1));  // Matches MOVE_WORD: under 3 % is "None"
+  const MOVE_WORD = (pct) => (pct == null ? "No reading" : pct < 3 ? "None" : pct < 15 ? "A little" : pct < 40 ? "Some" : "Lots");
+
   /* Floor plan (docs/ui_design.md): drawn from the zone layout. u runs from
    * the front of the room (whiteboard) to the back, v from the door side to
    * the window side. Wide: front on the left; narrow: front at the top. */
@@ -575,6 +626,7 @@
     const key = `${portrait}|${f.zones.map((z) => `${z.zone}:${z.layout}:${z.lecturer_area}`).join(",")}`;
     const rebuilt = container.dataset.key !== key;
     if (rebuilt) buildPlan(container, portrait, compact, f.zones, key);
+    container.dataset.metric = metric;  // Footsteps only in the Movement view
     const view = portrait ? "flat" : mapView;
     if (container.dataset.view !== view) { container.dataset.view = view; labelBurst(); }
     $("#map-view").hidden = portrait;
@@ -610,6 +662,8 @@
       el.dataset.offline = String(offline);
       const ppm = cz && !offline ? cz.co2_ppm : null;
       el.style.setProperty("--haze", ppm == null ? "0" : String(clamp((ppm - 800) / 500, 0, 0.9)));
+      el.style.setProperty("--heat", String(offline || !cz ? 0 : heatOf(cz.temperature_c)));
+      el.style.setProperty("--steps", String(offline || !cz ? 0 : stepsOf(cz.motion_pct)));
       if (!compact) el.setAttribute("aria-pressed", String(z.zone === selectedZone));
       el.setAttribute("aria-label", `${z.name}: ${label}${detail ? ", " + detail : ""}.${m.why ? " " + m.why : ""}`);
       const st = $(".plan-state", el);
@@ -654,7 +708,14 @@
                                 width: pct(Math.abs(x1 - x0), vbW), height: pct(Math.abs(y1 - y0), vbH) });
       const chip = make("span", "plan-chip");
       chip.append(make("span", "plan-name", z.name), levelLine("none", "", "plan-state"), make("span", "plan-detail"), make("span", "tech"));
-      el.append(make("span", "haze"), make("span", "ring"), make("span", "ring"), make("span", "ring"), chip, make("span", "plan-anchor"));
+      const haze = make("span", "haze"), heat = make("span", "fx-heat"), steps = make("span", "fx-steps");
+      fillHaze(haze, 10);
+      fillHeat(heat);
+      // Someone walking along the area's long side, like down an aisle
+      const aspect = Math.abs(x1 - x0) / Math.abs(y1 - y0);
+      if (aspect < 1) fillSteps(steps, 6, [44, 94], [56, 8], aspect, 7);
+      else fillSteps(steps, 6, [6, 60], [94, 44], aspect, 7);
+      el.append(haze, heat, steps, make("span", "ring"), make("span", "ring"), make("span", "ring"), chip, make("span", "plan-anchor"));
       nodes.push(el);
     }
     // 3D view: the same floor plan tilted into an isometric diorama. Walls, the
@@ -801,25 +862,66 @@
     if (btn) btn.focus();
   }
   $("#zone-close").addEventListener("click", closeZone);
+  let cardFx = false;
   function renderZoneDetail() {
     const f = fb();
     const card = $("#zone-detail");
     const z = f && selectedZone && f.zones.find((x) => x.zone === selectedZone);
     card.hidden = !z;
     if (!z) { selectedZone = null; return; }
+    if (!cardFx) {  // Effects are built once and only re-tuned afterwards
+      cardFx = true;
+      fillHaze($("#zd-air .fx-haze"), 12);
+      fillHeat($("#zd-warm .fx-heat"));
+      fillSteps($("#zd-move .fx-steps"), 4, [66, 96], [84, 6], 2.2, 9);
+    }
+    const c = state.classroom || {};
+    const cz = (c.zones || []).find((x) => x.zone === z.zone) || {};
+    const offline = z.status === "Not connected";
     $("#zone-detail-h").textContent = z.name;
-    $("#zone-detail-sensor").textContent = `Sensor ${z.node_id}: ${z.status.toLowerCase()}`;
-    const rows = [["Sound", "i-sound", z.activity, z.activity.why], ["Air", "i-air", z.air, z.air.detail],
-                  ["Temperature", "i-thermo", z.comfort, z.comfort.detail], ["Movement", "i-motion", z.motion, z.motion.detail]];
-    $("#zone-detail-list").replaceChildren(...rows.flatMap(([title, ic, m, extra]) => {
-      const dt = make("dt");
-      dt.append(icon(ic, "icon icon-sm"), make("span", "", title));
-      const dd = make("dd");
-      dd.append(levelLine(m.level, m.label, "level-line"));
-      if (extra) dd.append(make("span", "detail-extra", extra));
-      return [dt, dd];
-    }));
-    $("#zone-detail-tech").textContent = `zone ${z.zone} · layout [${z.layout}] · ${z.activity.tech} · ${z.air.tech} · ${z.comfort.tech}`;
+
+    // Sound: one big word with a live sound meter
+    const tech = z.activity.tech;
+    const voice = offline ? "none" : { LECTURER: "speak", TALKING: "talk", LOUD: "loud", NO_DATA: "none" }[tech] || "quiet";
+    $("#zd-voice").dataset.voice = voice;
+    $("#zd-hero").dataset.look = offline ? "none" : (tech === "TALKING" && z.activity.level === "fine") ? "settled"
+      : ACT_LOOK[tech] || LEVEL_LOOK[z.activity.level] || "none";
+    $("#zd-word").textContent = offline ? "Not connected" : z.activity.label;
+    const mins = cz.since_ms != null && c.now_ms != null ? Math.floor((c.now_ms - cz.since_ms) / 60000) : null;
+    $("#zd-sub").textContent = offline ? "Check this sensor's power" : tech === "NO_DATA" ? "No sound reading"
+      : mins == null ? "" : mins < 1 ? "just now" : `for ${mins} min`;
+
+    // Air: stuffiness as haze, trend as an arrow
+    const air = $("#zd-air");
+    const trend = co2Trend(z.node_id);
+    air.dataset.tone = offline ? "none" : z.air.level;
+    air.style.setProperty("--haze", cz.co2_ppm == null || offline ? "0" : String(clamp((cz.co2_ppm - 650) / 650, 0.08, 1)));
+    $(".zd-big", air).textContent = offline ? "—" : z.air.label;
+    $(".zd-small", air).textContent = offline || cz.co2_ppm == null ? "no reading"
+      : { rising: z.air.level === "fine" ? "↑ rising" : "↑ getting worse", falling: "↓ improving",
+          steady: z.air.level === "fine" ? "✓ steady" : "→ steady" }[trend];
+    air.setAttribute("aria-label", `Air: ${z.air.label}${cz.co2_ppm != null ? `, ${cz.co2_ppm} ppm CO₂` : ""}, ${trend}`);
+
+    // Warmth: degrees, with heat lines when it's warm
+    const warm = $("#zd-warm");
+    const t = offline ? null : cz.temperature_c;
+    warm.dataset.tone = offline ? "none" : z.comfort.level;
+    warm.style.setProperty("--heat", String(heatOf(t)));
+    $(".zd-big", warm).textContent = t == null ? "—" : `${Math.round(t)}°`;
+    $(".zd-small", warm).textContent = t == null ? "no reading" : z.comfort.level === "fine" ? "✓ fine" : "▲ not comfy";
+    warm.setAttribute("aria-label", `Warmth: ${z.comfort.label}${z.comfort.detail ? `, ${z.comfort.detail}` : ""}`);
+
+    // Movement: information only, so it stays neutral; footsteps show how much
+    const move = $("#zd-move");
+    const pct = offline ? null : cz.motion_pct;
+    move.style.setProperty("--steps", String(stepsOf(pct)));
+    move.style.setProperty("--pace", `${pct == null ? 3 : clamp(4.2 - pct / 25, 1.8, 4.2)}s`);
+    $(".zd-big", move).textContent = MOVE_WORD(pct);
+    $(".zd-small", move).textContent = "movement";
+    move.setAttribute("aria-label", `Movement: ${MOVE_WORD(pct).toLowerCase()}${pct != null ? `, ${pct} % of the time` : ""}`);
+
+    $("#zone-detail-sensor").textContent = `Sensor ${z.node_id} · ${z.status.toLowerCase()}`;
+    $("#zone-detail-tech").textContent = `zone ${z.zone} · ${tech} · ${z.air.tech} ${cz.co2_ppm ?? "—"} ppm · ${z.comfort.tech} ${z.comfort.detail} · motion ${pct ?? "—"} %`;
   }
 
   /* ---- History ---- */
