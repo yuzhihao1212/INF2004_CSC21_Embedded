@@ -13,5 +13,7 @@ Test cases are defined before execution. Original example tests/results stay int
 
 | Date | ID | Commit | Result | Evidence |
 |---|---|---|---|---|
+| 2026-11-16 | S1-U04 / S2-U03..05 replay run | `55476b0` | FAIL (harness) | `logs/2026-11-16_audio-replay.txt`; an independent clipping case reused the preceding timestamp/state, correctly triggering TIMING_FAULT first; reset the fixture before that case |
+| 2026-11-16 | S1-U05 USB/Wi-Fi cross-build | `55476b0` | PASS (link only) | `logs/2026-11-16_usb-wifi-build.txt`; dual-core UF2 generated, hardware NOT RUN |
 
 S1-U06/U07 are NOT RUN until real-board evidence is saved.
