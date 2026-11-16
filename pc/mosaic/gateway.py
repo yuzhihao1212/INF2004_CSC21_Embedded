@@ -328,7 +328,7 @@ class Gateway:
         if d.state != ConfigState.SENDING:
             return  # Duplicate ACK from a retry
         if ack.status == p.AckStatus.OK:
-            self._applied(node, header.seq, now)
+            self._applied(node, header.seq, now, via="ack")
         elif ack.status == p.AckStatus.STALE_VERSION:
             self._config_event(node, now, "stale", ack_status=ack.status.name)
             # The node has a newer version than we know of (the PC restarted
@@ -344,10 +344,10 @@ class Gateway:
             self.messages.append(f"node {node.node_id}: CONFIG {ack.config_version} "
                                  f"rejected ({ack.status.name})")
 
-    def _applied(self, node: NodeState, seq: int, now: float) -> None:
+    def _applied(self, node: NodeState, seq: int, now: float, via: str) -> None:
         d = node.config
         if d.state != ConfigState.APPLIED:
-            self._config_event(node, now, "applied")
+            self._config_event(node, now, "applied", via=via)
             self.messages.append(f"node {node.node_id}: CONFIG {d.config.config_version} applied")
         d.state, d.confirmed_seq = ConfigState.APPLIED, seq
         node.report_interval_ms = d.config.report_interval_ms
@@ -360,7 +360,7 @@ class Gateway:
             return
         if t.config_version == d.config.config_version:
             if d.state != ConfigState.APPLIED:  # Applied, but the ACK was lost
-                self._applied(node, header.seq, now)
+                self._applied(node, header.seq, now, via="telemetry")
             return
         if d.state == ConfigState.SENDING:
             return
