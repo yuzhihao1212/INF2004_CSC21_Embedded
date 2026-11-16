@@ -349,7 +349,7 @@
     renderZoneDetail();
     renderLoudness(f);
     renderAirComfort(f);
-    renderTimeline($("#latest"), f.timeline.slice(0, 4));
+    renderTimeline($("#latest"), f.timeline.slice(0, 12));  // Wide screens show what fits beside the map; CSS trims to 4 when stacked
     renderLesson(f);
   }
 
