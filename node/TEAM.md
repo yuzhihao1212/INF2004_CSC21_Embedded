@@ -17,11 +17,14 @@ subsystem, ask its owner or open a pull request for them to review.
 
 | # | Subsystem (what it does) | Student ID | GitHub username | Code | Tests |
 |---|---|---|---|---|---|
-| 1 | *example:* LED heartbeat on GP19 | | | `app_program/subsystem1/` | `testing/subsystem1/` |
-| 2 | *example:* Producer: makes a sample every 300 ms | | | `app_program/subsystem2/` | `testing/subsystem2/` |
-| 3 | *example:* Consumer: collects samples into statistics | | | `app_program/subsystem3/` | `testing/subsystem3/` |
-| 4 | *example:* Monitor: prints reports, pauses the LED | | | `app_program/subsystem4/` | `testing/subsystem4/` |
-| 5 | | | | `app_program/subsystem5/` | `testing/subsystem5/` |
+| 1 | Audio capture and fixed-point DSP: samples the microphone, produces the feature windows (Moe) | | mmmmm0e | `app_program/subsystem1/` | `testing/subsystem1/` |
+| 2 | int8 classifier: labels each audio window, e.g. lecturer, talking, noise (Darius) | | Dkkan-dev | `app_program/subsystem2/` | `testing/subsystem2/` |
+| 3 | Environment sensors: DHT22, CO₂ (ACD1100), PIR (Kendrick) | | kthgoat | `app_program/subsystem3/` | `testing/subsystem3/` |
+| 4 | Networking and node health: Wi-Fi and the MQTT link to the PC, watchdog supervision (Arif) | | arifkareem | `app_program/subsystem4/` | `testing/subsystem4/` |
+| 5 | Node config and telemetry: applies CONFIG from the PC, builds each report (ZhiHao) | | yuzhihao1212 | `app_program/subsystem5/` | `testing/subsystem5/` |
+
+Subsystems 1–4 still hold the template's example code (LED, producer,
+consumer, monitor) until each owner replaces it with their own.
 
 Shared files (`app_program/app_main.c`, `app_program/app.h`, this file)
 are changed only by agreement of the team. The exception is claiming an empty
