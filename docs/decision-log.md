@@ -5,6 +5,15 @@ ideas we dropped. Status lines get updated in place; a reversed decision gets a 
 that links back. Entries dated before 14 Nov 2026 were backfilled on 14 Nov from the chat
 where they were decided and the commits that built them.
 
+## 2026-11-16 · Evaluator measures CONFIG round trips
+- **From → to:** the evaluator counted CONFIG outcomes per node but timed nothing. Now each report has a "CONFIG round trip" section: request → applied (what the operator waits for) and last send → ACK (one network round trip), with outcomes and how each was confirmed. The gateway's `applied` event now says `via: ack` or `via: telemetry`.
+- **Why:** second item ZhiHao picked from the evidence plan (chat, 16 Nov). The brief asks for configuration sent back to the nodes, and a measured round trip is stronger evidence than "it works".
+- **Problem it solves:** without `via`, a CONFIG whose ACK was lost (confirmed later by TELEMETRY) would look like a 1-second "round trip" and skew the numbers.
+- **Why this way:** two measures rather than one, because the operator's wait includes retries and the gateway's poll, while the ACK time is the network's share. Stale-version resends stay part of the same request. Fixing the poll delay (below) was left out: it's a separate gateway change.
+- **Risks to watch:** a scripted run showed the operator waits ~120 ms (p50) while the ACK takes 1–2 ms. The gap is the gateway's 200 ms `poll()` timeout before the first send. If real-node numbers look slow, that's the first thing to change (send at once from `set_config`, or wake the loop).
+- **Verified:** 6 new tests (ACK after a retry, ACK lost, stale version, rejected/failed/superseded/unfinished, summary and report, old logs without `via`); 271 tests pass. Four scripted nodes, 20 CONFIGs: 20 applied, all by ACK; request → applied p50 120 ms, p95 194 ms; last send → ACK p50 1 ms. Not verified on a real Pico.
+- **Status:** built, not committed; branch `feat/config-timing` (from `feat/firmware-budget`).
+
 ## 2026-11-16 · Firmware flash/RAM budget and float check, run by CI
 - **From → to:** no measured memory figures and no build-level float check (the tracker row said "to do"). Now `firmware/tools/fw_budget.py` reports flash, RAM, what fills them, and every float call in our code by function; CI runs it on every PR and puts the report on the run's summary page. First results are in `docs/resource_budget.md`.
 - **Why:** first item ZhiHao picked from the evidence plan (chat, 16 Nov): it needs no Pico or teammate, and the brief asks for the no-floats evidence directly.
