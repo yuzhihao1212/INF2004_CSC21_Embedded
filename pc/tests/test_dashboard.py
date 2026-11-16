@@ -13,6 +13,7 @@ import urllib.request
 from pathlib import Path
 
 from mosaic import protocol as p
+from mosaic import scenarios
 from mosaic.dashboard import Dashboard, start_http
 from mosaic.fusion import FusionConfig, FusionEngine
 from mosaic.gateway import GatewayServer
@@ -78,16 +79,19 @@ class DashboardState(unittest.TestCase):
 
     def test_simulation_phase(self):
         self.assertIsNone(self.dashboard.state()["simulation"])  # Real sensors only: no strip
-        self.dashboard.simulating(2, None, 100.0)
+        self.dashboard.simulating(2, None)
         self.assertEqual(self.dashboard.simulation(105.0), {"nodes": 2, "scenario": None})
 
-        self.dashboard.simulating(4, "lecture", 100.0)  # Phases: 40 s, 120 s, 200 s, 90 s
+        clock = scenarios.ScriptClock(scenarios.SCENARIOS["lecture"])  # Phases: 40 s, 120 s, 200 s, 90 s
+        clock.start(100.0)
+        self.dashboard.simulating(4, "lecture", clock)
         sim = self.dashboard.simulation(100.0 + 40 + 30)
         self.assertEqual((sim["phase"], sim["left_s"], sim["finished"]), (1, 90.0, False))
         self.assertEqual(sim["label"], "Lecturer teaching, students seated")
         self.assertEqual([ph["seconds"] for ph in sim["phases"]], [40, 120, 200, 90])
         done = self.dashboard.simulation(100.0 + 450 + 10)  # Past the end: last phase holds
         self.assertEqual((done["phase"], done["left_s"], done["finished"]), (3, 0.0, True))
+        self.assertEqual((done["paused"], done["rate"]), (False, 1))
 
     def test_state_is_json(self):
         self.receive(telemetry(valid_flags=p.Valid.TEMP_HUM, temperature_x10=200))
@@ -134,6 +138,56 @@ class Http(unittest.TestCase):
             self.assertEqual(err.exception.code, 404)
             err.exception.close()
 
+
+
+class SimulationApi(unittest.TestCase):
+    def setUp(self):
+        self.events = io.StringIO()
+        self.server = GatewayServer(bind=("127.0.0.1", 0), out=io.StringIO())
+        self.dashboard = Dashboard(self.server)
+        self.httpd = start_http(self.dashboard, "127.0.0.1", 0)
+        self.addCleanup(self.server.close)
+        self.addCleanup(self.httpd.server_close)
+        self.addCleanup(self.httpd.shutdown)
+        self.url = f"http://127.0.0.1:{self.httpd.server_address[1]}/api/simulation"
+
+    def post(self, body):
+        data = body if isinstance(body, bytes) else json.dumps(body).encode()
+        try:
+            with urllib.request.urlopen(self.url, data=data, timeout=2) as r:
+                return r.status, json.loads(r.read())
+        except urllib.error.HTTPError as e:
+            with e:
+                return e.code, json.loads(e.read())
+
+    def test_no_script_is_a_conflict(self):
+        self.assertEqual(self.post({"pause": True})[0], 409)
+        self.dashboard.simulating(4, None)  # Random readings: nothing to control
+        self.assertEqual(self.post({"pause": True})[0], 409)
+
+    def test_pause_speed_and_skip(self):
+        clock = scenarios.ScriptClock(scenarios.SCENARIOS["lecture"])
+        clock.start(time.monotonic())
+        self.dashboard.simulating(4, "lecture", clock)
+        status, sim = self.post({"pause": True})
+        self.assertEqual((status, sim["paused"]), (200, True))
+        status, sim = self.post({"rate": 4})
+        self.assertEqual((status, sim["rate"], sim["paused"]), (200, 4, True))
+        status, sim = self.post({"next": True})
+        self.assertEqual((status, sim["phase"]), (200, 1))
+        self.post({"next": True})
+        self.post({"next": True})
+        self.assertEqual(self.post({"next": True})[0], 400)  # Already on the last phase
+        self.assertEqual(self.post({"pause": False})[1]["paused"], False)
+
+    def test_bad_requests(self):
+        clock = scenarios.ScriptClock(scenarios.SCENARIOS["lecture"])
+        self.dashboard.simulating(4, "lecture", clock)
+        for body in [{"rate": 3}, {"rate": True}, {"rate": "2"}, {"pause": "yes"}, {"next": False},
+                     {"pause": True, "rate": 2}, {"speed": 2}, {}, [], b"{nope"]:
+            with self.subTest(body=body):
+                self.assertEqual(self.post(body)[0], 400)
+        self.assertEqual((clock.paused, clock.rate, clock.jumps), (False, 1, 0))  # Nothing changed
 
 
 class ConfigApi(unittest.TestCase):

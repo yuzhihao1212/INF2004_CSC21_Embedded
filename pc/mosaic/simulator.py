@@ -56,6 +56,7 @@ class SimNode:
     report_interval_s: float = 1.0
     next_report: Optional[float] = None
     last_audio_index: int = -1
+    seen_jumps: int = 0
 
     def header(self, msg_type: p.MsgType, now: float) -> p.Header:
         if self.boot_time is None:
@@ -78,7 +79,8 @@ class Simulator:
                  warmup_s: float = CO2_WARMUP_S,
                  scenario: Optional[scenarios.Scenario] = None, *, aligned: bool = False,
                  receive_jitter_s: float = 0.0, report_interval_s: float = 1.0,
-                 phases: Optional[dict[int, tuple[float, float]]] = None) -> None:
+                 phases: Optional[dict[int, tuple[float, float]]] = None,
+                 clock: Optional[scenarios.ScriptClock] = None) -> None:
         """Independent audio/report clocks by default; aligned=True is a test fixture.
 
         poll(now) returns (receive_time, datagram) deliveries, including uniform
@@ -86,6 +88,8 @@ class Simulator:
         not the time they happen to poll. Timing has its own seeded RNG so sensor
         noise cannot accidentally change the clock phases or network jitter.
         phases overrides (audio phase, report phase) for reproducible fault cases.
+        clock is a shared script clock (the dashboard's demo controls); by
+        default the simulator keeps its own, started on the first poll.
         """
         if (not math.isfinite(receive_jitter_s) or not math.isfinite(report_interval_s)
                 or receive_jitter_s < 0 or report_interval_s <= 0):
@@ -109,17 +113,19 @@ class Simulator:
         self.loss = loss
         self.warmup_s = warmup_s
         self.scenario = scenario
+        self.clock = clock or (scenarios.ScriptClock(scenario) if scenario else None)
         self.start: Optional[float] = None  # Shared physical simulation epoch, not Pico clocks.
         self._deliveries: list[tuple[float, int, bytes]] = []
         self._delivery_order = 0
 
     def phase(self, now: float) -> Optional[tuple[int, scenarios.Phase]]:
         """The scenario phase being played at `now`, or None without a scenario."""
-        if self.scenario is None:
+        if self.clock is None:
             return None
         if self.start is None:
             self.start = now
-        return self.scenario.phase_at(now - self.start)
+            self.clock.start(now)
+        return self.clock.phase(now)
 
     def telemetry(self, now: float) -> list[bytes]:
         """Datagrams due by now; use poll() when exact receive times matter."""
@@ -128,6 +134,8 @@ class Simulator:
     def poll(self, now: float) -> list[tuple[float, bytes]]:
         if self.start is None:
             self.start = now
+            if self.clock:
+                self.clock.start(now)
         for node in self.nodes:
             if node.next_report is None:
                 node.next_report = self.start + node.report_phase_s
@@ -171,9 +179,14 @@ class Simulator:
             pir = rng.choice([0, 0, 10, 40, 80, 100])
         else:
             zone = phase[1].zone(node.node_id)
-            node.temperature_c += (zone.temperature_c - node.temperature_c) * DRIFT + rng.gauss(0, 0.03)
-            node.humidity_pct += (zone.humidity_pct - node.humidity_pct) * DRIFT + rng.gauss(0, 0.1)
-            node.co2_ppm += (zone.co2_ppm - node.co2_ppm) * DRIFT + rng.gauss(0, 3.0)
+            if node.seen_jumps != self.clock.jumps:  # Skipped ahead: the room is already in the new phase
+                node.seen_jumps = self.clock.jumps
+                node.temperature_c, node.humidity_pct = zone.temperature_c, zone.humidity_pct
+                node.co2_ppm = zone.co2_ppm
+            drift = 1 - (1 - DRIFT) ** self.clock.drift_rate  # Same catch-up per script second at 2x and 4x
+            node.temperature_c += (zone.temperature_c - node.temperature_c) * drift + rng.gauss(0, 0.03)
+            node.humidity_pct += (zone.humidity_pct - node.humidity_pct) * drift + rng.gauss(0, 0.1)
+            node.co2_ppm += (zone.co2_ppm - node.co2_ppm) * drift + rng.gauss(0, 3.0)
             # Audio is stamped from its TRUE completion time, before report
             # batching/jitter. All nodes hear the same lecturer envelope, sampled
             # on their independent audio clocks. Phase transitions are not dated
@@ -363,7 +376,7 @@ class MqttLink:
             client.close()
 
 
-def main(argv: Optional[list[str]] = None) -> None:
+def main(argv: Optional[list[str]] = None, clock: Optional[scenarios.ScriptClock] = None) -> None:
     parser = argparse.ArgumentParser(description="Simulated MOSAIC nodes (protocol v2)")
     parser.add_argument("--pc-ip", default="127.0.0.1")
     parser.add_argument("--pc-port", type=int, default=p.PORT_TELEMETRY)
@@ -385,7 +398,7 @@ def main(argv: Optional[list[str]] = None) -> None:
         parser.error("jitter must be nonnegative and interval positive")
     sim = Simulator(args.nodes, args.seed, args.loss, scenario=scenarios.get(args.scenario),
                     aligned=args.aligned, receive_jitter_s=args.receive_jitter_ms / 1000,
-                    report_interval_s=args.interval)
+                    report_interval_s=args.interval, clock=clock)
     if sim.scenario:
         print(f"Scenario {args.scenario} ({sim.scenario.seconds / 60:.0f} min): "
               f"{sim.scenario.description}")

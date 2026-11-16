@@ -15,6 +15,9 @@ switches rules and every node gets the new mode. /api/state includes the
 fusion engine's classroom states under "classroom", and their plain-language
 description, severity and alerts under "feedback" and "alerts" (feedback.py).
 With --simulate, "simulation" names the scenario and the phase being played.
+POST {"pause": true|false}, {"next": true} or {"rate": 1|2|4} to /api/simulation
+to pause, skip or speed up a --scenario script (the page's Space, right arrow
+and 1/2/4 keys). Only the script moves; nodes keep their real report timing.
 POST to /api/alerts/<id>/hide to keep an alert off the banner for 10 minutes.
 Excessive noise: hold a steady sound at the target level next to a student
 area's sensor and POST {"zone": "B"} to /api/loudness/capture; that sensor's
@@ -76,28 +79,55 @@ class Dashboard:
         self.history: dict[int, deque[list]] = {}
         self.alerts = AlertLog(self._log_alert)
         self._next_tick = 0.0
-        self._simulation: Optional[tuple[int, Optional[str], float]] = None  # nodes, scenario, start
+        self._simulation: Optional[tuple[int, Optional[str], Optional[scenarios.ScriptClock]]] = None
         server.telemetry_listeners.append(self._record)
         server.tick_listeners.append(self._tick)
 
-    def simulating(self, nodes: int, scenario: Optional[str], start: float) -> None:
-        """Record the in-process simulator run so the page can show its script."""
-        self._simulation = (nodes, scenario, start)
+    def simulating(self, nodes: int, scenario: Optional[str],
+                   clock: Optional[scenarios.ScriptClock] = None) -> None:
+        """Record the in-process simulator run and the script clock it shares."""
+        self._simulation = (nodes, scenario, clock)
+
+    def control_simulation(self, body: object, now: float) -> dict:
+        """Pause, skip or change the speed of the scenario script. Raises
+        LookupError when no script is running, ValueError on a bad body."""
+        clock = self._simulation[2] if self._simulation else None
+        if clock is None:
+            raise LookupError("no scenario script is running")
+        if not isinstance(body, dict) or len(body) != 1 or not set(body) <= {"pause", "next", "rate"}:
+            raise ValueError('expected {"pause": true|false}, {"next": true} or {"rate": 1|2|4}')
+        (action, value), = body.items()
+        if action == "pause":
+            if not isinstance(value, bool):
+                raise ValueError('"pause" must be true or false')
+            clock.set_paused(now, value)
+        elif action == "rate":
+            if isinstance(value, bool) or value not in clock.RATES:
+                raise ValueError(f'"rate" must be one of {list(clock.RATES)}')
+            clock.set_rate(now, value)
+        elif value is not True:
+            raise ValueError('"next" must be true')
+        elif not clock.next_phase(now):
+            raise ValueError("already on the last phase")
+        index, phase = clock.phase(now)
+        # Logged so an evaluation run that was skipped or sped up can be told apart
+        self.server._log("simulation", now, action=action, value=value,
+                         phase=index + 1, label=phase.label, rate=clock.rate, paused=clock.paused)
+        return self.simulation(now)
 
     def simulation(self, now: float) -> Optional[dict]:
         """Scenario and phase being played, or None when no simulator runs here.
 
-        The phase comes from the scenario's durations and the time the simulator
-        thread was started; the simulator starts its own clock on its first
-        poll a moment later, so phase changes can show up to about a second early.
+        The phase comes from the script clock the simulator thread shares, so
+        it matches what the nodes are playing, including pauses, skips and speed.
         """
         if self._simulation is None:
             return None
-        nodes, name, start = self._simulation
+        nodes, name, clock = self._simulation
         scenario = scenarios.get(name)
-        if scenario is None:
+        if scenario is None or clock is None:
             return {"nodes": nodes, "scenario": None}
-        elapsed = max(0.0, now - start)
+        elapsed = clock.elapsed(now)
         index, phase = scenario.phase_at(elapsed)
         phase_end = sum(ph.seconds for ph in scenario.phases[:index + 1])
         return {
@@ -111,6 +141,8 @@ class Dashboard:
             "elapsed_s": round(elapsed, 1),
             "left_s": round(max(0.0, phase_end - elapsed), 1),
             "finished": elapsed >= scenario.seconds,
+            "paused": clock.paused,
+            "rate": clock.rate,
         }
 
     def _log_alert(self, action: str, fields: dict) -> None:
@@ -345,6 +377,8 @@ def make_handler(dashboard: Dashboard) -> type[BaseHTTPRequestHandler]:
             path = self.path.split("?", 1)[0]
             if path == "/api/mode":
                 return self._post_mode()
+            if path == "/api/simulation":
+                return self._post_simulation()
             if path in ("/api/calibrate", "/api/calibrate/reset"):
                 return self._post_calibrate(reset=path.endswith("/reset"))
             if path in ("/api/loudness/capture", "/api/loudness/clear"):
@@ -368,6 +402,20 @@ def make_handler(dashboard: Dashboard) -> type[BaseHTTPRequestHandler]:
             except ValueError as e:  # Includes malformed JSON
                 return self._json(400, {"error": str(e)})
             self._json(202, {"config_version": config.config_version})
+
+        def _post_simulation(self) -> None:
+            length = int(self.headers.get("Content-Length") or 0)
+            if length > _MAX_BODY:
+                return self._json(413, {"error": "request too large"})
+            try:
+                body = json.loads(self.rfile.read(length) or b"null")
+                with dashboard.server.lock:
+                    reply = dashboard.control_simulation(body, time.monotonic())
+            except LookupError as e:
+                return self._json(409, {"error": str(e)})
+            except ValueError as e:  # Includes malformed JSON
+                return self._json(400, {"error": str(e)})
+            self._json(200, reply)
 
         def _post_mode(self) -> None:
             length = int(self.headers.get("Content-Length") or 0)
@@ -520,8 +568,12 @@ def main(argv: Optional[list[str]] = None) -> None:
         if args.aligned:
             sim_args += ["--aligned"]
         sim_args += ["--receive-jitter-ms", str(args.receive_jitter_ms)]
-        dashboard.simulating(args.simulate, args.scenario, time.monotonic())
-        threading.Thread(target=simulator.main, args=(sim_args,), daemon=True).start()
+        scenario = scenarios.get(args.scenario)
+        clock = scenarios.ScriptClock(scenario) if scenario else None
+        if clock:
+            clock.start(time.monotonic())
+        dashboard.simulating(args.simulate, args.scenario, clock)
+        threading.Thread(target=simulator.main, args=(sim_args, clock), daemon=True).start()
 
     try:
         server.run()
