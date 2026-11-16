@@ -126,11 +126,16 @@ Reviewers are auto-requested from `.github/CODEOWNERS`:
 
 | Area                                         | Owner(s)          |
 |----------------------------------------------|-------------------|
-| Environmental sensors (`firmware/tests/`)    | Kendrick          |
-| Audio DSP (`firmware/tests/audio_dsp*`)      | Moe               |
+| Node subsystem 1, audio capture and DSP (`node/app_program/subsystem1/`) | Moe |
+| Node subsystem 2, int8 classifier (`node/app_program/subsystem2/`) | Darius |
+| Node subsystem 3, environment sensors (`node/app_program/subsystem3/`) | Kendrick |
+| Node subsystem 4, networking and node health (`node/app_program/subsystem4/`) | Arif |
+| Node subsystem 5, config and telemetry (`node/app_program/subsystem5/`) | ZhiHao |
+| Node shared files (`node/TEAM.md`, `app.h`, `app_main.c`) | Everyone |
+| Node template code (rest of `node/`)         | ZhiHao (subtree), changes by agreement |
+| Earlier firmware (`firmware/`): sensors, audio, classifier, node | Kendrick, Moe, Darius, Arif and ZhiHao |
 | ML pipeline (`ml/`)                          | Darius, Moe       |
 | PC gateway, fusion, dashboard (`pc/`)        | ZhiHao, Arif      |
-| Networking / protocol (`pc/prototype/`)      | Arif, ZhiHao      |
 | CI, repo setup, docs                         | ZhiHao            |
 
 ## Troubleshooting
