@@ -312,7 +312,8 @@ def _zone(z: dict, names: dict[str, str], now_ms: int, mode: str = "LECTURE") ->
                     "detail": (f"{z['temperature_c']:.1f} °C · {z['humidity_pct']:.0f} %"
                                if z.get("temperature_c") is not None else ""), "tech": z["comfort"]},
         "motion": {"label": "No reading" if motion is None else "Moving around" if motion else "Still",
-                   "level": "none" if motion is None else HEADS_UP if motion else FINE,
+                   # Movement is information, never a warning: a walking lecturer is normal.
+                   "level": "none" if motion is None else FINE,
                    "detail": f"{z['motion_pct']} % of the time" if z.get("motion_pct") is not None else ""},
     }
 
