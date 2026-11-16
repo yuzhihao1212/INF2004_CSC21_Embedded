@@ -75,6 +75,10 @@
   <symbol id="i-present" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M12 16v4M8 20h8M8 9l2.5 2.5L8 14"/></symbol>
   <symbol id="i-foot" viewBox="0 0 20 34"><g fill="currentColor" stroke="none"><path d="M10.6 9.2c3.6 0 5.7 3 5.4 7.4-.3 4.5-2.2 6.8-2.6 10.2-.4 3.4-1.5 6.2-4.4 6.2S4.8 30.4 5.2 27c.4-3.6 1.8-5.9 1.2-9.6-.6-4.2 1-8.2 4.2-8.2Z"/><circle cx="6.6" cy="5.3" r="2.6"/><circle cx="10.9" cy="3.4" r="1.9"/><circle cx="14.3" cy="4.2" r="1.6"/><circle cx="16.7" cy="6.5" r="1.3"/><circle cx="18" cy="9.4" r="1.1"/></g></symbol>
   <symbol id="i-close" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></symbol>
+  <symbol id="i-pause" viewBox="0 0 24 24"><path d="M8 5v14M16 5v14"/></symbol>
+  <symbol id="i-play" viewBox="0 0 24 24"><path d="M7 4.5v15l12-7.5z"/></symbol>
+  <symbol id="i-next" viewBox="0 0 24 24"><path d="M6 5l9 7-9 7zM18 5v14"/></symbol>
+  <symbol id="i-sliders" viewBox="0 0 24 24"><path d="M4 7h10M18 7h2M4 17h2M10 17h10"/><circle cx="16" cy="7" r="2"/><circle cx="8" cy="17" r="2"/></symbol>
   <symbol id="i-auto" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 4v16" /><path d="M12 4a8 8 0 0 1 0 16Z" fill="currentColor" stroke="none"/></symbol>
 </svg>
 
@@ -145,14 +149,25 @@
       </div>
     </div>
 
-    <section class="sim-strip" id="sim-strip" aria-label="Simulation" aria-describedby="sim-keys" tabindex="0" hidden>
+    <section class="sim-strip" id="sim-strip" aria-label="Simulation" hidden>
       <div class="sim-line">
         <span class="sim-chip"><svg class="icon icon-xs" aria-hidden="true"><use href="#i-flask"/></svg><span id="sim-name">Simulated</span></span>
         <span class="sim-phase" id="sim-phase"></span>
         <span class="sim-left" id="sim-left"></span>
+        <button class="icon-btn small sim-toggle" id="sim-toggle" type="button" aria-expanded="false" aria-controls="sim-controls" aria-label="Demo controls" title="Demo controls"><svg class="icon" aria-hidden="true"><use href="#i-sliders"/></svg></button>
       </div>
       <div class="sim-bar" id="sim-bar" aria-hidden="true"></div>
-      <p class="sim-keys" id="sim-keys">Presenter keys: <kbd>Space</kbd> pause or play · <kbd>→</kbd> next phase · <kbd>1</kbd> <kbd>2</kbd> <kbd>4</kbd> speed</p>
+      <div class="sim-controls" id="sim-controls" role="group" aria-label="Demo controls" hidden>
+        <button class="icon-btn small" id="sim-play" type="button" aria-label="Pause the script"><svg class="icon" aria-hidden="true"><use href="#i-pause"/></svg></button>
+        <button class="icon-btn small" id="sim-next" type="button" aria-label="Next phase"><svg class="icon" aria-hidden="true"><use href="#i-next"/></svg></button>
+        <fieldset class="segmented small" id="sim-rate">
+          <legend class="sr-only">Script speed</legend>
+          <label><input type="radio" name="sim-rate" value="1"><span>1×</span></label>
+          <label><input type="radio" name="sim-rate" value="2"><span>2×</span></label>
+          <label><input type="radio" name="sim-rate" value="4"><span>4×</span></label>
+        </fieldset>
+        <p class="sim-keys">Keys: <kbd>Space</kbd> pause or play · <kbd>→</kbd> next phase · <kbd>1</kbd> <kbd>2</kbd> <kbd>4</kbd> speed</p>
+      </div>
       <p class="tech sim-tech" id="sim-tech"></p>
     </section>
 
