@@ -15,9 +15,16 @@ them.
   lwIP and MQTT. It builds with `make` in `build_make/` against Pico SDK 2.2.0 (2.3.0 also
   tested). Its README says the port is derived from TRON's `mtk3_bsp`, branch `pico_rp2040`.
 - `firmware/utk/` on branch `feat/utkernel-port` is a separate single-core port we started
-  before finding the template. Where the template's code sits in this repo, and whether
-  `firmware/utk/` is kept, are still open (see `docs/decision-log.md`, 16 Nov). Don't extend
-  either until ZhiHao decides.
+  before finding the template. ZhiHao dropped it on 16 Nov in favour of the template: don't
+  extend or revive it.
+- The hand-in is this repo, not the template fork (ZhiHao, 16 Nov). The template comes in as a
+  git subtree at `node/`, pulled from the instructor's `sirfonzie/INF2004_ProjectTemplate`
+  (see `docs/decision-log.md`, 16 Nov). Our node code goes in `node/app_program/`, with
+  `node/TEAM.md`, `node/testing/` and `node/videos/`. The template's shared code under `node/`
+  (`kernel/`, `lib/`, `device/`, `include/`, `etc/`, `build_make/`) changes only when the team
+  and the instructor agree; left alone, the instructor's fixes merge cleanly with
+  `git subtree pull --prefix=node https://github.com/sirfonzie/INF2004_ProjectTemplate.git main`.
+  Who moves which task into which `subsystemN/` is still open.
 - Before any node work, read the template's `README.md`, `TEAM.md` and `testing/README.md`.
   They set the instructor's rules, and they win if this summary ever differs:
   - one folder per student, `app_program/subsystemN/`, edited only by its owner; drivers live
