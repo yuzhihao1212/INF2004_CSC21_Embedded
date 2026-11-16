@@ -31,7 +31,7 @@ that in `decision-log.md`. Nobody takes over someone's part without that.
 | Inference time per window | Darius's timing build (test B3) | Darius |
 | DSP + inference with Wi-Fi active | 10-min run, `audio_overruns` stays 0 (test A2) | Moe |
 | Headroom against the 500 ms budget | Computed from the three rows above | Moe |
-| Flash and RAM used | `firmware/tools/fw_budget.py`, run by CI on every PR. Plain node and audio builds measured locally on 16 Nov; final figure needs audio linked into `mosaic_node_rtos` | ZhiHao |
+| Flash and RAM used | `firmware/tools/fw_budget.py`, run by CI on every PR, now including the micro T-Kernel node in `node/`. Template images measured locally on 16 Nov (`docs/resource_budget.md`); the final figure comes once our subsystems are in `node/app_program/` | ZhiHao |
 | Stack high-water mark per task, min free heap | Already printed every 10 s by the RTOS health task; take the worst value from the soak log | Arif |
 | CPU load per task | Not measured yet. Turn on FreeRTOS run-time stats (`configGENERATE_RUN_TIME_STATS` with the 1 MHz timer) and print `vTaskGetRunTimeStats` | Arif |
 | No soft-float helpers in the `.elf` | `fw_budget.py` lists every float call in our code by function. 16 Nov: only `audio_dsp_init` (start-up tables) and the benchmark's printing. Moe decides whether to precompute the tables as `const` | Moe, Darius |
