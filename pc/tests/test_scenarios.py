@@ -130,6 +130,58 @@ class Scenarios(unittest.TestCase):
         index, phase = scenario.phase_at(scenario.seconds + 1000)
         self.assertEqual((index, phase), (len(scenario.phases) - 1, scenario.phases[-1]))
 
+    def test_clock_pause_speed_and_skip(self):
+        clock = scenarios.ScriptClock(scenarios.SCENARIOS["lecture"])  # 40 s, 120 s, 200 s, 90 s
+        clock.start(100.0)
+        self.assertEqual(clock.elapsed(110.0), 10.0)
+        clock.set_paused(110.0, True)
+        self.assertEqual(clock.elapsed(500.0), 10.0)       # Paused: the script holds
+        self.assertEqual(clock.drift_rate, 1)
+        clock.set_paused(500.0, False)
+        clock.set_rate(500.0, 4)
+        self.assertEqual(clock.elapsed(500.0), 10.0)       # Changing speed doesn't jump
+        self.assertEqual(clock.elapsed(505.0), 30.0)
+        self.assertEqual(clock.drift_rate, 4)
+        with self.assertRaises(ValueError):
+            clock.set_rate(505.0, 3)
+        self.assertTrue(clock.next_phase(505.0))           # To the start of phase 2
+        self.assertEqual((clock.elapsed(505.0), clock.phase(505.0)[0], clock.jumps), (40.0, 1, 1))
+        self.assertTrue(clock.next_phase(505.0))
+        self.assertTrue(clock.next_phase(505.0))
+        self.assertFalse(clock.next_phase(505.0))          # Already on the last phase
+        self.assertEqual((clock.phase(505.0)[0], clock.jumps), (3, 3))
+
+    def test_skip_moves_the_room_and_speed_keeps_pace(self):
+        demo = scenarios.SCENARIOS["demo"]
+        target = demo.phases.index(scenarios.CO2_BUILDS)
+        clock = scenarios.ScriptClock(demo)
+        sim = Simulator(4, seed=1, scenario=demo, clock=clock, warmup_s=0)
+        sim.poll(0.0)
+        for _ in range(target):
+            clock.next_phase(0.5)
+        sim.poll(2.0)
+        zone = scenarios.CO2_BUILDS.zone(1)
+        for node in sim.nodes:  # Air is already where the new phase puts it, give or take noise
+            self.assertAlmostEqual(node.co2_ppm, scenarios.CO2_BUILDS.zone(node.node_id).co2_ppm, delta=20)
+        self.assertAlmostEqual(sim.nodes[0].temperature_c, zone.temperature_c, delta=0.3)
+
+        def co2_after(rate):  # 20 s of reports after a jump to the window-open phase
+            c = scenarios.ScriptClock(demo)
+            s = Simulator(1, seed=2, scenario=demo, clock=c, warmup_s=0)
+            s.poll(0.0)
+            for _ in range(target):
+                c.next_phase(0.1)
+            s.poll(0.5)
+            c.next_phase(1.0)
+            s.nodes[0].co2_ppm = scenarios.CO2_BUILDS.zone(1).co2_ppm  # Start from the closed room
+            s.nodes[0].seen_jumps = c.jumps
+            c.set_rate(1.0, rate)
+            s.poll(21.0)
+            return s.nodes[0].co2_ppm
+        start, goal = scenarios.CO2_BUILDS.zone(1).co2_ppm, scenarios.WINDOW_OPEN.zone(1).co2_ppm
+        self.assertLess(abs(co2_after(4) - goal), abs(co2_after(1) - goal) / 3)  # 4x catches up faster
+        self.assertGreater(start, goal)
+
     def test_aligned_reference_fixture_still_available(self):
         self.assertEqual(play(scenarios.SCENARIOS["reference"], p.Mode.LECTURE, 1, aligned=True),
                          EXPECTED["reference", p.Mode.LECTURE])

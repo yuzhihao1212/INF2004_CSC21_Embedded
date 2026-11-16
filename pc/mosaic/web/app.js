@@ -818,6 +818,7 @@
       $("#sim-name").textContent = "Simulated";
       $("#sim-phase").textContent = `${sim.nodes} sensors with random readings, no script`;
       $("#sim-left").textContent = "";
+      $("#sim-keys").hidden = true;  // No script to control
       bar.hidden = true;
       $("#sim-tech").textContent = "";
       return;
@@ -826,7 +827,11 @@
     const n = sim.phases.length;
     $("#sim-phase").textContent = sim.finished ? `Script finished, holding: ${sim.label}`
       : `Phase ${sim.phase + 1} of ${n}: ${sim.label}`;
-    $("#sim-left").textContent = sim.finished ? "" : `${mmss(sim.left_s)} left`;
+    const left = $("#sim-left");
+    const speed = sim.paused ? "Paused" : sim.rate > 1 ? `${sim.rate}×` : "";
+    left.replaceChildren(...(speed ? [make("b", "", speed), document.createTextNode(sim.finished ? "" : " · ")] : []),
+                         document.createTextNode(sim.finished ? "" : `${mmss(sim.left_s)} left`));
+    $("#sim-keys").hidden = false;
     bar.hidden = false;
     if (bar.dataset.scenario !== sim.scenario) {
       bar.dataset.scenario = sim.scenario;
@@ -846,6 +851,33 @@
     const c = state.classroom;
     $("#sim-tech").textContent = `expected ${sim.expect} · now activity ${c ? c.activity : "—"}, air ${c ? c.air : "—"}, comfort ${c ? c.comfort : "—"}`;
   }
+
+  /* Presenter keys for a scripted simulation: Space pause/play, right arrow next
+   * phase, 1/2/4 speed. Nothing on screen; the strip shows the hint on hover/focus. */
+  document.addEventListener("keydown", async (e) => {
+    const sim = state && state.simulation;
+    const strip = $("#sim-strip");
+    if (!sim || !sim.scenario || strip.hidden || !strip.offsetParent) return;  // Live room with a script only
+    if (e.metaKey || e.ctrlKey || e.altKey || e.repeat || document.querySelector("dialog[open]")) return;
+    if (document.documentElement.dataset.intro === "play") return;  // That key skips the intro
+    const t = e.target;
+    if (t.closest && t.closest("input, textarea, select, [contenteditable]")) return;
+    let body;
+    if (e.key === " " && !(t.closest && t.closest("button, a, summary, [role=button]"))) body = { pause: !sim.paused };
+    else if (e.key === "ArrowRight") body = { next: true };
+    else if (["1", "2", "4"].includes(e.key)) body = { rate: Number(e.key) };
+    else return;
+    e.preventDefault();
+    try {
+      state.simulation = await post("/api/simulation", body);
+      renderSim();
+      const s = state.simulation;
+      announcer.textContent = body.pause !== undefined ? (s.paused ? "Script paused" : "Script playing")
+        : body.rate ? `Script speed ${s.rate}×` : `Phase ${s.phase + 1}: ${s.label}`;
+    } catch (err) {
+      announcer.textContent = err.message;
+    }
+  });
 
   /* Area details: a card in the side column; Escape or the close button hides it */
   function openZone(zone) {
