@@ -45,7 +45,8 @@ from mosaic import scenarios, simulator
 from mosaic.feedback import AlertLog, describe
 from mosaic.fusion import FusionEngine
 from mosaic.gateway import (PING_INTERVAL_S, ConfigDelivery, GatewayServer, NodeState,
-                            add_fusion_argument, load_fusion_config)
+                            add_fusion_argument, add_mqtt_argument, load_fusion_config,
+                            make_transport)
 
 HTTP_PORT = 8050
 HISTORY_S = 600
@@ -478,12 +479,14 @@ def main(argv: Optional[list[str]] = None) -> None:
     simulator.add_timing_arguments(parser)
     parser.add_argument("--verbose", action="store_true", help="print every packet")
     parser.add_argument("--events", metavar="FILE", help="append JSON Lines evaluation events")
+    add_mqtt_argument(parser)
     add_fusion_argument(parser)
     parser.add_argument("--loud-levels", metavar="FILE",
                         help="load and save each area's excessive-noise level (JSON)")
     args = parser.parse_args(argv)
     if args.scenario and not args.simulate:
         args.simulate = 4  # Scenarios script zones A-D
+    transport = make_transport(parser, args.mqtt)
     fusion = FusionEngine(load_fusion_config(parser, args.fusion_config))
 
     csv_file = open(args.csv, "a", newline="") if args.csv else None
@@ -491,7 +494,7 @@ def main(argv: Optional[list[str]] = None) -> None:
     quiet = None if args.verbose else open(os.devnull, "w")
     server = GatewayServer((args.host, args.port), args.node_port, args.ping_interval,
                            csv_file=csv_file, out=quiet or sys.stdout, fusion=fusion,
-                           fusion_out=sys.stdout, events_file=events_file)
+                           fusion_out=sys.stdout, events_file=events_file, transport=transport)
     try:
         dashboard = Dashboard(server, loud_levels_path=Path(args.loud_levels) if args.loud_levels else None)
     except (OSError, ValueError) as e:
@@ -505,11 +508,13 @@ def main(argv: Optional[list[str]] = None) -> None:
     httpd = start_http(dashboard, args.http_host, args.http_port)
     url_host = "localhost" if args.http_host in ("127.0.0.1", "0.0.0.0") else args.http_host
     print(f"MOSAIC dashboard: http://{url_host}:{httpd.server_address[1]}  "
-          f"(nodes send to UDP {args.port}; Ctrl+C to stop)", flush=True)
+          f"(nodes reach it on {server.transport.describe()}; Ctrl+C to stop)", flush=True)
 
     if args.simulate:
         sim_args = ["--nodes", str(args.simulate), "--pc-ip", "127.0.0.1",
                     "--pc-port", str(args.port), "--listen-port", str(args.node_port)]
+        if args.mqtt:
+            sim_args += ["--mqtt", args.mqtt]
         if args.scenario:
             sim_args += ["--scenario", args.scenario]
         if args.aligned:
