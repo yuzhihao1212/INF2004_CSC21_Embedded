@@ -50,3 +50,18 @@ target_link_libraries(mosaic_sensor_test
 pico_enable_stdio_usb(mosaic_sensor_test 1)
 pico_enable_stdio_uart(mosaic_sensor_test 0)
 pico_add_extra_outputs(mosaic_sensor_test)
+
+# Explicit opt-in: not part of the default all target, and never flashed here.
+set(MOSAIC_DHT22_VALIDATION_ATTEMPTS 100 CACHE STRING "DHT22 validation attempts (1..1000000)")
+if (NOT MOSAIC_DHT22_VALIDATION_ATTEMPTS MATCHES "^[1-9][0-9]*$" OR
+    MOSAIC_DHT22_VALIDATION_ATTEMPTS GREATER 1000000)
+    message(FATAL_ERROR "MOSAIC_DHT22_VALIDATION_ATTEMPTS must be 1..1000000")
+endif()
+add_executable(dht22_pio_validation EXCLUDE_FROM_ALL dht22_pio_validation.c)
+target_compile_definitions(dht22_pio_validation PRIVATE
+    DHT22_VALIDATION_ATTEMPTS=${MOSAIC_DHT22_VALIDATION_ATTEMPTS})
+target_compile_options(dht22_pio_validation PRIVATE -Wall -Wextra -Werror)
+target_link_libraries(dht22_pio_validation mosaic_environment pico_stdlib)
+pico_enable_stdio_usb(dht22_pio_validation 1)
+pico_enable_stdio_uart(dht22_pio_validation 0)
+pico_add_extra_outputs(dht22_pio_validation)
