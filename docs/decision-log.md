@@ -5,6 +5,18 @@ ideas we dropped. Status lines get updated in place; a reversed decision gets a 
 that links back. Entries dated before 14 Nov 2026 were backfilled on 14 Nov from the chat
 where they were decided and the commits that built them.
 
+## 2026-11-16 · Subsystem 5 (node config and telemetry) ported to μT-Kernel
+- **From → to:** CONFIG/PING handling, config storage, telemetry building, audio batching and sequence/first-report tracking moved from `firmware/node/node_main.c` into S5 on μT-Kernel.
+- **Why:** keep ZhiHao's node config and telemetry work in its own template folder.
+- **Problem it solves:** other subsystems use bounded post/get functions instead of S5 reading their data; S5 rejects reserved audio class 3/nonzero reserved-class probability and clears environment readings older than 6000 ms.
+- **Why this way:** S4 exchanges only protocol bytes: `mbf_s5_rx` in, `mbf_s5_tx` out, with `TMO_POL` inside `cyw43_utk_task`; S5 never calls networking functions.
+- **Compatibility:** `../../../firmware/common/include/mosaic_protocol.h` is included directly: one copy shared with the PC cross-check.
+- **Node identity:** copy `s5_node_id.example.h` to ignored `s5_node_id.h`, set 1–8; it defaults to 1 and prints once at startup.
+- **Dropped:** the UDP source-IP check is gone; per-node MQTT topics route messages, but spoofing stays an accepted risk (fault C7). Retry copies were not carried over because MQTT runs over TCP.
+- **Risks to watch:** include `subsystem5.h` before `app.h` or any other subsystem header: the kernel's `size_t` clashes with libc's (the template also fails with `app.h` then `<string.h>`). The proposed team-wide fix is `#define PROHIBIT_DEF_SIZE_T` before kernel headers in shared `app.h`, or as a makefile flag for `app_program/`; it needs team agreement and is not made here. Unexpected kernel errors make `report_task` exit and stop reports; S4's watchdog should check its progress once ported. Until S4 drains `mbf_s5_tx`, it fills after four reports and later reports are dropped and counted without using a sequence number.
+- **Verified:** Reviewer rerun on ZhiHao's Mac (Pico SDK 2.3.0, Arm GCC 15.2): `make TEST=1`, `make NET=lwip` and `make` all build with 0 warnings and 0 errors (flash / static RAM: default 282.0 / 24.1 KB, self-test 287.9 / 24.1 KB, lwIP 324.6 / 80.3 KB). The four subsystem 5 `.c` files compile cleanly with `-Wall -Wextra -Werror` and `APP_TEST=1`. `cd pc && python3 -m unittest`: 277 tests, all pass, including the new C/Python cross-check `test_node_s5.py`. `fw_budget.py` finds no float calls in our code. Not run on a Pico: S5-U12 and S5-U13 have no results yet. This follow-up removed generated logs and the separate verification record, made the first deadline use the configured interval, and noted U12's version clash; `make TEST=1 -j8` and `make -j8` were rerun with no warnings or errors, and the S5 unit test passed.
+- **Status:** built, not committed.
+
 ## 2026-11-16 · Node talks to the PC over MQTT; everyone keeps their original area
 - **From → to:** the node sent protocol v2 over UDP straight to the PC gateway, which tracked loss, RTT and CONFIG ACKs per datagram. Now node↔PC traffic goes over MQTT, through the lwIP MQTT client the course template already ships (`node/lib/liblwip/sysdepend/pico_rp2040/mqtt_utk.c`). Subsystem owners stay as they were: Moe audio capture and DSP, Darius the int8 classifier, Kendrick the environment sensors, Arif networking and node health, ZhiHao node config and telemetry (plus the PC side). The folders are in `node/TEAM.md`.
 - **Why:** ZhiHao decided both (chat, 16 Nov).
