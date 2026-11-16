@@ -24,7 +24,17 @@ them.
   (`kernel/`, `lib/`, `device/`, `include/`, `etc/`, `build_make/`) changes only when the team
   and the instructor agree; left alone, the instructor's fixes merge cleanly with
   `git subtree pull --prefix=node https://github.com/sirfonzie/INF2004_ProjectTemplate.git main`.
-  Who moves which task into which `subsystemN/` is still open.
+- Owners keep their original areas (ZhiHao, 16 Nov), one `subsystemN/` each, listed in
+  `node/TEAM.md`: 1 Moe (audio capture and DSP), 2 Darius (int8 classifier), 3 Kendrick
+  (environment sensors), 4 Arif (networking and node health), 5 ZhiHao (node config and
+  telemetry). Don't move code between them or into another owner's folder.
+- The node talks to the PC over **MQTT** (ZhiHao, 16 Nov), through the template's lwIP MQTT
+  client inside `cyw43_utk_task`. Sending our own UDP datagrams from a hook in that task was
+  dropped. Don't propose going back to raw UDP for node↔PC traffic. The MQTT design is fixed
+  (details in `docs/decision-log.md`, 16 Nov): Mosquitto broker on the PC; a small
+  standard-library MQTT client in `pc/mosaic` (no `paho-mqtt`); protocol v2 bytes unchanged as
+  the payload; topics `mosaic/node/<id>/telemetry`, `.../config` (retained) and `.../status`
+  (last will); telemetry QoS 0, CONFIG QoS 1 with our own CONFIG_ACK kept.
 - Before any node work, read the template's `README.md`, `TEAM.md` and `testing/README.md`.
   They set the instructor's rules, and they win if this summary ever differs:
   - one folder per student, `app_program/subsystemN/`, edited only by its owner; drivers live
