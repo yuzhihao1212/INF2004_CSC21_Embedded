@@ -13,7 +13,7 @@ import unittest
 from unittest.mock import patch
 
 from mosaic import protocol as p
-from mosaic.evaluate import distribution, evaluate, main, markdown
+from mosaic.evaluate import config_round_trips, distribution, evaluate, main, markdown
 from mosaic.fusion import FusionConfig, FusionEngine
 from mosaic.gateway import CSV_FIELDS, Gateway, GatewayServer, csv_row
 from mosaic.simulator import Simulator
@@ -318,6 +318,89 @@ class EventCapture(unittest.TestCase):
         self.server._flush_config_events()
         states = {e['state'] for e in self.records if e['event']=='config'}
         self.assertEqual(states, {'sending','stale','applied','rejected','failed'})
+
+    def _sends_at(self, *times):
+        for t in times:
+            self.now = t
+            self.server.gateway.config_sends(self.now)
+
+    def _round_trips(self):
+        self.server._flush_config_events()
+        return config_round_trips(self.records)
+
+    def test_config_round_trip_through_ack_after_one_retry(self):
+        self.send(0)
+        cfg = self.server.set_config(1, report_interval_ms=2000)
+        self._sends_at(0.01, 0.51)  # first send lost, retry 500 ms later
+        self.now = 0.53
+        self.send(1, msg=p.MsgType.CONFIG_ACK, payload=p.ConfigAck(cfg.config_version, p.AckStatus.OK))
+        [r] = self._round_trips()
+        self.assertEqual((r['outcome'], r['via'], r['attempts']), ('applied', 'ack', 2))
+        self.assertEqual(r['request_to_applied_ms'], 530)
+        self.assertEqual(r['last_send_to_ack_ms'], 20)
+
+    def test_config_confirmed_by_telemetry_has_no_ack_time(self):
+        self.send(0)
+        cfg = self.server.set_config(1, report_interval_ms=2000)
+        self._sends_at(0.01)
+        self.now = 1.2  # ACK lost; the next report shows the new version
+        self.send(1, payload=p.Telemetry(config_version=cfg.config_version))
+        [r] = self._round_trips()
+        self.assertEqual((r['outcome'], r['via']), ('applied', 'telemetry'))
+        self.assertEqual(r['request_to_applied_ms'], 1200)
+        self.assertIsNone(r['last_send_to_ack_ms'])
+
+    def test_config_stale_version_is_followed_to_the_resend(self):
+        self.send(0)
+        cfg = self.server.set_config(1, report_interval_ms=2000)
+        self._sends_at(0.01)
+        self.now = 0.03
+        self.send(1, msg=p.MsgType.CONFIG_ACK, payload=p.ConfigAck(cfg.config_version, p.AckStatus.STALE_VERSION))
+        resent = self.server.gateway.nodes[1].config.config
+        self._sends_at(0.04)
+        self.now = 0.06
+        self.send(2, msg=p.MsgType.CONFIG_ACK, payload=p.ConfigAck(resent.config_version, p.AckStatus.OK))
+        [r] = self._round_trips()
+        self.assertEqual((r['outcome'], r['config_version'], r['attempts']), ('applied', resent.config_version, 2))  # one send per version
+        self.assertEqual((r['request_to_applied_ms'], r['last_send_to_ack_ms']), (60, 20))
+
+    def test_config_rejected_failed_superseded_and_unfinished(self):
+        self.send(0)
+        cfg = self.server.set_config(1, report_interval_ms=2000)
+        self._sends_at(0.01)
+        self.send(1, msg=p.MsgType.CONFIG_ACK, payload=p.ConfigAck(cfg.config_version, p.AckStatus.INVALID_VALUE))
+        self.server.set_config(1, report_interval_ms=1000)
+        self._sends_at(*(1 + i / 2 for i in range(6)))  # five sends, no answer: failed
+        self.server.set_config(1, report_interval_ms=500)
+        self.server.set_config(1, report_interval_ms=750)  # replaces the one before
+        outcomes = [r['outcome'] for r in self._round_trips()]
+        self.assertEqual(outcomes, ['rejected', 'failed', 'superseded', 'unfinished'])
+
+    def test_config_round_trip_in_summary_and_report(self):
+        self.send(0)
+        cfg = self.server.set_config(1, report_interval_ms=2000)
+        self._sends_at(0.01)
+        self.now = 0.05
+        self.send(1, msg=p.MsgType.CONFIG_ACK, payload=p.ConfigAck(cfg.config_version, p.AckStatus.OK))
+        self.server._flush_config_events()
+        with tempfile.TemporaryDirectory() as tmp:
+            Path(tmp, 'run.csv').write_text(self.csv.getvalue())
+            Path(tmp, 'run.jsonl').write_text(self.events.getvalue())
+            summary = evaluate(Path(tmp, 'run.csv'), Path(tmp, 'run.jsonl'))
+        rt = summary['config_round_trip']
+        self.assertEqual((rt['requests'], rt['outcomes'], rt['confirmed_by']), (1, {'applied': 1}, {'ack': 1}))
+        self.assertEqual(rt['last_send_to_ack_ms']['max'], 40)
+        report = markdown(summary)
+        self.assertIn('## CONFIG round trip', report)
+        self.assertIn('| Last send → ACK (one round trip) | 1 | 40 | 40 | 40 |', report)
+        json.dumps(summary, allow_nan=False)
+
+    def test_config_round_trip_reads_logs_without_via(self):
+        events = [dict(session='s', monotonic_ms=0, event='config', node=1, state='sending', config_version=3, reason='operator'),
+                  dict(session='s', monotonic_ms=5, event='config', node=1, state='sending', config_version=3, attempt=1),
+                  dict(session='s', monotonic_ms=25, event='config', node=1, state='applied', config_version=3)]
+        [r] = config_round_trips(events)
+        self.assertEqual((r['via'], r['request_to_applied_ms'], r['last_send_to_ack_ms']), ('unknown', 25, None))
 
     def test_reference_start_ready_restart_reset_and_zone_changes(self):
         self.server.fusion.calibrate(0)

@@ -36,7 +36,7 @@ random `session` identifier, UTC ISO `wall_time`, integer `monotonic_ms` and `ev
 | `datagram` | Every valid TELEMETRY/PONG/CONFIG_ACK, including retry copies: node, source_ip, msg_type, seq, flags, sender_time_ms, accepted. Suppressed duplicates have accepted=false and no CSV row; accepted telemetry includes csv_pc_time. |
 | `pong` | node, rtt_ms |
 | `node_status` | node, old, new (ONLINE/STALE/OFFLINE) |
-| `config` | node, state (sending/applied/failed/rejected/stale), config_version, report_interval_ms, optional attempt/ack_status/reason |
+| `config` | node, state (sending/applied/failed/rejected/stale), config_version, report_interval_ms, optional attempt/ack_status/reason, and via (ack/telemetry) on applied |
 | `fusion` | region, old, new, reason; initial classroom states are included |
 | `zone_state` | node, zone, region, old, new; initial zone states are included |
 | `reference` | zone, action (start/ready/reset); ready includes pairs and gain_q16 |
@@ -95,6 +95,16 @@ period. CSV/event mismatches, malformed rows and overlapping labels are errors.
   excluded from statistics with a note. No synchronised-clock or one-way-delay
   claim is made. **Recovery** is the observed OFFLINE→ONLINE duration after an
   outage; initial discovery and unfinished outages are not successful recoveries.
+- **CONFIG round trip** follows each operator request (`config` event with
+  `reason=operator`) per node and session, through stale-version resends, to one
+  outcome: applied, rejected, failed, superseded (a newer request replaced it) or
+  unfinished. *Request → applied* is what the operator waits for, retries
+  included. *Last send → ACK* is one network round trip plus the node's handling,
+  and only exists when an ACK confirmed it; a CONFIG confirmed by a later TELEMETRY
+  report (ACK lost) has none. `applied` events carry `via` (`ack`/`telemetry`);
+  older logs show `unknown`. A failed request that a later report shows applied
+  counts as applied. Both times use the PC's monotonic clock. The first send waits
+  for the gateway's next poll (up to 200 ms), so *request → applied* includes that.
 - **Availability** integrates recorded status intervals. The configured map starts
   OFFLINE until first contact. The live `NodeState.status` policy is unchanged;
   any accepted datagram refreshes last_seen. Sampling is limited by the gateway
