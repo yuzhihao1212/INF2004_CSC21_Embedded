@@ -1,6 +1,6 @@
 /* MOSAIC intro: the four-shard logo forms full screen ("orbit and lock"), waits
    for the first reading from the gateway (4 s at most), then flies into the
-   header logo while the side rail slides in and the page content rises.
+   header logo while the top bar slides down and the page content rises.
 
    Plays once per browser tab: the inline script in index.html sets
    html[data-intro="play"] when sessionStorage has no "mosaic-intro" key.
@@ -11,7 +11,7 @@
   const replay = document.getElementById("intro-replay");
   if (replay) replay.addEventListener("click", () => {
     try { sessionStorage.removeItem("mosaic-intro"); } catch (e) {}
-    location.hash = "#/overview";
+    location.hash = "#/live";
     location.reload();
   });
 
@@ -109,8 +109,7 @@
 
     extras.forEach((el) => run(el, [{ opacity: 1 }, { opacity: 0 }], { duration: 250, fill: "forwards" }));
     run($(".intro-bg"), [{ opacity: 1 }, { opacity: 0 }], { duration: 450, delay: 250, fill: "forwards" });
-    const wide = matchMedia("(min-width: 960px)").matches;
-    run(document.querySelector(".topbar"), [{ transform: wide ? "translateX(-100%)" : "translateY(-100%)" }, { transform: "none" }],
+    run(document.querySelector(".topbar"), [{ transform: "translateY(-100%)" }, { transform: "none" }],
       { duration: 500, delay: 250, easing: settle, fill: "backwards" });
     const page = document.querySelector("#main > .page:not([hidden])");
     const items = [document.querySelector(".banner-wrap"), ...(page ? page.children : [])];

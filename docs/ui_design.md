@@ -7,32 +7,99 @@ lecturer first and keeps technical detail one click away (progressive disclosure
 
 ## Pages
 
-The dashboard is split into five pages so each one answers one question. Navigation is
-a labelled bar under the logo (a bottom bar on phones); the current page is marked with
-`aria-current`, the browser title names the page, Back/Forward work (`#/map`, ...), and
-focus moves to the page heading so screen-reader users hear where they are. The *act now*
-banner appears above every page.
+The dashboard is split into four pages so each one answers one question. Navigation is
+a bar of tabs across the top (a bottom bar on phones); the current page is marked with
+`aria-current`, the browser title names the page, Back/Forward work (`#/live`, ...; the old
+`#/overview` and `#/map` links open the Live room), and focus moves to the page heading so
+screen-reader users hear where they are. *Act now* alerts sit beside the map on the Live
+room and as a banner on top of every other page.
 
 | Page | Question it answers | Contents |
 |---|---|---|
-| Overview | Is the room OK, and should I do anything? | Headline + summary, Sound/Air/Comfort tiles, class type, room at a glance, latest 4 changes |
-| Room map | Where is it happening? | Floor plan of the classroom (front wall with whiteboard, lecturer's desk, door, windows, desks, sensor dots) with each area tinted by level; switch sound, air, temperature, movement; select an area for all its readings. On narrow screens the plan turns so the front is at the top. |
+| Live room | Is the room OK, where, and should I do anything? | Kicker (All good / Heads up / Act now), headline + summary, class type, simulation strip; the live floor plan (front wall with whiteboard, lecturer's desk, door, windows, desks, sensor dots) with each area's look, switchable to air, temperature or movement; beside it the alert card, Loudness, Air, Comfort and the latest 4 changes; below it the last 10 minutes as one bar. Select an area for all its readings. On narrow screens the plan turns so the front is at the top and the side column stacks under it. |
 | History | What happened? | Full timeline incl. cleared alerts; CO₂ and temperature charts with a text summary |
 | Sensors | Is the equipment working? | Per-sensor readings, sound class, Wi-Fi signal, lost readings, response time |
-| Setup | How do I change it? | Class type, voice setup (guided), report interval, technical names, theme |
+| Setup | How do I change it? | Class type, voice setup (guided), noise limit (guided), report interval, technical names, theme |
 
 ```
-┌ mosaic   ⌂ Overview │ ▦ Room map │ ↺ History │ ((•)) Sensors │ ⚙ Setup   ✓ All 4 sensors working ┐
-├──────────────────────────────────────────────────────────────────────────────────────────┤
-│ ■! Ongoing chatter at back right.  Consider re-engaging the class.          [Hide 10 min] │
-├──────────────────────────────────────────────────────────────────────────────────────────┤
-│ Overview                                     Class type: (Lecture) Group work Quiet work  │
-│ ┃ Ongoing chatter                                                                         │
-│ ┃ Talking at back right for 3 minutes. The air is fresh. Temperature is comfortable.      │
-│ [Sound ■ Ongoing chatter] [Air ✓ Fresh] [Comfort ✓ Comfortable]                           │
-│ [Room at a glance: small floor plan]           [What happened: 10:47 … 10:44 …]            │
-└──────────────────────────────────────────────────────────────────────────────────────────┘
+┌ mosaic  ▦ Live room  ↺ History  ((•)) Sensors  ⚙ Setup      ✓ All 4 sensors · Simulated · ● Live  ▭ ◐ ┐
+├────────────────────────────────────────────────────────────────────────────────────────────────────┤
+│ ● ACT NOW                                                     Class type: (Lecture) Group work Quiet │
+│ Excessive noise                                                                                      │
+│ Louder than the set level in the back rows. The air is fresh.                                        │
+│ [Simulated · Demo   Phase 4 of 9: Back rows get rowdy ▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬            0:34 left] │
+│ ┌ The room now   (Sound) Air Temperature Movement ┐  ┌ ■ Excessive noise in the back rows.          ┐ │
+│ │ Lecturer's │ Front rows │ Middle rows │ Back rows│  │   Ask the class to lower the volume. [Hide]  │ │
+│ │ speaking ◎ │ Settled    │ Talking ◎   │ Excessive│  ├ Loudness  177% back rows ▬▬▬▬▬▬▬▬|▬▬  ∿∿∿∿  ┤ │
+│ │            │            │             │ noise ◎◎ │  ├ Air 875 ppm Fresh │ Comfort 24.0 °C Comfortab┤ │
+│ └─────────────────────────────────────────────────┘  └ What happened: 10:47 … 10:44 …              ┘ │
+│ [Last 10 minutes ▬▬▬▬▬▬ fine ▬▬ heads-up ▬ act now ▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬ now] │
+└────────────────────────────────────────────────────────────────────────────────────────────────────┘
 ```
+
+### Live room: area looks
+
+Each area on the map takes one look. With the Sound layer on, the look comes from the
+zone's activity; with Air, Temperature or Movement on, it comes from that reading's level.
+The word on the area is always the server's label, so colour is never the only cue.
+
+| Zone activity | Word | Look | Rings |
+|---|---|---|---|
+| `LECTURER` | Lecturer speaking | blue tint (`--look-speak`) | slow blue rings, 3.3 s |
+| `STILL`, `MOTION` | Settled / Moving around | faint green tint (`--look-settled`) | none |
+| `TALKING` | Talking | amber tint (`--look-talk`); green in Group work, where talking is expected | amber rings, 2.4 s |
+| `LOUD` | Excessive noise | red tint (`--look-loud`), border, and an inner glow that pulses every 1.8 s | fast red rings, 1.2 s |
+| `NO_DATA` or sensor offline | No signal / Not connected | dashed border and diagonal hatch | none |
+
+Each area also shows one detail line: "82% of noise limit" on the Sound layer, the
+reading on the other layers, or "Last reading 30 s ago" when the sensor is offline. A
+yellow haze rises inside an area as CO₂ climbs, from none at 800 ppm to strong at 1,300 ppm.
+
+**Loudness** = the loudest student area's audio RMS against its own noise limit:
+`rms × 16 / level_x16 × 100 %`, from the node's latest window and the level captured in
+Setup › Noise limit. It's never shown in dB, because the microphone isn't calibrated. With
+no limit set, the card links to Setup instead. The **Air** card shows the highest CO₂
+reading and which area it's from, with the server's verdict for the room (so it always
+agrees with the headline). The **last 10 minutes** bar takes, for each stretch of time, the
+worst level among the room's sound, air and comfort states and any open alert.
+
+### Live room: 3D view
+
+A **Flat / 3D** switch above the map tilts the same floor plan into an isometric diorama
+(CSS 3D transforms, no perspective and no library). The floor, the areas and the sound
+rings stay on the floor plane; the two far walls, the whiteboard, the lecturer's desk and
+the student desks are extruded boxes. Labels float upright above each area in a separate
+layer, so they stay readable; that layer is hidden from screen readers because the area
+buttons carry the same words. The tilted areas stay real buttons. 3D is the default and
+the choice is remembered in the browser; phones (and any map narrower than 560 px) always
+show the flat plan. The room is scaled to fit the panel, and the switch animates the tilt
+over 1.2 s.
+
+### Live room: motion
+
+All motion is CSS except the number count-up, and all of it turns off under
+`prefers-reduced-motion` (numbers then change at once, and sparklines are drawn without
+the draw-in).
+
+| What | When | How |
+|---|---|---|
+| Area colour and border | Area changes look | ease over 0.9 s |
+| Sound rings | While speaking, talking or too loud | three rings per area grow from 0.35× to 4.4× and fade, staggered by a third of the cycle |
+| Excessive-noise glow | While an area is too loud | inner glow pulses every 1.8 s |
+| CO₂ haze | As CO₂ changes | opacity eases over 1.6 s |
+| Headline block | Headline text changes | rises 14 px and un-blurs over 0.7 s (not on first load) |
+| Numbers on the cards | Value changes | count to the new value over 0.8 s, ease-out |
+| Sparklines | First shown | draw in over 1.1 s |
+| Alert card | New alert | slides down 12 px with a slight overshoot, 0.55 s |
+| What happened | New row | slides in from above |
+| Logo | While any act-now alert shows | the four shards spring a few pixels apart, and back after |
+
+### Presenter mode
+
+The screen button in the top bar, or **P** (ignored while typing or in a dialog), hides
+the tabs, What happened, the last-10-minutes bar and the class type, and makes the
+headline (up to 76 px), the map and the loudness number bigger. The choice is remembered
+in this browser.
 
 ## Plain-language labels
 
@@ -115,8 +182,8 @@ Rules for alerts:
 | Consistency and standards | One icon and one colour per level everywhere; same label for a state in every place |
 | Error prevention | Confirm before Start over; class-type buttons disabled while a change is in progress |
 | Recognition over recall | The *why* line under every state; legend on the map; no codes to remember |
-| Flexibility | Technical details and names for the team (Sensors page, technical names switch), simple Overview for the lecturer |
-| Minimalist design | One headline, three tiles, a map and a short history above the fold |
+| Flexibility | Technical details and names for the team (Sensors page, technical names switch), simple Live room for the lecturer, presenter mode for a projector |
+| Minimalist design | One headline, the room map and four small cards above the fold at 1366 × 768; the map replaces the three tiles that repeated the headline |
 | Help users recover from errors | Messages say what to do: "Sensor at back left not connected. Check its power." |
 
 ## Accessibility (WCAG 2.2 AA)

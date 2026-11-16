@@ -1,11 +1,22 @@
-/* MOSAIC dashboard: five pages over one /api/state poll. No libraries.
+/* MOSAIC dashboard: four pages over one /api/state poll. No libraries.
  * Wording comes from the server (feedback.py); this file only lays it out. */
 (() => {
   "use strict";
 
   const POLL_MS = 1000;
   const SVG_NS = "http://www.w3.org/2000/svg";
-  const PAGES = { overview: "Overview", map: "Room map", history: "History", sensors: "Sensors", setup: "Setup" };
+  const PAGES = { live: "Live room", history: "History", sensors: "Sensors", setup: "Setup" };
+  const OLD_PAGES = { overview: "live", map: "live" };  // Links from before the Live room
+  const KICKER = { fine: "All good", heads_up: "Heads up", act_now: "Act now", none: "Waiting" };
+  // Area looks on the Live room map (docs/ui_design.md): zone activity -> look
+  const ACT_LOOK = { LECTURER: "speak", STILL: "settled", MOTION: "settled", TALKING: "talk", LOUD: "loud", NO_DATA: "none" };
+  const LEVEL_LOOK = { fine: "settled", heads_up: "talk", act_now: "loud", none: "none" };
+  const KEYS = {
+    activity: [["speak", "Lecturer's voice"], ["settled", "Settled"], ["talk", "Talking"], ["loud", "Excessive noise"], ["none", "No signal"]],
+    other: [["settled", "Fine"], ["talk", "Keep an eye on it"], ["loud", "Act now"], ["none", "No reading"]],
+  };
+  const LOUD_SPAN_MS = 120000;  // Loudness sparkline: last 2 minutes
+  const reduceMotion = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
   const LEVEL_ICON = { fine: "i-fine", heads_up: "i-alert", act_now: "i-stop", none: "i-none" };
   const LEVEL_WORD = { fine: "Fine", heads_up: "Keep an eye on it", act_now: "Act now", none: "No reading" };
   const MODE_LABEL = { LECTURE: "Lecture", DISCUSSION: "Group work", QUIET_WORK: "Quiet work" };
@@ -28,7 +39,7 @@
   const alerter = $("#alerter");
 
   let state = null;
-  let page = "overview";
+  let page = "live";
   let rangeS = 300;
   let mapMetric = "activity";
   let failures = 0;
@@ -87,11 +98,12 @@
     return reply;
   }
 
-  /* ---- Pages: #/overview ... #/setup; Back/Forward and links work ---- */
+  /* ---- Pages: #/live ... #/setup; Back/Forward and links work ---- */
   function route(fromUser) {
-    const [id, arg] = location.hash.replace(/^#\/?/, "").split("/");
-    page = PAGES[id] ? id : "overview";
-    if (page === "map" && arg) selectedZone = decodeURIComponent(arg);
+    const [raw, arg] = location.hash.replace(/^#\/?/, "").split("/");
+    const id = OLD_PAGES[raw] || raw;
+    page = PAGES[id] ? id : "live";
+    if (raw === "map" && arg) selectedZone = decodeURIComponent(arg);
     $$(".page").forEach((s) => { s.hidden = s.dataset.page !== page; });
     $$(".pages a").forEach((a) => {
       if (a.dataset.page === page) a.setAttribute("aria-current", "page"); else a.removeAttribute("aria-current");
@@ -143,6 +155,69 @@
     $("#live-text").textContent = { live: "Live", lost: "Connection lost", connecting: "Connecting" }[mode];
   }
 
+  /* Presenter mode: the room and one sentence, large. Button or the P key. */
+  const presentBtn = $("#present-btn");
+  function setPresent(on) {
+    if (on) document.documentElement.dataset.present = ""; else delete document.documentElement.dataset.present;
+    presentBtn.setAttribute("aria-pressed", String(on));
+    store("mosaic-present", on ? "1" : null);
+    if (on && page !== "live") location.hash = "#/live";
+    if (state) render();  // The map changes height
+  }
+  presentBtn.addEventListener("click", () => {
+    const on = !("present" in document.documentElement.dataset);
+    setPresent(on);
+    announcer.textContent = on ? "Presenter mode on" : "Presenter mode off";
+  });
+  presentBtn.setAttribute("aria-pressed", String("present" in document.documentElement.dataset));
+  document.addEventListener("keydown", (e) => {
+    const t = e.target;
+    const typing = t.closest && (t.closest("input, textarea, select, [contenteditable]") || t.closest("dialog[open]"));
+    if (e.key === "Escape" && selectedZone && !document.querySelector("dialog[open]")) { closeZone(); return; }
+    if ((e.key === "p" || e.key === "P") && !e.metaKey && !e.ctrlKey && !e.altKey && !typing) presentBtn.click();
+  });
+
+  /* Small motion helpers. Everything settles instantly when motion is reduced. */
+  function replay(el, base) {  // Restart a keyframe animation by swapping two identical classes
+    if (reduceMotion()) return;
+    const wasA = el.classList.contains(`${base}-a`);
+    el.classList.remove(`${base}-a`, `${base}-b`);
+    el.classList.add(`${base}-${wasA ? "b" : "a"}`);
+  }
+  const tweens = new WeakMap();
+  function countTo(el, value, format) {  // Numbers count to their new value over 0.8 s
+    const from = tweens.get(el);
+    if (value == null) { tweens.delete(el); el.textContent = "—"; return; }
+    if (from == null || from.to === value || reduceMotion()) {
+      if (from) cancelAnimationFrame(from.raf);
+      tweens.set(el, { to: value, now: value });
+      el.textContent = format(value);
+      return;
+    }
+    cancelAnimationFrame(from.raf);
+    const start = from.now, t0 = performance.now();
+    const rec = { to: value, now: start, raf: 0 };
+    const step = (t) => {
+      const k = Math.min(1, (t - t0) / 800);
+      rec.now = start + (value - start) * (1 - (1 - k) ** 3);
+      el.textContent = format(rec.now);
+      if (k < 1) rec.raf = requestAnimationFrame(step);
+    };
+    rec.raf = requestAnimationFrame(step);
+    tweens.set(el, rec);
+  }
+  function spark(svgEl, pts, lo, hi) {  // Sparkline in the svg's own viewBox; draws in the first time
+    const line = $("polyline", svgEl);
+    const [, , w, h] = svgEl.getAttribute("viewBox").split(" ").map(Number);
+    if (pts.length < 2) { line.setAttribute("points", ""); return; }
+    const t0 = pts[0][0], t1 = pts[pts.length - 1][0] || t0 + 1;
+    const span = Math.max(1, t1 - t0), range = Math.max(1e-6, hi - lo);
+    line.setAttribute("points", pts.map(([t, v]) =>
+      `${(((t - t0) / span) * w).toFixed(1)},${(h - 2 - clamp((v - lo) / range, 0, 1) * (h - 4)).toFixed(1)}`).join(" "));
+    line.setAttribute("pathLength", "1");
+    if (!svgEl.dataset.drawn) { svgEl.dataset.drawn = "1"; svgEl.classList.add("draw"); }
+  }
+
   /* ---- Header + alert banners (every page) ---- */
   function renderHeader() {
     const f = fb();
@@ -162,7 +237,11 @@
 
   function renderBanners() {
     const alerts = state.alerts || { banner: [], hidden: 0 };
-    const box = $("#banners");
+    // On the Live room the alert sits in the side column, next to the map; elsewhere on top.
+    const box = page === "live" ? $("#alert-slot") : $("#banners");
+    const other = page === "live" ? $("#banners") : $("#alert-slot");
+    if (other.childElementCount) { other.replaceChildren(); delete other.dataset.key; }
+    $(".brand").toggleAttribute("data-alert", alerts.banner.some((a) => a.level === "act_now"));
     // Rebuild only when the alerts change, so focus on "Hide" survives the refresh.
     const key = alerts.banner.map((a) => `${a.id}:${a.message}`).join("|");
     if (box.dataset.key === key) {
@@ -189,7 +268,9 @@
           poll(true);
         } catch (e) { hide.disabled = false; }
       });
-      card.append(icon("i-stop", "icon banner-icon"), text, hide);
+      const head = make("div", "banner-head");
+      head.append(icon("i-stop", "icon banner-icon"), text);
+      card.append(head, hide);
       return card;
     }));
     }
@@ -246,34 +327,181 @@
     }
   }
 
-  /* ---- Overview ---- */
-  function renderOverview() {
+  /* ---- Live room: headline, map, side cards, the last 10 minutes ---- */
+  function renderLive() {
+    renderSim();
     const f = fb();
     if (!f) return;
     const hero = $("#hero");
-    hero.dataset.level = f.tiles[0].level;
-    $("#headline").textContent = f.headline;
+    hero.dataset.level = f.level;
+    $("#kicker").textContent = KICKER[f.level] || KICKER.none;
+    $("#h-live").textContent = f.headline;
     $("#summary").textContent = f.summary;
     $("#hero-tech").textContent = `activity ${f.tech.activity} · air ${f.tech.air} · comfort ${f.tech.comfort} · mode ${f.tech.mode}`;
-    if (lastHeadline !== null && lastHeadline !== f.headline) announcer.textContent = `${f.headline}. ${f.summary}`;
+    if (lastHeadline !== null && lastHeadline !== f.headline) {
+      announcer.textContent = `${f.headline}. ${f.summary}`;
+      replay(hero, "rise");
+    }
     lastHeadline = f.headline;
 
-    for (const tile of f.tiles) {
-      const node = $(`#tile-${tile.id}`);
-      node.dataset.level = tile.level;
-      setIcon($(".level-icon", node), LEVEL_ICON[tile.level]);
-      $(".level-icon", node).setAttribute("class", `icon level-icon lvl-${tile.level}`);
-      $(".lt", node).textContent = tile.label;
-      $(".tile-why", node).textContent = tile.why;
-      $(".tech", node).textContent = [tile.tech, tile.detail].filter(Boolean).join(" · ");
-      node.setAttribute("aria-label", `${tile.title}: ${tile.label}, ${LEVEL_WORD[tile.level]}. ${tile.why}`);
-    }
-    renderPlan($("#mini-map"), "activity", true);
+    renderPlan($("#zone-map"), mapMetric);
+    renderKey();
+    renderZoneDetail();
+    renderLoudness(f);
+    renderAirComfort(f);
     renderTimeline($("#latest"), f.timeline.slice(0, 4));
+    renderLesson(f);
+  }
+
+  /* Loudness = how close the loudest student area is to its own noise limit:
+   * the node's audio RMS (ADC counts) x 16 against the captured level_x16.
+   * Never shown as dB: the microphone isn't calibrated. */
+  const loudHistory = [];
+  function loudPct(zoneId) {
+    const cz = state.classroom && (state.classroom.zones || []).find((z) => z.zone === zoneId);
+    if (!cz || !cz.loud || !cz.loud.level_x16) return null;
+    const n = state.nodes.find((x) => x.id === cz.node_id);
+    const a = n && n.status !== "offline" && n.telemetry && n.telemetry.audio;
+    return a && a.rms != null ? (a.rms * 16 * 100) / cz.loud.level_x16 : null;
+  }
+  function loudest() {
+    const f = fb();
+    if (!f) return null;
+    let best = null;
+    for (const z of f.zones) {
+      if (z.lecturer_area) continue;
+      const p = loudPct(z.zone);
+      if (p != null && (!best || p > best.pct)) best = { pct: p, name: z.name };
+    }
+    return best;
+  }
+  function sampleLoud() {  // Every poll, on every page, so the sparkline has history
+    const best = loudest();
+    if (best) loudHistory.push([state.time_ms, best.pct]);
+    while (loudHistory.length && loudHistory[0][0] < state.time_ms - LOUD_SPAN_MS) loudHistory.shift();
+  }
+  function renderLoudness() {
+    const card = $("#m-loud");
+    const best = loudest();
+    const anyLevel = !!(state.classroom && (state.classroom.zones || []).some((z) => z.loud && z.loud.level_x16));
+    $("#loud-hint").hidden = anyLevel;
+    if (!best) {
+      card.dataset.tone = "none";
+      countTo($("#loud-num"), null);
+      $("#loud-where").textContent = anyLevel ? "No sound readings" : "";
+      $("#loud-fill").style.width = "0%";
+      spark($("#loud-spark"), [], 0, 1);
+      return;
+    }
+    card.dataset.tone = best.pct >= 100 ? "act_now" : best.pct >= 70 ? "heads_up" : "fine";
+    countTo($("#loud-num"), Math.round(best.pct), (v) => `${Math.round(v)}%`);
+    $("#loud-where").textContent = best.name;
+    $("#loud-fill").style.width = `${clamp(best.pct / 140, 0, 1) * 100}%`;
+    spark($("#loud-spark"), loudHistory, 0, 140);
+  }
+
+  const CO2_TONE = { good: "fine", fair: "heads_up", poor: "act_now", warmup: "none", none: "none" };
+  function renderAirComfort(f) {
+    const live = state.nodes.filter((n) => n.status !== "offline" && n.telemetry);
+    const withCo2 = live.filter((n) => n.telemetry.co2_ppm != null);
+    const top = withCo2.reduce((a, b) => (!a || b.telemetry.co2_ppm > a.telemetry.co2_ppm ? b : a), null);
+    const airCard = $("#m-air");
+    const airTile = f.tiles.find((t) => t.id === "air");  // The verdict is the server's, like the headline
+    if (top) {
+      const level = co2Level(top.telemetry.co2_ppm, false);
+      airCard.dataset.tone = airTile ? airTile.level : CO2_TONE[level];
+      countTo($("#air-num"), top.telemetry.co2_ppm, (v) => Math.round(v).toLocaleString());
+      $("#air-word").textContent = airTile ? airTile.label : CO2_LEVEL[level];
+      $("#air-where").textContent = withCo2.length > 1 ? `Highest: ${sensorName(top.id).toLowerCase()}` : "";
+      const since = state.time_ms - 300000;
+      spark($("#air-spark"), top.history.filter((p) => p[0] >= since && p[3] != null).map((p) => [p[0], p[3]]),
+            400, Math.max(state.co2_bands.poor + 200, top.telemetry.co2_ppm));
+    } else {
+      airCard.dataset.tone = "none";
+      countTo($("#air-num"), null);
+      $("#air-where").textContent = "";
+      $("#air-word").textContent = live.some((n) => n.telemetry.co2_warmup) ? "Warming up" : "";
+      spark($("#air-spark"), [], 0, 1);
+    }
+    const temps = live.map((n) => n.telemetry.temperature_c).filter((v) => v != null);
+    const hums = live.map((n) => n.telemetry.humidity_pct).filter((v) => v != null);
+    const mean = (xs) => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : null);
+    const tile = f.tiles.find((t) => t.id === "comfort");
+    $("#m-comfort").dataset.tone = tile ? tile.level : "none";
+    countTo($("#temp-num"), mean(temps), (v) => v.toFixed(1));
+    $("#hum-num").textContent = hums.length ? `${Math.round(mean(hums))}% humidity` : "";
+    $("#comfort-word").textContent = tile ? tile.label : "";
+  }
+
+  /* The last 10 minutes as one bar. Each stretch takes the worst level of the
+   * room's sound, air and comfort at that time, from feedback.timeline. */
+  const RANK = { none: 0, fine: 1, heads_up: 2, act_now: 3 };
+  function renderLesson(f) {
+    const end = state.time_ms, spanMs = state.history_s * 1000, start = end - spanMs;
+    // Alerts (excessive noise, stuffy air...) count too, from start to end.
+    const alerts = state.alerts || {};
+    const alertItems = [...(alerts.active || []), ...(alerts.ended || [])].flatMap((a) => [
+      { wall_ms: a.started_ms, level: a.level, text: a.message, tech: `alert${a.id}:` },
+      ...(a.ended_ms ? [{ wall_ms: a.ended_ms, level: "fine", text: `Cleared: ${a.message}`, tech: `alert${a.id}:` }] : []),
+    ]);
+    const items = [...f.timeline, ...alertItems].sort((a, b) => a.wall_ms - b.wall_ms);
+    const now = {};
+    const worst = () => Object.values(now).reduce((w, l) => (RANK[l] > RANK[w] ? l : w), "fine");
+    let from = start, level = "none", text = "Before the first change";
+    const segs = [];
+    for (const it of items) {
+      const dim = (it.tech || "").split(":")[0] || it.text;
+      if (it.wall_ms > start && it.wall_ms > from) segs.push({ from, to: it.wall_ms, level, text });
+      now[dim] = it.level;
+      level = worst();
+      text = it.text;
+      if (it.wall_ms > start) from = it.wall_ms;
+    }
+    segs.push({ from, to: end, level, text });
+    const merged = [];
+    for (const s of segs) {  // Neighbours at the same level become one stretch
+      const last = merged[merged.length - 1];
+      if (last && last.level === s.level) { last.to = s.to; if (!last.texts.includes(s.text)) last.texts.push(s.text); }
+      else merged.push({ ...s, texts: [s.text] });
+    }
+    const bar = $("#lesson-bar");
+    const key = merged.map((s) => `${s.from}:${s.level}`).join("|");
+    if (bar.dataset.key !== key) {
+      bar.dataset.key = key;
+      bar.replaceChildren(...merged.map((s) => {
+        const b = make("button", "seg");
+        b.type = "button";
+        b.dataset.level = s.level;
+        const what = s.texts.slice(-2).map((t) => t.replace(/\.$/, "")).join(", ");
+        const label = `${clockTime(s.from)} to ${s.to >= end - 1500 ? "now" : clockTime(s.to)}: ${what}`;
+        b.title = label;
+        b.setAttribute("aria-label", `${label}. ${LEVEL_WORD[s.level]}.`);
+        return b;
+      }), make("span", "lesson-now"));
+    }
+    [...bar.querySelectorAll(".seg")].forEach((b, i) => b.style.setProperty("--w", String(Math.max(1, merged[i].to - merged[i].from))));
+    const mins = Math.round(state.history_s / 60);
+    $("#lesson-span").textContent = mins === 1 ? "minute" : `${mins} minutes`;
+    const axis = $("#lesson-axis");
+    const labels = [clockTime(start), clockTime(start + spanMs / 2), "now"];
+    if (axis.textContent !== labels.join("")) axis.replaceChildren(...labels.map((t) => make("span", "", t)));
   }
 
   /* ---- Room map ---- */
-  $$('input[name="map-metric"]').forEach((r) => r.addEventListener("change", () => { mapMetric = r.value; if (state) renderMapPage(); }));
+  $$('input[name="map-metric"]').forEach((r) => r.addEventListener("change", () => { mapMetric = r.value; if (state) renderLive(); }));
+  function renderKey() {
+    const key = $("#map-key");
+    const which = mapMetric === "activity" ? "activity" : "other";
+    if (key.dataset.which === which) return;
+    key.dataset.which = which;
+    key.replaceChildren(...KEYS[which].map(([look, word]) => {
+      const li = make("li");
+      const sw = make("span", "sw-look");
+      sw.dataset.look = look;
+      li.append(sw, word);
+      return li;
+    }));
+  }
 
   /* Floor plan (docs/ui_design.md): drawn from the zone layout. u runs from
    * the front of the room (whiteboard) to the back, v from the door side to
@@ -345,25 +573,60 @@
     // Rebuild only when the room changes shape; otherwise update in place, so
     // keyboard focus and screen-reader position survive the 1 s refresh.
     const key = `${portrait}|${f.zones.map((z) => `${z.zone}:${z.layout}:${z.lecturer_area}`).join(",")}`;
-    if (container.dataset.key !== key) buildPlan(container, portrait, compact, f.zones, key);
+    const rebuilt = container.dataset.key !== key;
+    if (rebuilt) buildPlan(container, portrait, compact, f.zones, key);
+    const view = portrait ? "flat" : mapView;
+    if (container.dataset.view !== view) { container.dataset.view = view; labelBurst(); }
+    $("#map-view").hidden = portrait;
+    if (view === "3d") fit3D(container);
+    $("#map-front").textContent = portrait ? "Front of the room at the top"
+      : view === "3d" ? "Whiteboard on the far left wall" : "Front of the room on the left";
+    const czones = (state.classroom && state.classroom.zones) || [];
     for (const z of f.zones) {
       const el = container.querySelector(`[data-zone="${CSS.escape(z.zone)}"]`);
       const offline = z.status === "Not connected";
       const m = z[metric];
       const level = offline ? "none" : m.level;
       const label = offline ? "Not connected" : m.label;
+      const tech = z.activity.tech;
+      let look = LEVEL_LOOK[level] || "none";
+      if (metric === "activity" && !offline) {
+        look = ACT_LOOK[tech] || look;
+        if (tech === "TALKING" && level === "fine") look = "settled";  // Group work: talking is expected
+      }
+      const rings = metric === "activity" && !offline ? { LECTURER: "speak", TALKING: "talk", LOUD: "loud" }[tech] : null;
+      const cz = czones.find((c) => c.zone === z.zone);
+      const node = state.nodes.find((n) => n.id === z.node_id);
+      let detail = "";
+      if (offline) detail = node && node.age_s != null ? `Last reading ${Math.round(node.age_s)} s ago` : "No readings yet";
+      else if (metric === "activity") {
+        const p = loudPct(z.zone);
+        detail = p != null ? `${Math.round(p)}% of noise limit` : "";
+      } else detail = m.detail || "";
+
       el.dataset.level = level;
+      el.dataset.look = look;
+      if (rings) el.dataset.rings = rings; else delete el.dataset.rings;
       el.dataset.offline = String(offline);
+      const ppm = cz && !offline ? cz.co2_ppm : null;
+      el.style.setProperty("--haze", ppm == null ? "0" : String(clamp((ppm - 800) / 500, 0, 0.9)));
       if (!compact) el.setAttribute("aria-pressed", String(z.zone === selectedZone));
-      el.setAttribute("aria-label", `${z.name}: ${label}, ${LEVEL_WORD[level]}.${m.why ? " " + m.why : ""}`);
-      const state = $(".plan-state", el);
-      state.dataset.level = level;
-      setIcon($(".level-icon", state), LEVEL_ICON[level] || LEVEL_ICON.none);
-      $(".level-icon", state).setAttribute("class", `icon level-icon lvl-${level}`);
-      $("span", state).textContent = label;
-      const tech = $(".tech", el);
-      if (tech) tech.textContent = `zone ${z.zone} · sensor ${z.node_id}${m.tech ? " · " + m.tech : ""}`;
+      el.setAttribute("aria-label", `${z.name}: ${label}${detail ? ", " + detail : ""}.${m.why ? " " + m.why : ""}`);
+      const st = $(".plan-state", el);
+      st.dataset.level = level;
+      $("span", st).textContent = label;
+      $(".plan-detail", el).textContent = detail;
+      const techLine = $(".tech", el);
+      if (techLine) techLine.textContent = `zone ${z.zone} · sensor ${z.node_id}${m.tech ? " · " + m.tech : ""}`;
+      const lab = $(`.plan-label[data-zone="${CSS.escape(z.zone)}"]`, container);
+      if (lab) {
+        lab.dataset.look = look;
+        $(".plan-word", lab).textContent = label;
+        $(".plan-detail", lab).textContent = detail;
+      }
     }
+    placeLabels();
+    if (rebuilt) labelBurst();
   }
 
   function buildPlan(container, portrait, compact, zones, key) {
@@ -382,23 +645,104 @@
       const [x0, y0] = P(g.u0, g.v0), [x1, y1] = P(g.u1, g.v1);
       const [sx, sy] = P((g.u0 + g.u1) / 2, g.v1 - 0.08);
       svg("circle", { cx: sx, cy: sy, r: 8, class: "room-sensor" }, root);
-      const el = make(compact ? "a" : "button", "plan-zone");
+      const el = make("button", "plan-zone");
       el.dataset.zone = z.zone;
-      if (compact) el.href = `#/map/${encodeURIComponent(z.zone)}`;
-      else {
-        el.type = "button";
-        el.setAttribute("aria-controls", "zone-detail");
-        el.addEventListener("click", () => { selectedZone = z.zone; renderMapPage(); });
-      }
+      el.type = "button";
+      el.setAttribute("aria-controls", "zone-detail");
+      el.addEventListener("click", () => openZone(z.zone));
       Object.assign(el.style, { left: pct(Math.min(x0, x1), vbW), top: pct(Math.min(y0, y1), vbH),
                                 width: pct(Math.abs(x1 - x0), vbW), height: pct(Math.abs(y1 - y0), vbH) });
       const chip = make("span", "plan-chip");
-      chip.append(make("span", "plan-name", z.name), levelLine("none", "", "plan-state"));
-      if (!compact) chip.append(make("span", "tech"));
-      el.append(chip);
+      chip.append(make("span", "plan-name", z.name), levelLine("none", "", "plan-state"), make("span", "plan-detail"), make("span", "tech"));
+      el.append(make("span", "haze"), make("span", "ring"), make("span", "ring"), make("span", "ring"), chip, make("span", "plan-anchor"));
       nodes.push(el);
     }
-    container.replaceChildren(...nodes);
+    // 3D view: the same floor plan tilted into an isometric diorama. Walls, the
+    // whiteboard and desks are extruded boxes; labels float upright above it.
+    const plane = make("div", "plan-plane");
+    const solid = make("div", "plan-solid");
+    buildSolid(solid, P, vbW, vbH, geo, portrait);
+    plane.append(...nodes, solid);
+    const labels = make("div", "plan-labels");
+    labels.setAttribute("aria-hidden", "true");  // The zone buttons carry the same words
+    for (const z of zones) {
+      const lab = make("div", "plan-label");
+      lab.dataset.zone = z.zone;
+      lab.append(make("span", "plan-name", z.name), make("span", "plan-word"), make("span", "plan-detail"));
+      labels.append(lab);
+    }
+    container.replaceChildren(plane, labels);
+  }
+
+  /* Extruded parts of the room for the 3D view. Box footprints are in % of the
+   * plan, heights in px; only the two far walls are drawn so nothing hides the floor. */
+  function buildSolid(root, P, vbW, vbH, geo, portrait) {
+    const at = (u0, v0, u1, v1) => {
+      const [x0, y0] = P(u0, v0), [x1, y1] = P(u1, v1);
+      return { left: `${(100 * Math.min(x0, x1)) / vbW}%`, top: `${(100 * Math.min(y0, y1)) / vbH}%`,
+               width: `${(100 * Math.abs(x1 - x0)) / vbW}%`, height: `${(100 * Math.abs(y1 - y0)) / vbH}%` };
+    };
+    const box = (cls, u0, v0, u1, v1, h) => {
+      const b = make("div", `solid ${cls}`);
+      Object.assign(b.style, at(u0, v0, u1, v1));
+      b.style.setProperty("--h", `${h}px`);
+      b.append(make("i", "s-top"), make("i", "s-front"), make("i", "s-side"));
+      root.append(b);
+      return b;
+    };
+    if (portrait) return;  // Phones stay flat
+    const wallFront = make("div", "wall wall-front");   // u = 0: whiteboard wall
+    Object.assign(wallFront.style, at(0, 0, 0.0001, 1));
+    wallFront.append(make("i", "board"));
+    const wallDoor = make("div", "wall wall-door");     // v = 0: door side, with the doorway left open
+    Object.assign(wallDoor.style, at(0.115, 0, 1, 0.0001));
+    root.append(wallFront, wallDoor);
+    if (geo.seatsFrom > 0) box("desk lectern", geo.seatsFrom * 0.5, 0.6, geo.seatsFrom * 0.68, 0.86, 18);
+    const cols = geo.seatBands * 2;
+    for (let c = 0; c < cols; c++) {
+      const u = geo.seatsFrom + ((c + 0.5) * (1 - geo.seatsFrom)) / cols;
+      for (const v of [0.16, 0.28, 0.4, 0.6, 0.72, 0.84]) box("desk", u - 0.022, v - 0.04, u + 0.006, v + 0.04, 12);
+    }
+  }
+
+  /* Map view: flat (as drawn) or 3D (tilted). Phones are always flat. */
+  let mapView = "3d";
+  try { if (localStorage.getItem("mosaic-view") === "flat") mapView = "flat"; } catch (e) { /* Blocked */ }
+  $$('input[name="map-view"]').forEach((r) => {
+    r.checked = r.value === mapView;
+    r.addEventListener("change", () => {
+      mapView = r.value;
+      store("mosaic-view", mapView === "flat" ? "flat" : null);
+      if (state) renderLive();
+      labelBurst();
+    });
+  });
+  function fit3D(container) {  // Scale the tilted room so it fits the panel
+    const cw = container.clientWidth, ch = container.clientHeight;
+    const a = (40 * Math.PI) / 180, t = (58 * Math.PI) / 180;
+    const pw = cw * Math.cos(a) + ch * Math.sin(a);
+    const ph = (cw * Math.sin(a) + ch * Math.cos(a)) * Math.cos(t) + 40 * Math.sin(t);
+    $(".plan-plane", container).style.setProperty("--s", (Math.min(cw / pw, ch / ph) * 1.04).toFixed(3));
+  }
+  function placeLabels() {
+    const container = $("#zone-map");
+    if (!container || container.dataset.view !== "3d") return;
+    const box = container.getBoundingClientRect();
+    $$(".plan-label", container).forEach((lab) => {
+      const anchor = $(`.plan-zone[data-zone="${CSS.escape(lab.dataset.zone)}"] .plan-anchor`, container);
+      if (!anchor) return;
+      const a = anchor.getBoundingClientRect();
+      lab.style.left = `${a.left - box.left}px`;
+      lab.style.top = `${a.top - box.top}px`;
+    });
+  }
+  let burstEnd = 0;
+  function labelBurst(ms = 1400) {  // Follow the areas while the room tilts
+    const running = performance.now() < burstEnd;
+    burstEnd = performance.now() + ms;
+    if (running) return;
+    const step = () => { placeLabels(); if (performance.now() < burstEnd) requestAnimationFrame(step); };
+    requestAnimationFrame(step);
   }
 
   /* Simulation strip: which scripted phase the simulator is playing (dashboard.py "simulation") */
@@ -442,16 +786,27 @@
     $("#sim-tech").textContent = `expected ${sim.expect} · now activity ${c ? c.activity : "—"}, air ${c ? c.air : "—"}, comfort ${c ? c.comfort : "—"}`;
   }
 
-  function renderMapPage() {
-    renderSim();
+  /* Area details: a card in the side column; Escape or the close button hides it */
+  function openZone(zone) {
+    selectedZone = zone;
+    renderLive();
+    $("#zone-close").focus();
+  }
+  function closeZone() {
+    const zone = selectedZone;
+    selectedZone = null;
+    $("#zone-detail").hidden = true;
+    if (state) renderLive();
+    const btn = zone && $(`#zone-map [data-zone="${CSS.escape(zone)}"]`);
+    if (btn) btn.focus();
+  }
+  $("#zone-close").addEventListener("click", closeZone);
+  function renderZoneDetail() {
     const f = fb();
-    if (!f) return;
-    const rank = { act_now: 3, heads_up: 2, fine: 1, none: 0 };
-    if (!f.zones.some((z) => z.zone === selectedZone)) {  // Default: the area that needs most attention
-      selectedZone = [...f.zones].sort((a, b) => rank[b.activity.level] - rank[a.activity.level])[0].zone;
-    }
-    renderPlan($("#zone-map"), mapMetric);
-    const z = f.zones.find((x) => x.zone === selectedZone);
+    const card = $("#zone-detail");
+    const z = f && selectedZone && f.zones.find((x) => x.zone === selectedZone);
+    card.hidden = !z;
+    if (!z) { selectedZone = null; return; }
     $("#zone-detail-h").textContent = z.name;
     $("#zone-detail-sensor").textContent = `Sensor ${z.node_id}: ${z.status.toLowerCase()}`;
     const rows = [["Sound", "i-sound", z.activity, z.activity.why], ["Air", "i-air", z.air, z.air.detail],
@@ -473,8 +828,10 @@
       list.replaceChildren(make("li", "timeline-empty", "Nothing yet. Changes in the room appear here."));
       return;
     }
+    const seen = Number(list.dataset.newest || 0);  // New rows slide in; the first fill doesn't
+    list.dataset.newest = String(Math.max(seen, ...items.map((i) => i.wall_ms)));
     list.replaceChildren(...items.map((item) => {
-      const li = make("li", "timeline-item");
+      const li = make("li", seen && item.wall_ms > seen ? "timeline-item enter" : "timeline-item");
       li.dataset.level = item.level;
       const time = make("time", "timeline-time", clockTime(item.wall_ms));
       time.dateTime = new Date(item.wall_ms).toISOString();
@@ -953,12 +1310,11 @@
     renderHeader();
     renderBanners();
     renderMode();
-    if (page === "overview") renderOverview();
-    else if (page === "map") renderMapPage();
+    if (page === "live") renderLive();
     else if (page === "history") renderHistory();
     else if (page === "sensors") renderSensors();
     else if (page === "setup") renderSetup();
-    if (page !== "overview" && fb()) {  // Keep the headline announcement current on every page
+    if (page !== "live" && fb()) {  // Keep the headline announcement current on every page
       if (lastHeadline !== null && lastHeadline !== fb().headline) announcer.textContent = `${fb().headline}. ${fb().summary}`;
       lastHeadline = fb().headline;
     }
@@ -972,6 +1328,7 @@
       if (!res.ok) throw new Error(res.status);
       state = await res.json();
       failures = 0;
+      sampleLoud();
       setLive("live");
       render();
       document.dispatchEvent(new CustomEvent("mosaic:state", { detail: state }));  // intro.js listens
