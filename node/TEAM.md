@@ -153,7 +153,7 @@ change it only by team agreement. Write down every task you create.
 | 2 | 14–15 | *example:* producer_task – 14 – core 1 |
 | 3 | 16–17 | *example:* consumer_task – 16 – core 0 |
 | 4 | 18–19 | *example:* monitor_task – 18 – any |
-| 5 | 20–21 | |
+| 5 | 20–21 | report_task – 20 – any |
 
 Core: `TP_PRC1` = core 0, `TP_PRC2` = core 1, or "any".
 
@@ -170,7 +170,13 @@ sends to it or waits on it. Agree on the data format before coding.
 | IF-03 | S3 → S4 | message buffer + event flag (owned by S4) | `mbf_summary`, `flg_events` | text line ≤ `S4_SUMMARY_MAX` bytes, then `FLG_BATCH` | *example* |
 | IF-04 | S4 → S3 | shared data under a mutex (owned by S3) | `app_stats`, `mtx_stats` | `APP_STATS`, read only while locked | *example* |
 | IF-05 | S4 → S1 | task control | `tid_led` | `tk_sus_tsk` / `tk_rsm_tsk` / `tk_chg_pri` | *example* |
-| IF-06 | | | | | |
+| IF-06 | S4 → S5 | message buffer (owned by S5) | `mbf_s5_rx` | One protocol v2 CONFIG/PING datagram, ≤128 bytes; S4 uses `TMO_POL` inside `cyw43_utk_task`, checks ID > 0 | proposed by S5, pending |
+| IF-07 | S5 → S4 | message buffer (owned by S5) | `mbf_s5_tx` | One protocol v2 TELEMETRY/CONFIG_ACK/PONG, ≤64 bytes; S4 receives with `TMO_POL` inside `cyw43_utk_task`, checks ID > 0 | proposed by S5, pending |
+| IF-08 | S3 → S5 | post function, S5 mutex | `mtx_s5` | `s5_post_environment(temp_x10, humidity_x10, co2_ppm, valid_bits)`; expires after 6000 ms | proposed by S5, pending |
+| IF-09 | S3 → S5 | post function, S5 mutex | `mtx_s5` | `s5_post_pir(samples, active)`; interval counters, one sample or a batch | proposed by S5, pending |
+| IF-10 | S1/S2 → S5 | post functions, S5 mutex | `mtx_s5` | `s5_post_audio_window(window, dsp_us, inference_us)`, `s5_audio_dropped(windows)`; two consecutive windows, loss count | proposed by S5, pending |
+| IF-11 | S4 → S5 | post function, S5 mutex | `mtx_s5` | `s5_post_health(rssi_dbm, cpu_load_pct, free_heap_bytes)`; cached values only | proposed by S5, pending |
+| IF-12 | S5 → S1/S3 | config getter, S5 mutex | `mtx_s5` | `s5_get_config(out)`; complete applied config snapshot for audio and sensor intervals | proposed by S5, pending |
 
 Each interface is tested by at least one integration test
 (`testing/integration/TEST_LOG.md`).
@@ -182,12 +188,12 @@ limit there. The numbers below are the example's usage.
 
 | Object | Limit | S1 | S2 | S3 | S4 | S5 |
 |---|---|---|---|---|---|---|
-| Task | 32 | 1 | 1 | 1 | 1 | |
+| Task | 32 | 1 | 1 | 1 | 1 | 1 |
 | Semaphore | 16 | | 1 | | | |
 | Event flag | 16 | | | | 1 | |
 | Mailbox | 12 | | | 1 | | |
-| Mutex | 12 | | | 1 | | |
-| Message buffer | 12 | | | | 1 | |
+| Mutex | 12 | | | 1 | | 1 |
+| Message buffer | 12 | | | | 1 | 2 |
 | Fixed memory pool | 12 | | 1 | | | |
 | Variable memory pool | 12 | | | | | |
 | Cyclic handler | 12 | 1 | | | | |
