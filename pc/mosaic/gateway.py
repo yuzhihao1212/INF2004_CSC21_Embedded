@@ -9,8 +9,10 @@ Run from the pc/ folder:  python -m mosaic.gateway [--csv telemetry.csv]
 Without hardware, run  python -m mosaic.simulator  in a second terminal.
 
 Gateway holds the logic and takes the current time as an argument, so it can
-be tested without sockets or sleeping. GatewayServer adds the UDP socket,
-console output and the CSV log.
+be tested without sockets or sleeping. GatewayServer adds the network link,
+console output and the CSV log. The link is UDP by default, or an MQTT broker
+with --mqtt HOST[:PORT] (mosaic/mqtt.py; the node's transport from the
+micro T-Kernel template on).
 """
 
 from __future__ import annotations
@@ -31,6 +33,7 @@ from typing import Callable, Optional, TextIO
 from mosaic import protocol as p
 from mosaic.eventlog import EventLog
 from mosaic.fusion import FusionConfig, FusionEngine, format_event
+from mosaic.mqtt import Incoming, MqttTransport, parse_broker
 
 OFFLINE_AFTER_S = 10.0
 STALE_AFTER_REPORTS = 3
@@ -440,8 +443,43 @@ def csv_row(header: p.Header, t: p.Telemetry, pc_time: Optional[str] = None) -> 
     ]
 
 
+class UdpTransport:
+    """Nodes send datagrams straight to the PC (the original firmware)."""
+
+    def __init__(self, bind: Address) -> None:
+        self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        self.sock.bind(bind)
+        self.notes: list[str] = []
+
+    def describe(self) -> str:
+        host, port = self.sock.getsockname()
+        return f"UDP {host}:{port}"
+
+    def fileno(self) -> int:
+        return self.sock.fileno()
+
+    def receive(self) -> list[Incoming]:
+        try:
+            data, address = self.sock.recvfrom(p.MAX_DATAGRAM + 1)
+        except ConnectionResetError:
+            # Windows reports an ICMP "port unreachable" for an earlier
+            # PING here (WSAECONNRESET). Harmless: the node is offline.
+            return []
+        return [Incoming("packet", data, address)]
+
+    def send(self, data: bytes, address: Address) -> None:
+        self.sock.sendto(data, address)
+
+    def tick(self, now: float) -> None:
+        pass
+
+    def close(self) -> None:
+        self.sock.close()
+
+
 class GatewayServer:
-    """The gateway on a UDP socket. Call poll() in a loop, or run()."""
+    """The gateway on a network link (UDP unless a transport is given).
+    Call poll() in a loop, or run()."""
 
     def __init__(self, bind: Address = ("0.0.0.0", p.PORT_TELEMETRY),
                  config_port: int = p.PORT_CONFIG, ping_interval: float = PING_INTERVAL_S,
@@ -449,7 +487,8 @@ class GatewayServer:
                  csv_file: Optional[TextIO] = None, out: TextIO = sys.stdout,
                  fusion: Optional[FusionEngine] = None,
                  fusion_out: Optional[TextIO] = None,
-                 events_file: Optional[TextIO] = None) -> None:
+                 events_file: Optional[TextIO] = None,
+                 transport=None) -> None:
         self.gateway = Gateway()
         self.event_log = EventLog(events_file) if events_file is not None else None
         self._event_statuses = {}
@@ -464,8 +503,8 @@ class GatewayServer:
         self.ping_interval = ping_interval
         self.summary_interval = summary_interval
         self.out = out
-        self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        self.sock.bind(bind)
+        self.transport = transport if transport is not None else UdpTransport(bind)
+        self.sock = getattr(self.transport, "sock", None)  # The UDP socket, for tests
         self.csv = csv.writer(csv_file) if csv_file else None
         self._csv_file = csv_file
         if self.csv and csv_file.tell() == 0:
@@ -492,19 +531,24 @@ class GatewayServer:
 
 
     def poll(self, timeout: float = 0.2) -> None:
-        readable, _, _ = select.select([self.sock], [], [], timeout)
-        data = None
-        if readable:
-            try:
-                data, address = self.sock.recvfrom(p.MAX_DATAGRAM + 1)
-            except ConnectionResetError:
-                # Windows reports an ICMP "port unreachable" for an earlier
-                # PING here (WSAECONNRESET). Harmless: the node is offline.
-                pass
+        incoming: list[Incoming] = []
+        if self.transport.fileno() >= 0:
+            readable, _, _ = select.select([self.transport], [], [], timeout)
+            if readable:
+                incoming = self.transport.receive()
+        else:
+            time.sleep(timeout)  # MQTT broker unreachable; the transport retries in tick()
         with self.lock:
-            if data is not None:
-                self._received(data, address, time.monotonic())
+            for item in incoming:
+                if item.kind == "packet":
+                    self._received(item.data, item.address, time.monotonic())
+                elif item.kind == "status":
+                    self._link_status(item.node_id, item.status, time.monotonic())
             now = time.monotonic()
+            self.transport.tick(now)
+            for note in self.transport.notes:
+                self._print(note)
+            self.transport.notes.clear()
             for node_id, status in self.gateway.status_changes(now):
                 self._print(f"node {node_id} is now {status.value}")
             if now >= self._next_ping:
@@ -570,6 +614,13 @@ class GatewayServer:
         elif isinstance(payload, p.ConfigAck):
             self._print(f"node {header.node_id} CONFIG_ACK version "
                         f"{payload.config_version}: {payload.status.name}")
+
+    def _link_status(self, node_id: int, status: str, now: float) -> None:
+        """A node's MQTT last will or its 'online' announcement. Shown and
+        logged only: ONLINE/STALE/OFFLINE still comes from the node's own
+        reports, so both transports behave the same."""
+        self._print(f"node {node_id} MQTT link: {status}")
+        self._log("link", now, node=node_id, state=status)
 
     def _evaluate_fusion(self, now: float) -> None:
         statuses = {node_id: node.status(now) for node_id, node in self.gateway.nodes.items()}
@@ -666,13 +717,12 @@ class GatewayServer:
     def _send_all(self, datagrams: list[tuple[bytes, Address]], what: str) -> None:
         for data, address in datagrams:
             try:
-                self.sock.sendto(data, address)
-            except OSError as e:  # e.g. network unreachable; retried on the next round
+                self.transport.send(data, address)
+            except OSError as e:  # e.g. network or broker unreachable; retried on the next round
                 self._print(f"{what} to {address[0]} failed: {e}")
 
     def run(self) -> None:
-        host, port = self.sock.getsockname()
-        self._print(f"MOSAIC gateway listening on UDP {host}:{port} (Ctrl+C to stop)")
+        self._print(f"MOSAIC gateway listening on {self.transport.describe()} (Ctrl+C to stop)")
         try:
             while True:
                 self.poll()
@@ -688,11 +738,28 @@ class GatewayServer:
                 self._log_statuses(now)
                 self._flush_config_events()
                 self._log('run_end', now)
-                self.sock.close()
+                self.transport.close()
                 self._closed = True
 
     def _print(self, text: str) -> None:
         print(text, file=self.out, flush=True)
+
+
+def add_mqtt_argument(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--mqtt", metavar="HOST[:PORT]",
+                        help="talk to the nodes through this MQTT broker (e.g. localhost) "
+                             "instead of UDP")
+
+
+def make_transport(parser: argparse.ArgumentParser, broker: Optional[str]):
+    """The MQTT transport for --mqtt, or None for the default UDP socket."""
+    if not broker:
+        return None
+    try:
+        host, port = parse_broker(broker)
+    except ValueError as e:
+        parser.error(f"--mqtt: {e}")
+    return MqttTransport(host, port)
 
 
 def add_fusion_argument(parser: argparse.ArgumentParser) -> None:
@@ -716,14 +783,17 @@ def main(argv: Optional[list[str]] = None) -> None:
     parser.add_argument("--ping-interval", type=float, default=PING_INTERVAL_S)
     parser.add_argument("--csv", metavar="FILE", help="append every TELEMETRY to this CSV")
     parser.add_argument("--events", metavar="FILE", help="append JSON Lines evaluation events")
+    add_mqtt_argument(parser)
     add_fusion_argument(parser)
     args = parser.parse_args(argv)
 
+    transport = make_transport(parser, args.mqtt)
     fusion = FusionEngine(load_fusion_config(parser, args.fusion_config))
     csv_file = open(args.csv, "a", newline="") if args.csv else None
     events_file = open(args.events, "a") if args.events else None
     server = GatewayServer((args.host, args.port), args.node_port, args.ping_interval,
-                           csv_file=csv_file, fusion=fusion, events_file=events_file)
+                           csv_file=csv_file, fusion=fusion, events_file=events_file,
+                           transport=transport)
     try:
         server.run()
     finally:

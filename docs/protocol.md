@@ -45,6 +45,30 @@ sequenceDiagram
 | Node → PC address | PC's IP, compiled into node firmware as `MOSAIC_PC_IP` (decision D1) |
 | PC → node address | The source IP of that node's most recent datagram |
 
+### Over MQTT (the micro T-Kernel node)
+
+The micro T-Kernel node can't send its own datagrams (the course template keeps all
+networking inside its Wi-Fi task), so it reaches the PC through an MQTT broker
+(decision log, 16 Nov). The packets themselves don't change: each MQTT message carries
+exactly one protocol v2 packet as its payload, bytes as above.
+
+| Topic | Direction | Carries | QoS | Retained |
+|---|---|---|---|---|
+| `mosaic/node/<id>/telemetry` | node → PC | every packet the node sends: TELEMETRY, PONG, CONFIG_ACK | 0 | no |
+| `mosaic/node/<id>/config` | PC → node | CONFIG | 1 | yes |
+| `mosaic/node/<id>/config` | PC → node | PING | 0 | no |
+| `mosaic/node/<id>/status` | node (last will) | `online` when it connects, `offline` from the broker when its connection drops | 1 | yes |
+
+`<id>` is the node ID in decimal (`1`..`8`). The PC drops a packet whose header node ID
+differs from the topic's, so a node can only speak for itself. Retaining CONFIG means a node
+that reconnects gets its configuration back without waiting for the PC; the node still
+answers with CONFIG_ACK, because MQTT's own acknowledgement only shows the broker received it.
+Telemetry stays at QoS 0: the sequence numbers already count losses, and a resent old reading
+is no use. With MQTT, PING round-trip times include two hops through the broker.
+
+PC side: `pc/mosaic/mqtt.py` (standard library only) and `--mqtt HOST[:PORT]` on the gateway,
+dashboard and simulator. UDP stays available for the original firmware.
+
 **Why UDP:** telemetry is periodic and each packet supersedes the last, so retransmitting an old
 reading is pointless. UDP keeps the node simple, and the sequence numbers make loss measurable
 (an evaluation metric). The one message that must arrive, CONFIG, gets its reliability from the
