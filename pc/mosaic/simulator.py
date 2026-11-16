@@ -1,6 +1,6 @@
 """Simulated MOSAIC nodes speaking protocol v2, for testing the PC gateway
-without hardware. Replaces pc/prototype/simulate_nodesender.py, which sends
-the old text format.
+without hardware. Replaces the early text-format sender (pc/prototype/, removed
+16 Nov 2026; still in git history).
 
 Run from the pc/ folder, next to  python -m mosaic.gateway :
     python -m mosaic.simulator --nodes 3
