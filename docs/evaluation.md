@@ -93,7 +93,9 @@ period. CSV/event mismatches, malformed rows and overlapping labels are errors.
   overruns. Multiple full counter wraps between observations cannot be recovered.
 - **RTT** uses PONG observations; negative observations stay in the raw log but are
   excluded from statistics with a note. No synchronised-clock or one-way-delay
-  claim is made. **Recovery** is the observed OFFLINE→ONLINE duration after an
+  claim is made. Over MQTT, a round trip passes through the broker twice, so it is
+  node↔broker↔PC time, not network latency alone; `source_ip` is then `mqtt:<id>`,
+  and `link` events record each node's MQTT last will (`online`/`offline`). **Recovery** is the observed OFFLINE→ONLINE duration after an
   outage; initial discovery and unfinished outages are not successful recoveries.
 - **CONFIG round trip** follows each operator request (`config` event with
   `reason=operator`) per node and session, through stale-version resends, to one

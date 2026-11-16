@@ -60,6 +60,20 @@ python -m mosaic.simulator --nodes 3 --loss 0.1 --reboot-every 30
 
 On Windows, allow Python through the firewall when asked so real nodes can reach port 5005.
 
+**Over MQTT** (the micro T-Kernel node in `node/` talks through a broker; topics in
+`docs/protocol.md` §2): install Mosquitto (macOS `brew install mosquitto`, Ubuntu/WSL
+`sudo apt install mosquitto`, Windows installer from mosquitto.org), start it with
+`mosquitto -v`, then add `--mqtt` to any of the commands:
+
+```
+python -m mosaic.gateway --mqtt localhost
+python -m mosaic.simulator --nodes 3 --mqtt localhost
+python -m mosaic.dashboard --simulate 3 --mqtt localhost
+```
+
+Mosquitto 2 only accepts connections from the same computer by default. For real nodes,
+start it with a config file containing `listener 1883 0.0.0.0` and `allow_anonymous true`.
+
 ### Live dashboard
 
 ```
