@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 """Flash/RAM budget and float-helper audit for MOSAIC firmware builds.
 
-Reads the ELF and linker map that the Pico SDK writes for each executable and
-prints a Markdown report:
+Reads the ELF and linker map of each executable and prints a Markdown report.
+Two build layouts are understood: the Pico SDK's CMake build (firmware/) and
+the course's micro T-Kernel template, built with make in node/build_make.
 
 * flash and RAM used, from the linker's own boundary symbols;
-* which part of the build the bytes belong to (our code, Wi-Fi driver, lwIP,
-  FreeRTOS, Pico SDK, C library), from the map file;
+* which part of the build the bytes belong to (our code, micro T-Kernel, Wi-Fi
+  driver, lwIP, USB, FreeRTOS, Pico SDK, C library), from the map file;
 * the largest RAM users, since RAM is the scarce resource on the RP2040;
 * every place our own code calls a software floating-point helper or a libm
   function, by function name, so the CSC21 "no floats in the processing path"
@@ -15,6 +16,7 @@ prints a Markdown report:
 Standard library only. Usage, after building the firmware:
 
     python3 firmware/tools/fw_budget.py firmware/build --out budget.md
+    python3 firmware/tools/fw_budget.py node/build_make --out budget.md
 
 The toolchain is found from the build's CMakeCache.txt; pass --tool-prefix to
 override (for example /path/to/bin/arm-none-eabi-).
@@ -23,6 +25,7 @@ override (for example /path/to/bin/arm-none-eabi-).
 from __future__ import annotations
 
 import argparse
+import os
 import re
 import subprocess
 import sys
@@ -50,7 +53,8 @@ FLOAT_HELPER = re.compile(
     r"|sinh|cosh|tanh|floor|ceil|round|lround|lrint|rint|trunc|fmod|fabs|hypot)f?)$"
 )
 
-COMPONENTS = ("Our code", "Wi-Fi driver (CYW43)", "lwIP", "FreeRTOS", "Pico SDK", "C library and compiler")
+COMPONENTS = ("Our code", "micro T-Kernel and BSP", "Wi-Fi driver (CYW43)", "lwIP", "USB (TinyUSB)",
+              "FreeRTOS", "Pico SDK", "C library and compiler")
 
 INPUT_SECTION = re.compile(r"^ (\.\S+|COMMON)(?:\s+0x([0-9a-f]+)\s+0x([0-9a-f]+)\s+(\S.*))?$")
 INPUT_SECTION_CONT = re.compile(r"^\s+0x([0-9a-f]+)\s+0x([0-9a-f]+)\s+(\S.*)$")
@@ -106,7 +110,16 @@ def source_file(obj: str, build_dir: Path, firmware_dir: Path = FIRMWARE_DIR) ->
     CMake names objects <subdir>/CMakeFiles/<target>.dir/<relative source>.o and
     archive members <subdir>/lib<x>.a(<file>.o); SDK sources keep their absolute
     path under <target>.dir/, so they never resolve inside firmware/.
+    The template build names objects ./mtkernel_3/<path under node/>.o; only
+    app_program/ is ours, the rest is the template's kernel, BSP and drivers.
     """
+    m = re.match(r"^(?:\./)?mtkernel_3/(app_program/.+)\.o$", obj)
+    if m:
+        for ext in (".c", ".S", ".s"):
+            candidate = build_dir.parent / (m.group(1) + ext)
+            if candidate.is_file():
+                return candidate
+        return None
     m = re.match(r"^(.*)\.a\((.+)\.o(?:bj)?\)$", obj)
     if m:
         archive, member = m.groups()
@@ -134,6 +147,14 @@ def component(obj: str, build_dir: Path) -> str:
     if source_file(obj, build_dir):
         return "Our code"
     low = obj.lower()
+    if re.match(r"^(?:\./)?mtkernel_3/", obj):       # course template build
+        if "tinyusb" in low:
+            return "USB (TinyUSB)"
+        if "cyw43" in low or "libwifi" in low:
+            return "Wi-Fi driver (CYW43)"
+        if "lwip" in low:
+            return "lwIP"
+        return "micro T-Kernel and BSP"
     if "cyw43" in low:
         return "Wi-Fi driver (CYW43)"
     if "/lwip/" in low or "pico_lwip" in low:
@@ -212,9 +233,11 @@ def float_calls(prefix: str, obj_path: str, build_dir: Path) -> dict[str, set[st
 
 def versions(build_dir: Path, prefix: str) -> list[str]:
     rows = []
+    cmake = (build_dir / "CMakeCache.txt").is_file()
+    src_root, pathspec = (FIRMWARE_DIR, [".", ":!tools"]) if cmake else (build_dir.parent, ["."])
     try:
-        rev = run(["git", "-C", str(FIRMWARE_DIR), "rev-parse", "--short", "HEAD"]).strip()
-        dirty = run(["git", "-C", str(FIRMWARE_DIR), "status", "--porcelain", "--", ".", ":!tools"]).strip()
+        rev = run(["git", "-C", str(src_root), "rev-parse", "--short", "HEAD"]).strip()
+        dirty = run(["git", "-C", str(src_root), "status", "--porcelain", "--", *pathspec]).strip()
         rows.append(f"Firmware commit `{rev}`" + (" with uncommitted firmware changes" if dirty else ""))
     except (OSError, subprocess.CalledProcessError):
         rows.append("Firmware commit unknown (not a git checkout)")
@@ -223,10 +246,15 @@ def versions(build_dir: Path, prefix: str) -> list[str]:
     except (OSError, subprocess.CalledProcessError, IndexError):
         pass
     cache = build_dir / "CMakeCache.txt"
+    sdk = None
     if cache.is_file():
         m = re.search(r"^PICO_SDK_PATH:\w+=(.+)$", cache.read_text(errors="replace"), re.M)
-        ver = Path(m.group(1)) / "pico_sdk_version.cmake" if m else None
-        if ver and ver.is_file():
+        sdk = m.group(1) if m else None
+    else:
+        sdk = os.environ.get("PICO_SDK_PATH")   # the template's make build reads it from here
+    if sdk:
+        ver = Path(sdk) / "pico_sdk_version.cmake"
+        if ver.is_file():
             parts = dict(re.findall(r"set\(PICO_SDK_VERSION_(MAJOR|MINOR|REVISION) (\d+)\)", ver.read_text()))
             rows.append("Pico SDK {MAJOR}.{MINOR}.{REVISION}".format(**parts) if len(parts) == 3 else "Pico SDK version unknown")
     return rows
@@ -243,15 +271,30 @@ def pct(n: int, of: int) -> str:
     return f"{100 * n / of:.1f} %"
 
 
+def shown(src: Path, build_dir: Path) -> str:
+    """A source path for the report: relative to the repo, or to the build's
+    parent folder when the build is a copy outside the repo."""
+    for root in (FIRMWARE_DIR.parent, build_dir.parent.parent, build_dir.parent):
+        try:
+            return str(src.relative_to(root))
+        except ValueError:
+            continue
+    return str(src)
+
+
 def largest_ram(items: list[Placed], build_dir: Path, prefix: str) -> list[tuple[str, str, int]]:
     """(name, origin, bytes), biggest first. A file's generic .bss/.data section is
     split into its variables so the table names the actual buffers."""
     rows = []
     for p in items:
         src = source_file(p.source, build_dir)
-        origin = str(src.relative_to(FIRMWARE_DIR.parent)) if src else component(p.source, build_dir)
+        origin = shown(src, build_dir) if src else component(p.source, build_dir)
         if src and p.section in (".bss", ".data", "COMMON"):
             rows += [(name, origin, size) for name, size in object_variables(prefix, p.source, build_dir, p.section)]
+        elif p.section in (".bss", ".data", ".noinit", "COMMON"):
+            # a whole file's unnamed section: say which file
+            obj = re.sub(r"\)$", "", p.source.rsplit("(", 1)[-1]).rsplit("/", 1)[-1]
+            rows.append((f"{p.section} of {obj}", origin, p.size))
         else:
             rows.append((re.sub(r"^\.(bss|data|time_critical)\.", "", p.section), origin, p.size))
     return sorted(rows, key=lambda r: r[2], reverse=True)
@@ -285,6 +328,35 @@ def report_elf(build_dir: Path, rel: str, prefix: str) -> list[str]:
     elf = build_dir / rel
     out = [f"## `{elf.stem}`", ""]
     syms = linker_symbols(prefix, elf)
+    if "__flash_binary_end" not in syms and "__data_org" in syms and "__bss_end" in syms:
+        out += template_memory(syms)
+    elif "__flash_binary_end" in syms:
+        out += sdk_memory(prefix, elf, syms)
+    else:
+        out += ["Linker layout not recognised, so no memory summary.", ""]
+    return out + map_report(build_dir, elf, prefix)
+
+
+def template_memory(syms: dict[str, int]) -> list[str]:
+    """TRON's linker script (course template): flash holds the code, then the
+    .data initial values at __data_org; RAM holds .data and .bss, and the rest is
+    micro T-Kernel's own memory pool (task stacks, kernel objects) plus the
+    exception stack, handed out at run time, not by malloc."""
+    flash_used = syms["__data_org"] + (syms["__data_end"] - syms["__data_start"]) - FLASH_BASE
+    static_ram = syms["__bss_end"] - RAM_BASE
+    pool = RAM_BASE + RAM_MAIN_SIZE - syms["__bss_end"]
+    return [
+        "| Memory | Used | Of | Share |",
+        "|---|---:|---:|---:|",
+        f"| Flash (program + constants + initial data) | {kb(flash_used)} | {kb(FLASH_SIZE)} | {pct(flash_used, FLASH_SIZE)} |",
+        f"| RAM, static (globals, buffers, vector table) | {kb(static_ram)} | {kb(RAM_MAIN_SIZE)} | {pct(static_ram, RAM_MAIN_SIZE)} |",
+        f"| RAM after that: micro T-Kernel memory pool (task stacks, kernel objects) and exception stack | {kb(pool)} | {kb(RAM_MAIN_SIZE)} | {pct(pool, RAM_MAIN_SIZE)} |",
+        "",
+    ]
+
+
+def sdk_memory(prefix: str, elf: Path, syms: dict[str, int]) -> list[str]:
+    out = []
     flash_used = syms["__flash_binary_end"] - FLASH_BASE
     static_ram = syms["end"] - RAM_BASE
     heap_free = syms["__StackLimit"] - syms["end"]  # _sbrk grows the heap from `end` up to __StackLimit (SDK 1.5 and 2.x)
@@ -305,7 +377,11 @@ def report_elf(build_dir: Path, rel: str, prefix: str) -> list[str]:
         if heap_bytes:
             out.append(f"| of which FreeRTOS heap (task stacks, queues), inside static RAM | {kb(heap_bytes)} | | |")
     out.append("")
+    return out
 
+
+def map_report(build_dir: Path, elf: Path, prefix: str) -> list[str]:
+    out = []
     map_path = find_map(elf)
     if map_path is None:
         return out + ["No linker map found, so no breakdown.", ""]
@@ -321,7 +397,7 @@ def report_elf(build_dir: Path, rel: str, prefix: str) -> list[str]:
     ours = sorted({p.source for p in placed if source_file(p.source, build_dir)})
     floats: list[tuple[str, str, set[str]]] = []
     for obj in ours:
-        rel_src = str(source_file(obj, build_dir).relative_to(FIRMWARE_DIR.parent))
+        rel_src = shown(source_file(obj, build_dir), build_dir)
         for fn, helpers in float_calls(prefix, obj, build_dir).items():
             floats.append((rel_src, fn, helpers))
     if floats:
@@ -341,14 +417,15 @@ def main(argv: list[str] | None = None) -> int:
     args = ap.parse_args(argv)
     build_dir = args.build_dir.resolve()
     prefix = args.tool_prefix or tool_prefix(build_dir)
-    elfs = args.elf or [e for e in DEFAULT_ELFS if (build_dir / e).is_file()]
+    elfs = (args.elf or [e for e in DEFAULT_ELFS if (build_dir / e).is_file()]
+            or sorted(e.name for e in build_dir.glob("*.elf")))   # template: images sit in build_make/
     if not elfs:
         print(f"No firmware ELFs found in {build_dir}", file=sys.stderr)
         return 1
     lines = ["# Firmware resource budget (generated)", ""]
     lines += [f"- {v}" for v in versions(build_dir, prefix)]
     lines += ["", "Static numbers from the linker. Run-time use (stack high-water marks, "
-              "FreeRTOS heap minimum, CPU load) comes from the node's serial log.", ""]
+              "minimum free RTOS memory, CPU load) comes from the node's serial log.", ""]
     for rel in elfs:
         lines += report_elf(build_dir, rel, prefix)
     text = "\n".join(lines)

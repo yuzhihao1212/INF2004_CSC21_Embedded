@@ -82,5 +82,57 @@ class FwBudgetTest(unittest.TestCase):
             self.assertNotRegex(name, fw_budget.FLOAT_HELPER)
 
 
+class TemplateLayoutTest(unittest.TestCase):
+    """The course's micro T-Kernel template, built with make in node/build_make."""
+
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.node = Path(tmp.name) / "node"
+        self.build = self.node / "build_make"
+        (self.node / "app_program" / "subsystem1").mkdir(parents=True)
+        (self.node / "app_program" / "subsystem1" / "task_led.c").write_text("")
+        (self.node / "kernel" / "tkernel").mkdir(parents=True)
+        (self.node / "kernel" / "tkernel" / "task.c").write_text("")
+        self.build.mkdir()
+
+    def test_only_app_program_is_our_code(self):
+        sf = lambda obj: fw_budget.source_file(obj, self.build)  # noqa: E731
+        self.assertEqual(sf("./mtkernel_3/app_program/subsystem1/task_led.o"),
+                         self.node / "app_program/subsystem1/task_led.c")
+        self.assertIsNone(sf("./mtkernel_3/kernel/tkernel/task.o"))
+        self.assertIsNone(sf("./mtkernel_3/app_program/subsystem9/gone.o"))  # no source
+
+    def test_components(self):
+        c = lambda obj: fw_budget.component(obj, self.build)  # noqa: E731
+        self.assertEqual(c("./mtkernel_3/app_program/subsystem1/task_led.o"), "Our code")
+        self.assertEqual(c("./mtkernel_3/kernel/tkernel/task.o"), "micro T-Kernel and BSP")
+        self.assertEqual(c("./mtkernel_3/cyw43/cyw43_ll.o"), "Wi-Fi driver (CYW43)")
+        self.assertEqual(c("./mtkernel_3/lib/libwifi/sysdepend/pico_rp2040/cyw43_utk.o"), "Wi-Fi driver (CYW43)")
+        self.assertEqual(c("./mtkernel_3/tinyusb/device/usbd.o"), "USB (TinyUSB)")
+        self.assertEqual(c("./mtkernel_3/lwip/core/udp.o"), "lwIP")
+
+    def test_memory_from_tron_linker_symbols(self):
+        syms = {"__data_org": 0x10045A68, "__data_start": 0x200000C0, "__data_end": 0x20000118,
+                "__bss_end": 0x20005FF4}
+        rows = "\n".join(fw_budget.template_memory(syms))
+        self.assertIn("| Flash (program + constants + initial data) | 278.7 KB |", rows)  # 0x45AC0 bytes
+        self.assertIn("| RAM, static (globals, buffers, vector table) | 24.0 KB |", rows)   # 0x5FF4 bytes
+        self.assertIn("memory pool (task stacks, kernel objects) and exception stack | 232.0 KB |", rows)
+
+    def test_images_found_in_build_make(self):
+        (self.build / "b_image.elf").write_text("")
+        (self.build / "a_image.elf").write_text("")
+        seen = []
+        orig = fw_budget.report_elf
+        fw_budget.report_elf = lambda build_dir, rel, prefix: seen.append(rel) or []
+        try:
+            out = self.build / "report.md"
+            self.assertEqual(fw_budget.main([str(self.build), "--tool-prefix", "none-", "--out", str(out)]), 0)
+        finally:
+            fw_budget.report_elf = orig
+        self.assertEqual(seen, ["a_image.elf", "b_image.elf"])
+
+
 if __name__ == "__main__":
     unittest.main()

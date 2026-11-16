@@ -19,6 +19,38 @@ It covers `mosaic_node`, `mosaic_node_rtos` (when built), `audio_talking` (micro
 fixed-point DSP and the int8 classifier) and `audio_benchmark`. Each report names the
 firmware commit, compiler and Pico SDK it came from.
 
+The node now runs micro T-Kernel 3.0 from the course template in `node/`, built with
+`make`. The same tool reads that build: CI's "Build node" job builds the default, `NET=lwip`
+and `TEST=1` images and attaches their report to the `node-uf2` download. Locally:
+
+```sh
+cd node/build_make && make -j8 && cd ../..
+python3 firmware/tools/fw_budget.py node/build_make --out budget.md
+```
+
+In the template build, "our code" is `node/app_program/` only; the kernel, BSP, Wi-Fi,
+lwIP and USB code is the template's.
+
+## The micro T-Kernel node (`node/`), template as imported
+
+Local build, Pico SDK 2.3.0 and Arm GCC 15.2, commit `af1c55d` (the template before any
+MOSAIC code moves in; `app_program/` still holds the template's example subsystems):
+
+| Image | Flash used (of 2 MB) | Static RAM (of 256 KB) | Rest of RAM: kernel memory pool and exception stack |
+|---|---:|---:|---:|
+| default (USB console, Wi-Fi) | 278.7 KB (13.6 %) | 24.0 KB (9.4 %) | 232.0 KB |
+| `NET=lwip` (adds lwIP, which our UDP protocol needs) | 321.3 KB (15.7 %) | 80.2 KB (31.3 %) | 176.0 KB |
+| `TEST=1` (self-tests) | 280.9 KB (13.7 %) | 24.0 KB (9.4 %) | 232.0 KB |
+
+- **lwIP is the big RAM cost:** 56 KB static, mostly a 35.9 KB packet pool and a 16 KB
+  heap set in the template's `lwipopts.h`. That's shared template code, so changing it
+  needs the team and the instructor.
+- **Task stacks come out of the kernel's memory pool,** not static RAM: about 176 KB is left
+  for them in the `NET=lwip` image. Our audio buffers (about 62 KB in `audio_talking`) would
+  sit in static RAM on top of the 80 KB.
+- No float calls in the template's `app_program/` code. The check will cover our code once
+  it moves into `node/app_program/`.
+
 ## Status on 16 Nov 2026
 
 | Number | Status |
@@ -27,8 +59,8 @@ firmware commit, compiler and Pico SDK it came from.
 | Same, from the team's build (SDK 1.5.1, GCC 10.3) and the RTOS node | CI produces it on the next pull request; copy it into `evidence/firmware-budget/` |
 | Float calls in our code | Measured; see below |
 | Node with audio linked in | Not possible yet: audio isn't in the node build |
-| Stack high-water marks, minimum FreeRTOS heap | Printed by the RTOS node every 10 s; needs the soak log (Arif) |
-| CPU load per task | Not measured anywhere yet (Arif) |
+| Stack high-water marks, minimum free kernel memory | To do on the micro T-Kernel node; the template doesn't report them yet (Arif) |
+| CPU load per task | To do on the micro T-Kernel node (Arif) |
 | DSP and inference time per window | Week 10 tests B2/B3 (Moe, Darius) |
 
 The local numbers come from SDK 2.3.0 and GCC 15.2, not the team's SDK 1.5.1 and GCC
