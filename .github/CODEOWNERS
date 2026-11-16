@@ -3,9 +3,13 @@
 
 *                                   @yuzhihao1212
 
-# Firmware: environmental sensors (Kendrick), audio DSP (Moe)
+# Earlier CMake firmware: environmental sensors (Kendrick), audio DSP (Moe),
+# classifier (Darius), node and networking (Arif, ZhiHao)
 /firmware/                          @kthgoat
-/firmware/tests/audio_dsp*          @mmmmm0e
+/firmware/audio/                    @mmmmm0e
+/firmware/audio/classifier/         @Dkkan-dev @mmmmm0e
+/firmware/node/                     @arifkareem @yuzhihao1212
+/firmware/common/                   @arifkareem @yuzhihao1212
 /firmware/tests/mic_test.c          @mmmmm0e @kthgoat
 
 # ML pipeline (Darius); Moe owns the Pico feature capture script
@@ -14,7 +18,25 @@
 
 # PC side: gateway, fusion, dashboard (ZhiHao) and networking (Arif)
 /pc/                                @yuzhihao1212 @arifkareem
-/pc/prototype/                      @arifkareem @yuzhihao1212
+
+# Node (micro T-Kernel template). Template code shared with the instructor's repo:
+# ZhiHao keeps the subtree; changes need the team's agreement (node/TEAM.md).
+/node/                              @yuzhihao1212
+# Shared team files: everyone reviews
+/node/TEAM.md                       @mmmmm0e @Dkkan-dev @kthgoat @arifkareem @yuzhihao1212
+/node/app_program/app.h             @mmmmm0e @Dkkan-dev @kthgoat @arifkareem @yuzhihao1212
+/node/app_program/app_main.c        @mmmmm0e @Dkkan-dev @kthgoat @arifkareem @yuzhihao1212
+# One subsystem per owner (code and its test records)
+/node/app_program/subsystem1/       @mmmmm0e
+/node/testing/subsystem1/           @mmmmm0e
+/node/app_program/subsystem2/       @Dkkan-dev
+/node/testing/subsystem2/           @Dkkan-dev
+/node/app_program/subsystem3/       @kthgoat
+/node/testing/subsystem3/           @kthgoat
+/node/app_program/subsystem4/       @arifkareem
+/node/testing/subsystem4/           @arifkareem
+/node/app_program/subsystem5/       @yuzhihao1212
+/node/testing/subsystem5/           @yuzhihao1212
 
 # CI and repo setup
 /.github/                           @yuzhihao1212

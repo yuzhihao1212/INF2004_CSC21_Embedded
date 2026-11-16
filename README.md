@@ -6,7 +6,12 @@ See [docs/](docs/) for the project brief and team workflow.
 ## Repository layout
 
 ```
-firmware/          Pico W firmware (CMake project "mosaic")
+node/              The sensing node: course template, micro T-Kernel 3.0 on both cores (make)
+  app_program/     Our code, one subsystemN/ folder per owner (see node/TEAM.md)
+  testing/         Test logs per subsystem, integration and system tests
+  kernel/ lib/ …   Template code shared with the instructor's repo: change only by agreement
+firmware/          Earlier CMake firmware (plain SDK and FreeRTOS). Reference while each
+                   owner moves their part into node/; no new features here
   CMakeLists.txt   SDK import and project setup
   tests/           Standalone sensor / DSP bring-up targets, one .uf2 each
 ml/                Audio dataset preparation, feature extraction and model training
@@ -15,13 +20,31 @@ ml/                Audio dataset preparation, feature extraction and model train
 pc/                PC-side gateway, sensor fusion and dashboard
   mosaic/          Protocol v2, gateway receiver and node simulator
   tests/           Unit tests, run from pc/ with python -m unittest
-  prototype/       Early text-format UDP sender/receiver (superseded by mosaic/)
 docs/              Project brief and team workflow
 ```
 
-## Building the firmware
+## Building the node (micro T-Kernel)
 
-The team uses Raspberry Pi Pico SDK v1.5.1 with `PICO_BOARD=pico_w`.
+The node must run micro T-Kernel 3.0 (see `AGENTS.md`). It builds with `make`, not CMake,
+against Pico SDK 2.2.0 or 2.3.0; on Windows, use WSL. Set up the SDK and compiler as in
+[node/README.md](node/README.md), then:
+
+```
+cd node/build_make
+make -j8            # build_make/mtk3pico_smp1_usb_cdc_wifi.uf2
+make TEST=1 -j8     # self-test image: runs every subsystem's tests at power-up
+```
+
+Who owns which folder, pins, task priorities and the interfaces between subsystems are in
+[node/TEAM.md](node/TEAM.md); how to record tests is in
+[node/testing/README.md](node/testing/README.md). CI builds the default, `TEST=1` and
+`NET=lwip` images on every pull request.
+
+## Building the earlier CMake firmware (reference)
+
+The code in `firmware/` is what ran before the move to micro T-Kernel. It still builds and
+CI still checks it, so each owner can compare while porting. The team built it with
+Raspberry Pi Pico SDK v1.5.1 and `PICO_BOARD=pico_w`.
 
 - **VS Code:** open the repository root. `.vscode/settings.json` already points CMake at
   `firmware/` and builds into `firmware/build/`.
@@ -189,6 +212,10 @@ phase shows *Excessive noise* without a sound meter. Scenarios (defined in
 longer reaches its state, for example after a threshold is changed.
 
 ## Running a real node
+
+> **Earlier firmware.** These steps are for the CMake node in `firmware/`, which talks UDP.
+> The micro T-Kernel node in `node/` replaces it once every subsystem is ported; it talks to
+> the PC through an MQTT broker (see *Over MQTT* above).
 
 `firmware/node/` builds `mosaic_node.uf2`: DHT22, CO₂ and PIR readings sent as protocol v2
 TELEMETRY every second over Wi-Fi (audio not wired in yet).

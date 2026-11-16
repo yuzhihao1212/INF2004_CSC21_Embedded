@@ -22,3 +22,6 @@ Thumbs.db
 
 # Per-node Wi-Fi settings (contain a password)
 firmware/node/node_config.cmake
+
+# Local AI-assistant workspace: worktrees, prompts, preview config (rules live in AGENTS.md)
+.claude/
