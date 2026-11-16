@@ -6,6 +6,7 @@
  */
 
 #include "subsystem4.h"
+#include "s4_health.h"
 
 EXPORT ID	mbf_summary;	/* IF-03 */
 EXPORT ID	flg_events;	/* IF-03 */
@@ -41,7 +42,7 @@ EXPORT ER subsystem4_init(void)
 	calm.almatr = TA_HLNG;
 	calm.almhdr = (FP)monitor_alarm_handler;
 	alm_monitor = tk_cre_alm(&calm);
-	return (alm_monitor < E_OK) ? alm_monitor : E_OK;
+	return (alm_monitor < E_OK) ? alm_monitor : s4_health_init();
 }
 
 EXPORT ER subsystem4_start(void)
