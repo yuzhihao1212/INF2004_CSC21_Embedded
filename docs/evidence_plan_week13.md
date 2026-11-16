@@ -16,9 +16,13 @@ Dates are proposals until the team agrees them in the group chat.
 
 | # | Step | Owner | Done when | Proposed date |
 |---|------|-------|-----------|---------------|
-| 1a | Link the audio task into `mosaic_node_rtos` through `MOSAIC_NODE_AUDIO_SOURCES` | Moe, paired with ZhiHao | Node boots with `RTOS audio:` lines in the serial log; reports carry `audio_window_count` = 2 | Wed 18 Nov |
-| 1b | int8 classifier runs on those windows | Darius | Week 10 test B3 passes: inference p99 ≤ 100 ms, no floats in the per-window path | Fri 20 Nov |
-| 1c | Same build on four Picos | Arif, ZhiHao | Four nodes **Online** on the dashboard, each with its own ID | Sun 22 Nov |
+| 1a | Audio capture and DSP as a micro T-Kernel task in `node/app_program/subsystem1/` | Moe, paired with ZhiHao | The `make TEST=1` image logs one processed window every 500 ms; subsystem 1 tests pass in `node/testing/subsystem1/` | Wed 18 Nov |
+| 1b | int8 classifier in `subsystem2/` on those windows, posting each one with `s5_post_audio_window()` (IF-10) | Darius | Week 10 test B3 passes: inference p99 ≤ 100 ms, no floats in the per-window path; reports carry `audio_window_count` = 2 | Fri 20 Nov |
+| 1c | Same build on four Picos, reaching the PC through subsystem 4's MQTT link | Arif, ZhiHao | Four nodes **Online** on the dashboard (`--mqtt`), each with its own ID | Sun 22 Nov |
+
+*Updated 16 Nov:* the node moved to the micro T-Kernel template in `node/` (μT-Kernel is a
+hard requirement), so these steps target its subsystem folders instead of the FreeRTOS
+`mosaic_node_rtos` build. See `docs/decision-log.md`.
 
 If 1a slips past the agreed date, the team decides together who picks it up and we log
 that in `decision-log.md`. Nobody takes over someone's part without that.
