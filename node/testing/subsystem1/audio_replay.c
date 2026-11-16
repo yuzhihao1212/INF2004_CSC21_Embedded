@@ -37,6 +37,7 @@ int main(void)
         assert(out.prob_pct[0]+out.prob_pct[1]+out.prob_pct[3]==100);
         in.features[0]=2560; state=(classifier_timing_state_t){0};
         classify_audio(&state,&in,500001,&out); assert(out.rms_x16==160);
+        state=(classifier_timing_state_t){0}; /* Independent quality-gate case. */
         in.clipped=80;
         assert(classify_audio(&state,&in,500001,&out)==CLASSIFIER_CLIPPED);
         assert(out.audio_class==0);
