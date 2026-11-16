@@ -165,6 +165,66 @@ def _delivery(counts):
                 unique_loss_pct=100 * lost / (unique + lost) if unique + lost else None)
 
 
+def config_round_trips(events):
+    """One record per CONFIG the operator requested, from the gateway's config events.
+
+    request_to_applied_ms runs from the dashboard request to the gateway marking it
+    applied, retries included: what the operator waits for. last_send_to_ack_ms runs
+    from the final send to the node's ACK, only when an ACK (not a later TELEMETRY
+    report) confirmed it: one network round trip plus the node's handling.
+    """
+    records, open_ = [], {}
+
+    def close(key, outcome, **extra):
+        r = open_.pop(key)
+        r.update(outcome=outcome, **extra)
+        records.append(r)
+
+    for e in sorted((e for e in events if e['event'] == 'config'),
+                    key=lambda e: (e['session'], e['monotonic_ms'])):
+        key, t = (e['session'], e['node']), e['monotonic_ms']
+        r = open_.get(key)
+        state = e['state']
+        if state == 'sending' and e.get('reason') == 'operator':
+            if r:
+                close(key, 'failed' if r['failed'] else 'superseded')
+            open_[key] = dict(session=e['session'], node=e['node'], config_version=e['config_version'],
+                              requested_ms=t, last_send_ms=None, attempts=0, failed=False)
+        elif r is None:
+            continue
+        elif state == 'sending' and e.get('reason') == 'stale_version':
+            r['config_version'] = e['config_version']
+        elif state == 'sending' and 'attempt' in e and e['config_version'] == r['config_version']:
+            r['last_send_ms'], r['attempts'] = t, r['attempts'] + 1
+        elif state == 'failed':
+            r['failed'] = True  # a later TELEMETRY report can still show it applied
+        elif state == 'rejected':
+            close(key, 'rejected')
+        elif state == 'applied' and e['config_version'] == r['config_version']:
+            via = e.get('via', 'unknown')
+            ack_ms = t - r['last_send_ms'] if via == 'ack' and r['last_send_ms'] is not None else None
+            close(key, 'applied', via=via, request_to_applied_ms=t - r['requested_ms'], last_send_to_ack_ms=ack_ms)
+    for key in list(open_):
+        close(key, 'failed' if open_[key]['failed'] else 'unfinished')
+    for r in records:
+        r.pop('failed', None)
+        r.setdefault('via', None)
+        r.setdefault('request_to_applied_ms', None)
+        r.setdefault('last_send_to_ack_ms', None)
+    return records
+
+
+def _config_summary(records):
+    applied = [r for r in records if r['outcome'] == 'applied']
+    return {'requests': len(records), 'outcomes': dict(Counter(r['outcome'] for r in records)),
+            'confirmed_by': dict(Counter(r['via'] for r in applied)),
+            'request_to_applied_ms': distribution([r['request_to_applied_ms'] for r in applied]),
+            'last_send_to_ack_ms': distribution([r['last_send_to_ack_ms'] for r in applied
+                                                 if r['last_send_to_ack_ms'] is not None]),
+            'attempts_when_applied': distribution([r['attempts'] for r in applied]),
+            'samples': records}
+
+
 def _span_events(events):
     grouped = defaultdict(list)
     for event in events:
@@ -446,6 +506,7 @@ def evaluate(csv_path, events_path=None, *, deadline_ms=400, expected_path=None)
                         'config': [e for e in events if e['event'] == 'config'],
                         'status_changes': [e for e in events if e['event'] == 'node_status'],
                         'reference': [e for e in events if e['event'] == 'reference']}
+    result['config_round_trip'] = _config_summary(config_round_trips(events))
     if expected_path is not None:
         if not events:
             raise ValueError('--expected requires --events with fusion state changes')
@@ -464,6 +525,21 @@ def _fmt(value):
 def _table(headers, rows):
     return '\n'.join(['| ' + ' | '.join(headers) + ' |', '| ' + ' | '.join('---' for _ in headers) + ' |']
                      + ['| ' + ' | '.join(_fmt(v) for v in row) + ' |' for row in rows])
+
+
+def _config_section(rt):
+    if not rt or not rt['requests']:
+        return 'No CONFIG was requested during this capture.'
+    a, k = rt['request_to_applied_ms'], rt['last_send_to_ack_ms']
+    outcomes = ', '.join(f'{v} {o}' for o, v in sorted(rt['outcomes'].items()))
+    via = ', '.join(f'{v} by {w}' for w, v in sorted(rt['confirmed_by'].items(), key=lambda i: str(i[0]))) or 'none'
+    return '\n\n'.join([
+        f"{rt['requests']} requests: {outcomes}. Applied ones confirmed: {via}.",
+        _table(['Measure', 'n', 'p50 ms', 'p95 ms', 'Max ms'],
+               [('Request → applied (what the operator waits for)', a['n'], a['p50'], a['p95'], a['max']),
+                ('Last send → ACK (one round trip)', k['n'], k['p50'], k['p95'], k['max'])]),
+        'Times use the PC clock only. A CONFIG confirmed by a later TELEMETRY report (its ACK was lost) '
+        'counts in the first row but not the second.'])
 
 
 def markdown(summary):
@@ -500,6 +576,7 @@ def markdown(summary):
                   sum(e['node']==int(node) and 'attempt' in e for e in config),
                   *(sum(e['node']==int(node) and e['state']==state for e in config) for state in ('applied','failed','rejected','stale')))
                  for node in summary['nodes']]),
+             '## CONFIG round trip', _config_section(summary.get('config_round_trip')),
              '## Reference calibration', _table(['Zone', 'Starts/restarts', 'Ready', 'Resets'],
                 [(zone, *(sum(e['zone']==zone and e['action']==action for e in reference) for action in ('start','ready','reset')))
                  for zone in sorted({e['zone'] for e in reference})]),

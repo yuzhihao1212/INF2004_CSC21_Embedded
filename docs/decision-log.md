@@ -32,7 +32,16 @@ where they were decided and the commits that built them.
 - **Own port dropped (16 Nov):** ZhiHao chose the template over the `firmware/utk/` port. That port had compiled cleanly with SDK 2.3.0 (kernel v3.00.08, a bring-up image and a `mosaic_node_utk` node) but never ran on a Pico, and it was single-core. It stays uncommitted in the `.claude/worktrees/utk-port` worktree for reference until the move is done, then gets deleted.
 - **Hand-in stays in this repo (16 Nov):** ZhiHao confirmed the hand-in doesn't have to be the template fork, so the template's code comes into this repo, keeping our CI, branch protection, PR reviews and the PC, ML and docs folders in one place. ZhiHao chose a git subtree (16 Nov, decided in another session) over a plain copy, which loses the link to the template's commits, and a submodule, which would split every node change across two repos. The target folder gets recorded with the move.
 - **Verified:** read the template's README, `TEAM.md`, `testing/README.md` and makefile through `gh`, and the `firmware/utk/` files. Not verified: that the template builds or runs here.
-- **Status:** rule files and this entry built, not committed; the open decisions above are pending.
+- **Status:** rule files in PR #29 (`833b8b9`) and carried in PR #30, not merged. Template location decided (subtree at `node/`, see above); subsystem owners and the UDP-in-Wi-Fi-task question still pending.
+
+## 2026-11-16 · Evaluator measures CONFIG round trips
+- **From → to:** the evaluator counted CONFIG outcomes per node but timed nothing. Now each report has a "CONFIG round trip" section: request → applied (what the operator waits for) and last send → ACK (one network round trip), with outcomes and how each was confirmed. The gateway's `applied` event now says `via: ack` or `via: telemetry`.
+- **Why:** second item ZhiHao picked from the evidence plan (chat, 16 Nov). The brief asks for configuration sent back to the nodes, and a measured round trip is stronger evidence than "it works".
+- **Problem it solves:** without `via`, a CONFIG whose ACK was lost (confirmed later by TELEMETRY) would look like a 1-second "round trip" and skew the numbers.
+- **Why this way:** two measures rather than one, because the operator's wait includes retries and the gateway's poll, while the ACK time is the network's share. Stale-version resends stay part of the same request. Fixing the poll delay (below) was left out: it's a separate gateway change.
+- **Risks to watch:** a scripted run showed the operator waits ~120 ms (p50) while the ACK takes 1–2 ms. The gap is the gateway's 200 ms `poll()` timeout before the first send. If real-node numbers look slow, that's the first thing to change (send at once from `set_config`, or wake the loop).
+- **Verified:** 6 new tests (ACK after a retry, ACK lost, stale version, rejected/failed/superseded/unfinished, summary and report, old logs without `via`); 271 tests pass. Four scripted nodes, 20 CONFIGs: 20 applied, all by ACK; request → applied p50 120 ms, p95 194 ms; last send → ACK p50 1 ms. Not verified on a real Pico.
+- **Status:** merged in PR #28 (`c6d30d9`).
 
 ## 2026-11-16 · Area card and room map get animated scenes
 - **From → to:** the area card was a label/value list (Sound, Air, Temperature, Movement, each with a rainbow icon and a sentence). Now it's one big word for sound with a live sound meter, then three tiles whose effects show the state: haze that thickens as CO₂ rises, heat lines when it's warm, and footsteps for movement. The room map uses the same effects: haze and heat always show where there's a problem, footsteps only in the Movement view.
@@ -42,7 +51,7 @@ where they were decided and the commits that built them.
 - **Also:** movement is now information, never a warning (`feedback.py`: its level is "fine" whenever there's a reading). Footprints are bare feet with toes, the shape people read as footsteps; the first shoe-print version looked like drops.
 - **Risks to watch:** constant motion on the projector could distract; effects are low-opacity and scale with the problem, so calm areas barely move. This is dashboard work after the evidence plan said the UI stops; kept small (front end plus one line of Python).
 - **Verified:** in the browser at 1280 and 800 wide and on a 375 px phone, light and dark, 3D and flat; effects checked at full strength by forcing them, then on live demo data (lecturer speaking, air getting stuffy, some movement); card focus goes to Close; no console errors; 265 tests pass. Not verified: the reduced-motion fallback (written, but the browser here can't emulate the setting).
-- **Status:** built, not committed; branch `feat/live-room-ui` (PR #25).
+- **Status:** merged in PR #27 (`3d5d5dd`).
 
 ## 2026-11-16 · Firmware flash/RAM budget and float check, run by CI
 - **From → to:** no measured memory figures and no build-level float check (the tracker row said "to do"). Now `firmware/tools/fw_budget.py` reports flash, RAM, what fills them, and every float call in our code by function; CI runs it on every PR and puts the report on the run's summary page. First results are in `docs/resource_budget.md`.
@@ -52,7 +61,7 @@ where they were decided and the commits that built them.
 - **Fix after the first CI run (16 Nov):** CI's SDK 1.5.1 report showed 2 KB of heap and no breakdown. In 1.5.1 `__HeapLimit` only marks a 2 KB placeholder (the heap really grows to `__StackLimit`), and the map can be named `<name>.map`. Both fixed; the same report showed the RTOS node at 121.7 KB static RAM, so the node-plus-audio estimate went from 138 KB to about 200 KB of 256 KB.
 - **Risks to watch:** the local figures come from SDK 2.3.0/GCC 15.2 and may differ by a few KB from CI's; use CI's in the write-up. The CI step can't fail the build (`continue-on-error`), so check that its summary appears. The ~200 KB node-plus-audio RAM figure is an estimate until audio is linked.
 - **Verified:** built `mosaic_node`, `audio_talking` and `audio_benchmark` locally and ran the script; flash and RAM totals match the linker symbols by hand; float calls confirmed with `objdump`. 4 new parser tests; 265 tests pass. Not verified: the CI step itself (runs on the next push) and the RTOS build (FreeRTOS isn't installed locally).
-- **Status:** built, not committed; branch `feat/firmware-budget` (from `feat/live-room-ui`).
+- **Status:** merged in PR #26 (`fc58a5d`; SDK 1.5.1 fix `ca55a21`).
 
 ## 2026-11-16 · Week 13 evidence plan: the node gets measured, the UI stops
 - **From → to:** no plan for the node-side evidence; the CSC21 tracker listed what was missing but not who does it or how. Now `docs/evidence_plan_week13.md` lists each item with an owner, a method and a "done when", and dashboard work stops.
@@ -61,7 +70,7 @@ where they were decided and the commits that built them.
 - **Why this way:** taking over teammates' parts was considered and dropped: tribunals mark each person on their own work. Instead ZhiHao pairs on the audio hookup (ZhiHao co-owns the protocol and node config) and takes the system-evaluation items already in his role. Reassignment only happens if the team agrees it in writing after a missed date.
 - **Risks to watch:** the plan runs into Week 12, which was meant to be free for individual assessments. Dates are proposals until the team agrees them. If audio misses its date, the fallback is the Week 10 plan's: demo sensors, CONFIG and recovery on real nodes, audio from the simulator, and say so openly.
 - **Verified:** read in the repo on 16 Nov: the tracker, the Week 10 test plan (results blank), `MOSAIC_NODE_AUDIO_SOURCES` empty, and the RTOS build already printing watchdog reset reason and heap/stack high-water marks every 10 s. CPU load isn't measured anywhere. The ~70/100 is an estimate; the brief has no rubric.
-- **Status:** proposed; needs the team's OK in the group chat.
+- **Status:** proposed; the plan document merged in PR #25 (`535f2e9`). Still needs the team's OK in the group chat.
 
 ## 2026-11-16 · Room map gets a 3D view (isometric diorama)
 - **From → to:** the Live room map was a flat floor plan. Now a Flat / 3D switch tilts it into an isometric diorama: far walls, whiteboard and desks are extruded, rings lie on the floor, and labels float upright above each area. 3D is the default; phones stay flat.
@@ -70,7 +79,7 @@ where they were decided and the commits that built them.
 - **Why this way:** B (a slowly orbiting camera you can drag) was dropped: nobody drags on a projector, and constant motion pulls the eye from the area that turns red. A 3D engine (Three.js) was dropped: a large library to bundle, and the map would become one picture screen readers can't use. A hand-made Blender illustration was dropped: it breaks when the zone layout changes. CSS transforms on the existing plan keep the zone layout, the buttons and the labels as they are.
 - **Risks to watch:** a slow laptop may render the 3D boxes less smoothly; the Flat switch is the fallback. The label layer is re-positioned on each refresh, so a label could lag a resize for a moment.
 - **Verified:** in the browser: dark and light, the tilt animation, clicks land on the right tilted area, Flat/3D is remembered, 375 px stays flat with the switch hidden, 1366 × 768, and 1920 × 1080 in presenter mode with the map fully on screen; no console errors; 261 tests pass.
-- **Status:** built, not committed; branch `feat/live-room-ui`.
+- **Status:** merged in PR #25 (`d8f760e`).
 
 ## 2026-11-16 · "Live room" page replaces Overview and Room map
 - **From → to:** five pages, with the room map below the fold on Overview and again on its own page, and a side rail. Now: one projector-first "Live room" page with the animated map in the middle, a plain-language headline, an alert card with one action, loudness/air/comfort cards, a last-10-minutes bar and a presenter mode (P). Four pages in all: Live room, History, Sensors, Setup, under one top bar. Dark theme is a deeper ink; light keeps today's colours.
@@ -80,7 +89,7 @@ where they were decided and the commits that built them.
 - **Font:** Plus Jakarta Sans (SIL OFL 1.1) replaces Poppins and is self-hosted: two variable woff2 files (latin and latin-ext, 49 KB) and the licence sit directly in `pc/mosaic/web/`, and the server now sends `.woff2` (ZhiHao approved the download, chat, 16 Nov). They sit in `web/` itself rather than a `fonts/` folder so the "files directly inside web/ only" rule against path tricks stays as it is. Before this, both the old and new font came from Google Fonts and fell back to the system font with no internet.
 - **Risks to watch:** the feature freeze was end of Week 11, and audio on the node is the bigger demo risk. Dark colours can wash out on a projector, so both themes stay. The new colour family needs the team's OK (CONTRIBUTING asks for that).
 - **Verified:** 261 tests pass. In the browser with a sped-up demo scenario: lecture, talking, excessive noise with the alert card, CO₂ haze, window opened and air-conditioning phases; area details open and close (Escape returns focus); presenter mode; light and dark; 375 px, 1366 × 768 and 1920 × 1080 with no sideways scroll; History, Sensors and Setup; no console errors. After self-hosting: the font loads from localhost, the page makes no requests outside localhost, and the top bar fits one line at 1024 px. Not checked: reduced motion (the CSS rule is in place but wasn't emulated), a real projector, real nodes.
-- **Status:** built, not committed; branch `feat/live-room-ui`.
+- **Status:** merged in PR #25 (`d8f760e`).
 
 ## 2026-11-14 · Noise-limit target stays at 70 dB for now
 - **From → to:** no change. The Setup dialog still asks for 70 dB; a switch to 65 dB was considered and not made.
@@ -89,7 +98,7 @@ where they were decided and the commits that built them.
 - **Why this way:** a literature search suggested 65 dB, the top of measured occupied lessons (about 55–65 dB LAeq; one survey mean 64.2). Only WHO 1999 was verified, and it gives 35 dB LAeq during teaching, a background goal rather than an activity level. The other figures came from search summaries and stay "to verify".
 - **Risks to watch:** 70 dB may flag too rarely in a real room. The studies average over minutes while our check uses 10 s, so the report needs to state that difference. Revisit once the occupied-classroom survey is opened, or after the first real-room capture.
 - **Verified:** WHO text read. Everything else is unverified.
-- **Status:** decided; `TARGET_DB` in `app.js` and the docs still say placeholder.
+- **Status:** decided; logged in PR #23 (`55def5f`). `TARGET_DB` in `app.js` and the docs still say placeholder.
 
 ## 2026-11-14 · CSC21 tracker and fault table brought up to date
 - **From → to:** the tracker listed fusion's numeric table and the integer-vs-float fusion comparison as "To do", and fault F5 as "In progress". Now: both tracker rows are done, the PC half of the no-floats check is recorded, and F5 is ✅.
@@ -98,7 +107,7 @@ where they were decided and the commits that built them.
 - **Why this way:** the rows were updated in place and point at the existing evidence. No new document was written.
 - **Risks to watch:** the fusion comparison uses simulated scenarios only. If real-room data disagrees, the row needs a real-data comparison.
 - **Verified:** reran `test_integer_accuracy.py` and `test_integer_enforcement.py` on 14 Nov. Same state sequence; 93 activity transitions at most 500 ms apart; the allow-list holds `seconds_to_ms` only.
-- **Status:** built, not committed.
+- **Status:** merged in PR #23 (`fb51677`).
 
 ## 2026-11-13 · Loss tooltip moved onto the new Sensors row
 - **From → to:** `main` (Kendrick) added a loss explanation to the old Sensors card. The redesigned page has no cards, so the explanation now shows on hover over each row's link line.
