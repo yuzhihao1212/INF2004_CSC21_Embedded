@@ -31,5 +31,15 @@ EXPORT ER subsystem1_start(void)
 	if (tid_led < E_OK) {
 		return tid_led;
 	}
-	return tk_sta_cyc(cyc_led);	/* start the cyclic handler now */
+	ER er=tk_sta_cyc(cyc_led);
+	if (er<0) return er;
+	/* A separate ID keeps S4's example LED suspension away from audio. */
+	T_CTSK task={0};
+	task.task=(FP)audio_task; task.itskpri=S1_PRI_AUDIO;
+	task.stksz=4096; task.tskatr=TA_HLNG|TA_RNG3;
+#if TK_SUPPORT_SMP
+	task.tskatr|=TA_ASSPRC; task.assprc=TP_PRC1;
+#endif
+	ID audio=tk_cre_tsk(&task);
+	return audio<0?audio:tk_sta_tsk(audio,0);
 }

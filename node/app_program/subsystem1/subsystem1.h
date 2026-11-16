@@ -11,6 +11,9 @@
 #define SUBSYSTEM1_H
 
 #include "../app.h"
+#include "audio_features.h"
+#define S1_PRI_AUDIO 13
+IMPORT void audio_task(INT stacd, void *exinf);
 
 #define S1_PRI_LED	12		/* priority band 12-13 (TEAM.md) */
 #define S1_LED_PIN	19		/* GP19: LED + 330R resistor to GND */

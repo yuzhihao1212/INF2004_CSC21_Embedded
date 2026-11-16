@@ -10,6 +10,9 @@
 #define SUBSYSTEM2_H
 
 #include "../app.h"
+#include "../subsystem1/audio_features.h"
+IMPORT ID mbf_audio_features;
+IMPORT void classifier_task(INT stacd, void *exinf);
 
 #define S2_PRI_PRODUCER		14	/* priority band 14-15 (TEAM.md) */
 #define S2_PERIOD_MS		300	/* one sample every 300 ms */
