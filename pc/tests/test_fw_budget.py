@@ -67,6 +67,14 @@ class FwBudgetTest(unittest.TestCase):
         self.assertEqual(b.flash["C library and compiler"], 0x40)
         self.assertEqual(sum(b.ram.values()), 0x4 + 0x7d00 + 0x8f90)  # .heap reservation excluded
 
+    def test_find_map_accepts_both_sdk_names(self):
+        elf = self.fw / "mosaic_node.elf"
+        self.assertIsNone(fw_budget.find_map(elf))
+        (self.fw / "mosaic_node.map").write_text("")  # SDK 1.5.1
+        self.assertEqual(fw_budget.find_map(elf), self.fw / "mosaic_node.map")
+        (self.fw / "mosaic_node.elf.map").write_text("")  # SDK 2.x
+        self.assertEqual(fw_budget.find_map(elf), self.fw / "mosaic_node.elf.map")
+
     def test_float_helper_pattern(self):
         for name in ("__aeabi_fmul", "__aeabi_dadd", "__aeabi_i2f", "__aeabi_ul2f", "__aeabi_f2iz", "cosf", "powf", "sqrt"):
             self.assertRegex(name, fw_budget.FLOAT_HELPER)

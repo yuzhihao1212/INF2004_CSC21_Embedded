@@ -43,12 +43,15 @@ The local numbers come from SDK 2.3.0 and GCC 15.2, not the team's SDK 1.5.1 and
 
 - **Flash isn't a concern.** 240 KB of the node's 331 KB is the Wi-Fi chip's driver and
   firmware image. Our own node code is 14 KB.
-- **RAM is where the audio integration will be tight, though it should fit.** The audio
-  build's 80 KB is mostly two 31.2 KB sample buffers (`raw_audio` in `audio_capture.c`,
-  `filtered_audio` in `audio_dsp.c`) and a 10 KB mel filter table. Adding that to the
-  node's 57.7 KB gives roughly 138 KB of 256 KB before the FreeRTOS heap. That sum is an
-  estimate from two separate builds (it counts some SDK parts twice); the real figure comes
-  from the RTOS build once audio is linked.
+- **RAM is where the audio integration will be tight.** The audio build's 80 KB is mostly
+  two 31.2 KB sample buffers (`raw_audio` in `audio_capture.c`, `filtered_audio` in
+  `audio_dsp.c`) and a 10 KB mel filter table. The team's CI build (SDK 1.5.1, PR #26) puts
+  the RTOS node at 121.7 KB of static RAM, 64 KB of it the FreeRTOS heap that holds the
+  task stacks. Adding the audio buffers gives roughly 200 KB of 256 KB, leaving about
+  55 KB. That's an estimate from separate builds; the real figure comes from the RTOS
+  build once audio is linked. If it runs short, the options are the lwIP packet pool
+  (36 KB), sizing the FreeRTOS heap from the measured high-water marks, and moving the
+  DSP tables to flash.
 - **The node's biggest RAM user is lwIP's packet pool,** 35.9 KB (`PBUF_POOL_SIZE 24` in
   `lwipopts.h`). We only send small UDP datagrams, so this is the first place to free RAM
   if the audio build runs short. That's Arif's call; nothing was changed here.
