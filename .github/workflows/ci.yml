@@ -55,12 +55,20 @@ jobs:
       - name: Build
         run: ninja -C firmware/build
 
+      # Flash/RAM per build and every float call in our code; shown on the run's summary page.
+      - name: Resource budget
+        continue-on-error: true # a report, never a reason to fail the build
+        run: |
+          python3 firmware/tools/fw_budget.py firmware/build --out firmware/build/resource_budget.md
+          cat firmware/build/resource_budget.md >> "$GITHUB_STEP_SUMMARY"
+
       - uses: actions/upload-artifact@v4
         with:
           name: firmware-uf2
           path: |
             firmware/build/tests/*.uf2
             firmware/build/node/*.uf2
+            firmware/build/resource_budget.md
 
   python:
     name: Python syntax check
