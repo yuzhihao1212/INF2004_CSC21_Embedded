@@ -13,6 +13,10 @@ so the fusion engine's states can be demonstrated without hardware.
 
 All simulated nodes share one socket on the node port (5006). Each answers
 only the PINGs and CONFIGs addressed to its node ID, as a real node does.
+
+With --mqtt HOST[:PORT] the nodes talk through an MQTT broker instead, as the
+micro T-Kernel node does: each simulated node is its own MQTT client with its
+own last will (topics in mosaic/mqtt.py).
 """
 
 from __future__ import annotations
@@ -27,6 +31,7 @@ import time
 from dataclasses import dataclass
 from typing import Optional
 
+from mosaic import mqtt
 from mosaic import protocol as p
 from mosaic import scenarios
 
@@ -255,6 +260,109 @@ def add_timing_arguments(parser: argparse.ArgumentParser) -> None:
                         help="uniform simulated receive delay from 0 to this many milliseconds")
 
 
+class UdpLink:
+    """All simulated nodes on one UDP socket, sending straight to the PC."""
+
+    def __init__(self, pc: tuple[str, int], listen_port: int) -> None:
+        self.pc = pc
+        self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        self.sock.bind(("0.0.0.0", listen_port))
+
+    def describe(self) -> str:
+        return f"{self.pc[0]}:{self.pc[1]}, listening on {self.sock.getsockname()[1]}"
+
+    def send(self, data: bytes) -> None:
+        self.sock.sendto(data, self.pc)
+
+    def wait(self, timeout: float) -> list[tuple[bytes, object]]:
+        """Packets for the nodes within timeout, each with a reply function."""
+        readable, _, _ = select.select([self.sock], [], [], max(0.0, timeout))
+        if not readable:
+            return []
+        try:
+            data, source = self.sock.recvfrom(p.MAX_DATAGRAM + 1)
+        except ConnectionResetError:  # Windows: gateway not running yet
+            return []
+        return [(data, lambda reply: self.sock.sendto(reply, source))]
+
+    def close(self) -> None:
+        self.sock.close()
+
+
+class MqttLink:
+    """One MQTT client per simulated node, each with an 'offline' last will."""
+
+    def __init__(self, host: str, port: int, node_ids: list[int]) -> None:
+        self.host, self.port = host, port
+        self.clients = {n: mqtt.MqttClient(host, port, client_id=f"mosaic-sim-node{n}",
+                                           will=(mqtt.status_topic(n), b"offline", 1, True))
+                        for n in node_ids}
+        self._retry_at = 0.0
+        for node_id in self.clients:
+            self._connect(node_id)
+
+    def describe(self) -> str:
+        return f"MQTT broker {self.host}:{self.port}"
+
+    def _connect(self, node_id: int) -> None:
+        client = self.clients[node_id]
+        try:
+            client.connect()
+            client.subscribe(mqtt.config_topic(node_id), qos=1)
+            client.publish(mqtt.status_topic(node_id), b"online", qos=1, retain=True)
+        except (OSError, mqtt.MqttError) as e:
+            client._drop()
+            self._retry_at = time.monotonic() + mqtt.RECONNECT_S
+            print(f"node {node_id}: cannot reach {self.describe()}: {e}", flush=True)
+
+    def send(self, data: bytes) -> None:
+        header, _ = p.decode(data)
+        client = self.clients[header.node_id]
+        if client.connected:
+            try:
+                client.publish(mqtt.telemetry_topic(header.node_id), data)
+            except ConnectionError:
+                pass  # Lost, like a datagram; reconnected below
+
+    def wait(self, timeout: float) -> list[tuple[bytes, object]]:
+        now = time.monotonic()
+        for node_id, client in self.clients.items():
+            if not client.connected and now >= self._retry_at:
+                self._connect(node_id)
+            try:
+                client.tick(now)
+            except ConnectionError:
+                pass
+        live = [c for c in self.clients.values() if c.connected]
+        if not live:
+            time.sleep(max(0.0, timeout))
+            return []
+        readable, _, _ = select.select(live, [], [], max(0.0, timeout))
+        out = []
+        for client in readable:
+            try:
+                messages = client.read()
+            except ConnectionError:
+                continue
+            for m in messages:
+                node_id = mqtt.topic_node(m.topic, "config")
+                if node_id is None:
+                    continue
+                out.append((m.payload, lambda reply, n=node_id, c=client: self._reply(c, n, reply)))
+        return out
+
+    @staticmethod
+    def _reply(client: mqtt.MqttClient, node_id: int, data: bytes) -> None:
+        try:
+            client.publish(mqtt.telemetry_topic(node_id), data)
+        except ConnectionError:
+            pass  # Lost, like a datagram
+
+    def close(self) -> None:
+        for client in self.clients.values():
+            client.close()
+
+
 def main(argv: Optional[list[str]] = None) -> None:
     parser = argparse.ArgumentParser(description="Simulated MOSAIC nodes (protocol v2)")
     parser.add_argument("--pc-ip", default="127.0.0.1")
@@ -267,6 +375,8 @@ def main(argv: Optional[list[str]] = None) -> None:
     parser.add_argument("--reboot-every", type=float, default=0.0, metavar="S",
                         help="reboot a random node every S seconds (0 = never)")
     parser.add_argument("--seed", type=int)
+    parser.add_argument("--mqtt", metavar="HOST[:PORT]",
+                        help="send through this MQTT broker instead of UDP to --pc-ip")
     add_scenario_argument(parser)
     add_timing_arguments(parser)
     args = parser.parse_args(argv)
@@ -279,11 +389,15 @@ def main(argv: Optional[list[str]] = None) -> None:
     if sim.scenario:
         print(f"Scenario {args.scenario} ({sim.scenario.seconds / 60:.0f} min): "
               f"{sim.scenario.description}")
-    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    sock.bind(("0.0.0.0", args.listen_port))
-    pc = (args.pc_ip, args.pc_port)
-    print(f"{args.nodes} simulated node(s) -> {pc[0]}:{pc[1]}, "
-          f"listening on {args.listen_port} (Ctrl+C to stop)")
+    if args.mqtt:
+        try:
+            host, port = mqtt.parse_broker(args.mqtt)
+        except ValueError as e:
+            parser.error(f"--mqtt: {e}")
+        link = MqttLink(host, port, [n.node_id for n in sim.nodes])
+    else:
+        link = UdpLink((args.pc_ip, args.pc_port), args.listen_port)
+    print(f"{args.nodes} simulated node(s) -> {link.describe()} (Ctrl+C to stop)")
 
     now = time.monotonic()
     next_reboot = now + args.reboot_every if args.reboot_every else None
@@ -292,7 +406,7 @@ def main(argv: Optional[list[str]] = None) -> None:
         while True:
             now = time.monotonic()
             for received, data in sim.poll(now):
-                sock.sendto(data, pc)
+                link.send(data)
             phase = sim.phase(now)
             if phase and phase[0] != last_phase:
                 last_phase = phase[0]
@@ -304,19 +418,13 @@ def main(argv: Optional[list[str]] = None) -> None:
                 print(f"node {node.node_id} rebooted")
                 next_reboot += args.reboot_every
             deadline = min(sim.next_event(), next_reboot or float("inf"))
-            readable, _, _ = select.select([sock], [], [], max(0.0, deadline - time.monotonic()))
-            if readable:
-                try:
-                    data, source = sock.recvfrom(p.MAX_DATAGRAM + 1)
-                except ConnectionResetError:  # Windows: gateway not running yet
-                    continue
-                for reply in sim.handle(data, time.monotonic()):
-                    sock.sendto(reply, source)
+            for data, reply in link.wait(deadline - time.monotonic()):
+                for answer in sim.handle(data, time.monotonic()):
+                    reply(answer)
     except KeyboardInterrupt:
         pass
     finally:
-        sock.close()
-
+        link.close()
 
 if __name__ == "__main__":
     main()
