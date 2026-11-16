@@ -60,7 +60,7 @@ where they were decided and the commits that built them.
 - **Why this way:** a literature search suggested 65 dB, the top of measured occupied lessons (about 55–65 dB LAeq; one survey mean 64.2). Only WHO 1999 was verified, and it gives 35 dB LAeq during teaching, a background goal rather than an activity level. The other figures came from search summaries and stay "to verify".
 - **Risks to watch:** 70 dB may flag too rarely in a real room. The studies average over minutes while our check uses 10 s, so the report needs to state that difference. Revisit once the occupied-classroom survey is opened, or after the first real-room capture.
 - **Verified:** WHO text read. Everything else is unverified.
-- **Status:** decided; `TARGET_DB` in `app.js` and the docs still say placeholder.
+- **Status:** decided; logged in PR #23 (`55def5f`). `TARGET_DB` in `app.js` and the docs still say placeholder.
 
 ## 2026-11-14 · CSC21 tracker and fault table brought up to date
 - **From → to:** the tracker listed fusion's numeric table and the integer-vs-float fusion comparison as "To do", and fault F5 as "In progress". Now: both tracker rows are done, the PC half of the no-floats check is recorded, and F5 is ✅.
@@ -69,7 +69,7 @@ where they were decided and the commits that built them.
 - **Why this way:** the rows were updated in place and point at the existing evidence. No new document was written.
 - **Risks to watch:** the fusion comparison uses simulated scenarios only. If real-room data disagrees, the row needs a real-data comparison.
 - **Verified:** reran `test_integer_accuracy.py` and `test_integer_enforcement.py` on 14 Nov. Same state sequence; 93 activity transitions at most 500 ms apart; the allow-list holds `seconds_to_ms` only.
-- **Status:** built, not committed.
+- **Status:** merged in PR #23 (`fb51677`).
 
 ## 2026-11-13 · Loss tooltip moved onto the new Sensors row
 - **From → to:** `main` (Kendrick) added a loss explanation to the old Sensors card. The redesigned page has no cards, so the explanation now shows on hover over each row's link line.
