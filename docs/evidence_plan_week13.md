@@ -52,7 +52,7 @@ that in `decision-log.md`. Nobody takes over someone's part without that.
 | Soak | Four nodes for 1 h on the hotspot. Report loss, reboots, RTT p95 and overruns from the evaluator's summary, and each reboot's reset reason from the serial log. Pass: no reboots, loss < 1 % | Arif, ZhiHao |
 | Wi-Fi drop recovery | Week 10 test N9 | Arif |
 | Reboot recovery and CONFIG re-send | Week 10 test N8 | ZhiHao |
-| CONFIG round trip | Time from the dashboard click to the node's ACK, from the gateway log, 20 tries | ZhiHao |
+| CONFIG round trip | `mosaic.evaluate` now reports it (request → applied, and last send → ACK). Run 20 CONFIGs during a real-node capture | ZhiHao |
 | Live fault demo (Week 13) | Unplug one node in front of the assessors: its area shows *No signal*, the rest of the room keeps working, it comes back on its own when plugged in | ZhiHao runs, Arif backs up |
 
 ## 5. Write-ups
