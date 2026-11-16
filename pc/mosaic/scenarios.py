@@ -15,6 +15,7 @@ The last phase holds once the scenario ends.
 
 from __future__ import annotations
 
+import threading
 from dataclasses import dataclass, field
 from typing import Optional
 
@@ -160,6 +161,77 @@ SCENARIOS: dict[str, Scenario] = {
         (EMPTY, LECTURE, REAR_CHATTER, ROWDY_REAR, SETTLED, CO2_BUILDS, WINDOW_OPEN, AIRCON_FAILS,
          AIRCON_BACK)),
 }
+
+
+class ScriptClock:
+    """Script time for a scenario, which a presenter can pause, skip and speed up.
+
+    Only the script moves: nodes keep reporting on their own real-time clocks.
+    The simulator thread and the dashboard share one clock, so the page shows
+    exactly the phase the nodes are playing. Starts on the first call.
+    """
+
+    RATES = (1, 2, 4)
+
+    def __init__(self, scenario: Scenario) -> None:
+        self.scenario = scenario
+        self._lock = threading.Lock()
+        self._anchor: Optional[float] = None  # Real time of the last change
+        self._offset = 0.0                    # Script seconds at that time
+        self.rate = 1
+        self.paused = False
+        self.jumps = 0  # Counts skips, so the simulator can move the room to the new phase
+
+    def _elapsed(self, now: float) -> float:
+        if self._anchor is None:
+            self._anchor = now
+        # Times before the last change (a report stamped just before a skip) count as
+        # that change, so they never land back in the phase that was skipped.
+        if self.paused or now <= self._anchor:
+            return self._offset
+        return self._offset + (now - self._anchor) * self.rate
+
+    def _rebase(self, now: float) -> None:
+        self._offset, self._anchor = self._elapsed(now), now
+
+    def start(self, now: float) -> None:
+        with self._lock:
+            self._elapsed(now)
+
+    def elapsed(self, now: float) -> float:
+        with self._lock:
+            return self._elapsed(now)
+
+    def phase(self, now: float) -> tuple[int, Phase]:
+        return self.scenario.phase_at(self.elapsed(now))
+
+    def set_paused(self, now: float, paused: bool) -> None:
+        with self._lock:
+            self._rebase(now)
+            self.paused = paused
+
+    def set_rate(self, now: float, rate: int) -> None:
+        if rate not in self.RATES:
+            raise ValueError(f"rate must be one of {self.RATES}")
+        with self._lock:
+            self._rebase(now)
+            self.rate = rate
+
+    def next_phase(self, now: float) -> bool:
+        """Jump to the start of the next phase; False on the last phase."""
+        with self._lock:
+            index, _ = self.scenario.phase_at(self._elapsed(now))
+            if index + 1 >= len(self.scenario.phases):
+                return False
+            self._offset = sum(ph.seconds for ph in self.scenario.phases[:index + 1])
+            self._anchor = now
+            self.jumps += 1
+            return True
+
+    @property
+    def drift_rate(self) -> int:
+        """How many reports' worth of drift each report makes: the room keeps pace with the script."""
+        return 1 if self.paused else self.rate
 
 
 def sim_loud_levels(zones: dict[int, str], reference_zone: Optional[str]) -> dict[str, int]:
