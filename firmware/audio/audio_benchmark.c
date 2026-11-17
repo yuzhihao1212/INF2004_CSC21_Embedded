@@ -7,6 +7,15 @@
 #include "audio_capture.h"
 #include "audio_dsp.h"
 
+static void print_q8(const char *name, int32_t value)
+{
+    int64_t magnitude=value;
+    if (magnitude<0) magnitude=-magnitude;
+    uint32_t scaled=(uint32_t)((magnitude*1000+128)/256);
+    printf("%s=%s%lu.%03lu",name,value<0?"-":"",
+        (unsigned long)(scaled/1000),(unsigned long)(scaled%1000));
+}
+
 int main(void)
 {
     stdio_init_all();
@@ -42,33 +51,19 @@ int main(void)
 
         uint64_t end_us = time_us_64();
 
-        float dsp_ms =
-            (end_us - start_us) / 1000.0f;
-
-        float remaining_ms = 500.0f - dsp_ms;
-        float overrun_ms =
-            dsp_ms > 500.0f ? dsp_ms - 500.0f : 0.0f;
-
-        window_id++;
-
-        printf(
-            "WINDOW=%lu | DSP_PROCESSING_TIME_MS=%.2f | "
-            "DSP_BUDGET_LEFT_MS=%.2f | DSP_OVERRUN_MS=%.2f\n",
-            (unsigned long)window_id,
-            dsp_ms,
-            remaining_ms,
-            overrun_ms
-        );
-
-        printf(
-            "RMS=%.3f | Centroid=%.1f Hz | "
-            "Low=%.3f | Mid=%.3f | High=%.3f\n",
-            features[0] / 256.0f,
-            features[1] / 256.0f,
-            features[2] / 256.0f,
-            features[3] / 256.0f,
-            features[4] / 256.0f
-        );
+        uint64_t dsp_us=end_us-start_us;
+        uint64_t remaining=dsp_us<500000?500000-dsp_us:0;
+        uint64_t overrun=dsp_us>500000?dsp_us-500000:0;
+        ++window_id;
+        printf("WINDOW=%lu | DSP_PROCESSING_TIME_MS=%lu.%03lu | DSP_BUDGET_LEFT_MS=%lu.%03lu | DSP_OVERRUN_MS=%lu.%03lu\n",
+            (unsigned long)window_id,(unsigned long)(dsp_us/1000),(unsigned long)(dsp_us%1000),
+            (unsigned long)(remaining/1000),(unsigned long)(remaining%1000),
+            (unsigned long)(overrun/1000),(unsigned long)(overrun%1000));
+        print_q8("RMS",features[0]); printf(" | ");
+        print_q8("Centroid",features[1]); printf(" Hz | ");
+        print_q8("Low",features[2]); printf(" | ");
+        print_q8("Mid",features[3]); printf(" | ");
+        print_q8("High",features[4]); printf("\n");
 
         printf("FEATURES_Q8=");
 

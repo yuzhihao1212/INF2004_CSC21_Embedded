@@ -11,6 +11,13 @@ Test cases are defined before execution. Original example tests/results stay int
 
 ## Results
 
+Additional case S1-U08 (17 Nov): build standalone audio_benchmark/audio_talking
+and the micro T-Kernel image, audit project audio/ML objects for float/double
+helpers and libm calls, and replay both current DSP implementations against
+the pinned historical Git blob. Expected: no project audio floating-point
+operations and all 20 features unchanged. Historical host-only baseline is
+intentionally allowed floating-point startup; it is never a firmware source.
+
 | Date | ID | Commit | Result | Evidence |
 |---|---|---|---|---|
 | 2026-11-16 | S1-U04 / S2-U03..05 replay run | `55476b0` | FAIL (harness) | `logs/2026-11-16_audio-replay.txt`; an independent clipping case reused the preceding timestamp/state, correctly triggering TIMING_FAULT first; reset the fixture before that case |

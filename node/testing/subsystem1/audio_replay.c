@@ -10,11 +10,13 @@ void reference_init(void);
 void reference_process(const uint16_t *,int32_t *);
 int reference_predict(const int32_t *,int32_t *);
 void reference_probabilities(const int32_t *,uint16_t *);
+void standalone_init(void);
+void standalone_process(const uint16_t *,int32_t *);
 int main(void)
 {
     uint16_t samples[8000]; int32_t a[20],b[20],la[3],lb[3];
     uint16_t pa[3],pb[3]; unsigned rng=42;
-    reference_init(); audio_dsp_init();
+    reference_init(); audio_dsp_init(); standalone_init();
     for (unsigned test=0;test<32;++test) {
         for (unsigned i=0;i<8000;++i) {
             rng=rng*1664525u+1013904223u;
@@ -23,6 +25,8 @@ int main(void)
         }
         reference_process(samples,a); audio_dsp_process(samples,b);
         assert(!memcmp(a,b,sizeof a));
+        int32_t standalone[20]; standalone_process(samples,standalone);
+        assert(!memcmp(a,standalone,sizeof a));
         assert(reference_predict(a,la)==dsp_int8_predict(b,lb));
         assert(!memcmp(la,lb,sizeof la));
         reference_probabilities(la,pa); classifier_probabilities(lb,pb);

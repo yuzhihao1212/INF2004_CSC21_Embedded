@@ -7,10 +7,17 @@ DEST=ROOT/'node/app_program/subsystem1'
 TABLES={'mel_bins':'int','hamming_table':'int16_t','fft_cos_q15':'int16_t',
         'fft_sin_q15':'int16_t','dct_table':'int16_t',
         'mel_weight_table':'int16_t','frequency_table':'uint16_t'}
+REFERENCE_DSP_BLOB='b303810812a4ae3effcb044a1ce5646358e67f30'
+
+def reference_source():
+    # Host-only historical baseline; never compiled into either Pico image.
+    return subprocess.check_output(['git','-c','safe.directory='+ROOT.as_posix(),
+        'show',REFERENCE_DSP_BLOB],cwd=ROOT).decode('utf-8')
 
 def main():
-    source=(SRC/'audio_dsp.c').read_text(encoding='utf-8')
-    code='#include <stdio.h>\n#include "'+(SRC/'audio_dsp.c').as_posix()+'"\nint main(void){audio_dsp_init();\n'
+    source=reference_source()
+    code='#include <stdio.h>\n'+source.replace('#include "audio_dsp.h"',
+        '#include "'+(SRC/'audio_dsp.h').as_posix()+'"')+'\nint main(void){audio_dsp_init();\n'
     for name,typ in TABLES.items():
         declaration=re.search(r'static '+typ+' '+name+r'(\[[^;]+);',source).group(1)
         code+=f'printf("static const {typ} {name}{declaration} = {{");\n'
@@ -33,9 +40,14 @@ def main():
     end=source.index('void audio_dsp_process(',begin)
     source=source[:begin]+'void audio_dsp_init(void) { /* Constant tables in flash. */ }\n\n'+source[end:]
     source=source.replace('static uint16_t raw_audio[2][AUDIO_SAMPLES];','')
+    source=re.sub(r'^#define (MIN_FREQ|LOW_END|MID_END|MAX_FREQ|PI|EPSILON|HPF_ALPHA|Q15_SCALE|Q15_HEADROOM|ADC_CLOCK_HZ|ADC_CLKDIV)\b[^\n]*\n','',source,flags=re.M)
+    source=re.sub(r'^// calculated once during startup[^\n]*\n','// Frozen in dsp_tables.h; no startup trigonometry.\n',source,flags=re.M)
     pos=source.index('// AUDIO / DSP BUFFERS')
     source=source[:pos]+'#include "dsp_tables.h"\n'+source[pos:]
     (DEST/'audio_dsp.c').write_text('/* Ported reference DSP; processing arithmetic preserved. */\n'+source,encoding='utf-8')
+    # The standalone targets must meet the same integer-only requirement.
+    shutil.copyfile(DEST/'audio_dsp.c',SRC/'audio_dsp.c')
+    shutil.copyfile(DEST/'dsp_tables.h',SRC/'dsp_tables.h')
     for name in ['audio_dsp.h','audio_signal_quality.c','audio_signal_quality.h']:
         shutil.copyfile(SRC/name,DEST/name)
     print('Generated S1 DSP with frozen startup tables')
