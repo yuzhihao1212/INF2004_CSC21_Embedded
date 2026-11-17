@@ -74,7 +74,7 @@ fixed.
 | GP20 | | |
 | GP21 | | |
 | GP22 | | |
-| GP26 | | (ADC0 capable) |
+| GP26 | S1 (Moe) | Microphone AUD, ADC0, 16 kHz |
 | GP27 | | (ADC1 capable) |
 | GP28 | | (ADC2 capable) |
 
@@ -113,7 +113,7 @@ the drivers have no locking to stop it.
 | I2C1 | | | |
 | SPI0 | | | |
 | SPI1 | | | |
-| ADC | | | GP26–GP28 |
+| ADC | S1 (Moe) | audio_task, core 0 | GP26; no other task opens the kernel ADC device |
 | PWM slices (list) | | | |
 | WiFi radio, TCP/IP, MQTT | *kernel* | `cyw43_utk_task` (built in) | GP23–25, GP29 |
 
@@ -200,3 +200,21 @@ limit there. The numbers below are the example's usage.
 | Alarm handler | 12 | | | | 1 | |
 
 (The kernel's USB and WiFi service tasks also use a few of these.)
+
+## Audio/ML port resource claims (16 Nov 2026)
+
+- S1: GP26/ADC0, audio task priority 13 on core 0, DMA IRQ1 (IRQ 12),
+  one additional task and completion semaphore. Do not open the kernel ADC
+  device while audio owns it. S1 does not change shared device configuration.
+- DMA: Wi-Fi profiles use the existing SDK DMA allocator shared with CYW43;
+  WIFI=none reserves channel 11. DMA IRQ1 is owned exclusively by S1.
+- S2: classifier task priority 15 on core 1, one additional task and one
+  message buffer, depth two. Both task stacks are 4096 bytes.
+- IF-13, S1 -> S2: `mbf_audio_features`, owned by S2. Copied
+  `audio_features_t` includes sequence, completion timestamp, 20 Q8 features,
+  raw signal quality, confidence threshold and DSP duration. No raw pointers.
+- IF-10: only S2 posts classified windows and ordered drop accounting to S5.
+  Model classes background/speech/transient map to protocol IDs 1/2/4.
+- Existing example tasks and interfaces remain until S3/S4 owners remove their
+  dependencies. Their original object budget remains, plus the objects above.
+- User authorized updating both S1 and S2 for this port on 16 Nov 2026.
