@@ -10,8 +10,10 @@
 #define SUBSYSTEM3_H
 
 #include "../app.h"
+#include <stdint.h>
 
 #define S3_PRI_CONSUMER		16	/* priority band 16-17 (TEAM.md) */
+#define S3_PRI_ENVIRONMENT       17
 #define S3_BATCH_SIZE		5	/* report to subsystem 4 every N samples */
 
 /* IF-01: send SAMPLE_MSG (subsystem2.h) here with tk_snd_mbx */
@@ -32,5 +34,10 @@ IMPORT APP_STATS	app_stats;
 
 /* Private to subsystem 3 */
 IMPORT void	consumer_task(INT stacd, void *exinf);
+IMPORT void environment_task(INT stacd, void *exinf);
+/* Snapshot with an atomic load: zero after startup failure or task exit. */
+IMPORT ID tid_environment;
+/* Atomic snapshot of completed environment service iterations. */
+IMPORT uint32_t s3_environment_progress(void);
 
 #endif /* SUBSYSTEM3_H */
