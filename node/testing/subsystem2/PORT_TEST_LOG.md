@@ -18,3 +18,4 @@ until the S4 MQTT bridge and hardware are tested together.
 | 2026-11-16 | S2-U03..05 combined replay | `55476b0` | FAIL (harness) | `../subsystem1/logs/2026-11-16_audio-replay.txt`; independent case reused timestamp/state; fixture corrected before rerun |
 | 2026-11-16 | S2-U03..05 combined replay | `b2385d8` | PASS | `../subsystem1/logs/2026-11-16_audio-replay-r2.txt`; original/ported logits and probabilities match, adapter and gates pass |
 | 2026-11-16 | S2-U06 protocol/S5 regression | `b2385d8` | PASS | `logs/2026-11-16_protocol-s5.txt`; 22 tests pass |
+| 2026-11-17 | S2-U03..05 | `a60322d` | PASS | `../subsystem1/logs/2026-11-17_integer-fix-replay.txt`: model output equality, telemetry conversion and gates remain correct after full audio integer cleanup |
