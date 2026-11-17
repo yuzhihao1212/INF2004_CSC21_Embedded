@@ -25,6 +25,12 @@ EXPORT void subsystem3_test(void)
 	APP_STATS	before, after;
 
 	TEST_INIT();
+	uint32_t progress_before = s3_environment_progress();
+	ER delay_result = tk_dly_tsk(500);
+	uint32_t progress_after = s3_environment_progress();
+	TEST_CHECK("S3-U11", __atomic_load_n(&tid_environment, __ATOMIC_ACQUIRE) > 0 && delay_result == E_OK &&
+		   progress_after != progress_before,
+		   "environment task executes service iterations");
 
 	/* INT-01 (integration, IF-01): samples from subsystem 2 arrive.
 	   At one sample per 300 ms, 2 s should bring at least 5. */

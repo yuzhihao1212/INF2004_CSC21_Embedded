@@ -53,21 +53,21 @@ fixed.
 | GP23, GP24, GP25, GP29 | *reserved* | Pico W radio |
 | GP0 | | (taken whenever the team builds with `CRASH_REPORT=1`) |
 | GP1 | | (taken whenever the team builds with `CRASH_REPORT=1`) |
-| GP2 | | |
+| GP2 | S3 | DHT22 open-drain DATA, environment_task |
 | GP3 | | |
 | GP4 | | |
 | GP5 | | |
 | GP6 | | |
 | GP7 | | |
-| GP8 | | |
-| GP9 | | |
+| GP8 | S3 | ACD1100 UART1 TX, environment_task |
+| GP9 | S3 | ACD1100 UART1 RX, environment_task |
 | GP10 | | |
 | GP11 | | |
 | GP12 | | |
 | GP13 | | |
 | GP14 | | |
 | GP15 | | |
-| GP16 | | |
+| GP16 | S3 | PIR input, owned by `environment_task` |
 | GP17 | | |
 | GP18 | | |
 | GP19 | *example:* S1 | external LED (LED + 330 Ω to GND) |
@@ -108,7 +108,9 @@ the drivers have no locking to stop it.
 
 | Peripheral | Owner subsystem | Owning task | Pins |
 |---|---|---|---|
-| UART1 | | | |
+| UART1 | S3 | `environment_task` (polled 1200 8N1) | GP8/GP9 |
+| One PIO SM + 20 instruction words, dynamically claimed | S3 | `environment_task`; shared SDK allocator, no fixed PIO/SM | GP2 |
+| One DMA channel, dynamically claimed | S3 | `environment_task`; shared SDK allocator, IRQs disabled for this channel | GP2 via PIO RX |
 | I2C0 | | | |
 | I2C1 | | | |
 | SPI0 | | | |
@@ -151,7 +153,7 @@ change it only by team agreement. Write down every task you create.
 |---|---|---|
 | 1 | 12–13 | *example:* led_task – 12 – any |
 | 2 | 14–15 | *example:* producer_task – 14 – core 1 |
-| 3 | 16–17 | *example:* consumer_task – 16 – core 0 |
+| 3 | 16–17 | consumer_task – 16 – core 0 (example compatibility); environment_task – 17 – core 0 |
 | 4 | 18–19 | *example:* monitor_task – 18 – any |
 | 5 | 20–21 | report_task – 20 – any |
 
@@ -188,7 +190,7 @@ limit there. The numbers below are the example's usage.
 
 | Object | Limit | S1 | S2 | S3 | S4 | S5 |
 |---|---|---|---|---|---|---|
-| Task | 32 | 1 | 1 | 1 | 1 | 1 |
+| Task | 32 | 1 | 1 | 2 | 1 | 1 |
 | Semaphore | 16 | | 1 | | | |
 | Event flag | 16 | | | | 1 | |
 | Mailbox | 12 | | | 1 | | |
