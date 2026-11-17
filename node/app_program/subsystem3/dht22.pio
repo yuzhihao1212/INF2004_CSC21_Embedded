@@ -1,0 +1,33 @@
+.program mosaic_dht22
+; 2 MHz. Open drain: only drive LOW, release with pindirs=0.
+; Start LOW for about 1.1 ms. Each counter iteration takes 32 cycles.
+set pins, 0
+set pindirs, 1
+set x, 31
+start_outer:
+set y, 1
+start_inner:
+jmp y-- start_inner [31]
+jmp x-- start_outer [3]
+set pindirs, 0
+wait 1 pin 0
+wait 0 pin 0
+.wrap_target
+; Measure each LOW and HIGH using 2-cycle iterations = 1 us/count.
+mov x, ~null
+low_loop:
+jmp pin low_done
+jmp x-- low_loop
+low_done:
+mov isr, ~x
+push block
+mov x, ~null
+high_loop:
+jmp pin high_count
+jmp high_done
+high_count:
+jmp x-- high_loop
+high_done:
+mov isr, ~x
+push block
+.wrap
