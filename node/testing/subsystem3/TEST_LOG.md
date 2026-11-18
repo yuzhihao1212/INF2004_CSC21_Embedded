@@ -39,6 +39,17 @@ Continuation cases (defined before running):
 - S3-U21: actual DHT hardware-boundary source against SDK register doubles; simulate ABORT cleared while BUSY stays high, then BUSY clears; expect no early IRQ/FIFO cleanup or reuse.
 - S3-U22: hold simulated DMA BUSY across many service iterations; expect PIR and S5 service to continue, no new capture, and timeout rather than stale success after retirement.
 
+- S3-U23: host, test-only counters and snapshot lock behavior using sensor/kernel doubles; `host/run.ps1` must exit successfully. This is not hardware evidence.
+- S3-U24: **manual target**, valid DHT acquisition/checksum. S3 hardware guide, steps 1–4; `dok` rises, `ds=1`, and `flags & 3 == 3`.
+- S3-U25: **manual target**, CO2 warm-up then response. Start from cold boot; before 120 s `warm=0`, CO2 invalid; after 120 s `warm=1`, `cok` rises and CO2 valid.
+- S3-U26: **manual target**, PIR controlled stillness and motion; sample count rises in both intervals, motion count rises while moving, and current motion tracks activity subject to sensor hold time.
+- S3-U27: **manual target**, DHT disconnect/reconnect; timeout/failure and invalidity appear, then a valid capture and recovery count after reconnection.
+- S3-U28: **manual target**, DHT unavailable isolation; task progress and PIR sample counts continue, and CO2 continues after warm-up.
+- S3-U29: **manual target**, timeout retirement. Disconnect DATA and inspect `dto`, `da`, `stop`, `cap` and, with nonintrusive trace if available, DMA BUSY; no new capture until retirement. A disconnect alone cannot demonstrate prolonged BUSY; that separate condition remains host-simulated unless actually observed.
+- S3-U30: **manual target**, fixed-point values, status and validity; compare valid decimal values to a reference, then disconnect to check invalidation without treating retained values as current.
+- S3-U31: **manual target**, B4/N3 five-minute reference comparison and PC warm-up display; use `HARDWARE_EVIDENCE.md`, retain timestamped logs/photos and screenshot.
+- S3-U32: host, test-only observer startup returns before observation; check its priority, affinity, stack request, 65 iterations, self-delete and creation/start failure cleanup using kernel doubles. Target scheduling and stack headroom remain unverified.
+
 ## Results
 
 Add a new row for every run. Never edit or delete old rows.
@@ -95,3 +106,17 @@ revision; none of the following is a Pico W hardware result.
   test does not establish real kernel scheduling or hardware behavior.
 - Wi-Fi/MQTT cross-build: NOT RUN; supported SDK 2.2/2.3 unavailable. Its
   SDK-dependent DHT hardware path and radio coexistence remain unverified.
+
+## 2026-11-18 diagnostic host verification (uncommitted, provisional)
+
+Base `c6a33c85c016d3625919f935f2e6c6e04423f953` plus the diagnostic patch; tester: Codex. S3-U23 and the existing host suite and S3-U10 passed with simulated hardware; log `logs/2026-11-18_diagnostic_host.txt`. All on-target cases above remain unperformed. Repeat and record results against a committed revision for formal evidence.
+
+Cross-builds: UART/no-Wi-Fi SMP 0/1 with TEST 0/1 and SMP 1 USB/Wi-Fi/lwIP/MQTT with TEST 0/1 passed; `logs/2026-11-18_diagnostic_builds.txt` contains build-log excerpts. They do not establish runtime behavior.
+
+## 2026-11-18 diagnostic review (uncommitted, provisional)
+
+Base `c6a33c85c016d3625919f935f2e6c6e04423f953` plus the reviewed working tree; tester: Codex. S3-U23 and S3-U32 and the existing host suite passed with doubles; S3-U10 passed with pioasm 1.5.1. The saved output and working-tree source hashes are in `logs/2026-11-18_review_host.txt`. These are simulations, not Pico W measurements.
+
+S3-U13–U16: UART/no-Wi-Fi cross-builds passed for SMP 0/1 and TEST 0/1; logs `logs/20261118_163220_uart_smp0_test0.txt`, `logs/20261118_163220_uart_smp0_test1.txt`, `logs/20261118_163220_uart_smp1_test0.txt`, and `logs/20261118_163220_uart_smp1_test1.txt`. S3-U17: strict Arm compilation of S3 with TEST 0/1, UART/no Wi-Fi, passed; `logs/2026-11-18_review_strict.txt`.
+
+SMP 1 USB/Wi-Fi/lwIP/MQTT cross-builds passed with Pico SDK 2.2.0 and TEST 0/1 using temporary example credentials; `logs/2026-11-18_review_wifi_test0.txt` and `logs/2026-11-18_review_wifi_test1.txt`. These builds do not establish radio, sensor, scheduler or stack behavior. All on-target cases remain unperformed; repeat against a committed revision for formal evidence.
