@@ -1,6 +1,7 @@
+/* Ported reference DSP; processing arithmetic preserved. */
 #include "audio_dsp.h"
 #include <stdint.h>
-#include <math.h>
+
 #include <limits.h>
 /* Pure DSP: no GPIO, ADC, DMA, multicore, printf or timing calls. */
 // audio configuration
@@ -22,10 +23,6 @@
 #define FFT_BINS ((FFT_SIZE / 2) + 1)
 
 // frequency band
-#define MIN_FREQ 125.0f
-#define LOW_END 500.0f
-#define MID_END 2000.0f
-#define MAX_FREQ 7500.0f
 
 // exact FFT-bin boundaries for 16 kHz / 512-point FFT
 // bin spacing = 16000 / 512 = 31.25 Hz
@@ -43,15 +40,10 @@
 #define FINAL_FEATURES 20
 
 // constants
-#define PI 3.14159265358979323846f
-#define EPSILON 1e-12f
 
 // approximately 125 Hz first-order HPF at 16 kHz
-#define HPF_ALPHA 0.953f
 
 // Q15 constants
-#define Q15_SCALE 32767.0f
-#define Q15_HEADROOM 30000.0f
 
 /*
 RP2040 ADC: 48 MHz ADC clock
@@ -63,13 +55,12 @@ adc_set_clkdiv() sets the average conversion-start period to:
 
 divider = 3000 - 1 = 2999
 */
-#define ADC_CLOCK_HZ 48000000.0f
-#define ADC_CLKDIV ((ADC_CLOCK_HZ / SAMPLE_RATE) - 1.0f)
 
+#include "dsp_tables.h"
 // AUDIO / DSP BUFFERS
 // two raw ADC buffers are used for ping-pong capture
 // the CPU processes one completed buffer, DMA captures the next 500 ms window into the other buffer
-static uint16_t raw_audio[2][AUDIO_SAMPLES];
+
 
 static int32_t filtered_audio[AUDIO_SAMPLES]; // Q4 ADC counts
 
@@ -87,28 +78,28 @@ static dsp_workspace_t workspace_core0;
 // so the final 20-feature vector format stays the same
 static int32_t all_frame_features[NUM_FRAMES][FRAME_FEATURES]; // all Q8
 
-static int mel_bins[MEL_FILTERS + 2];
+
 
 // precomputed Hamming window values
-// calculated once during startup instead of using cosf() for every frame
-static int16_t hamming_table[FRAME_SIZE]; // Q15
+// Frozen in dsp_tables.h; no startup trigonometry.
+ // Q15
 
 // precomputed Q15 FFT twiddle factors
-// calculated once during startup instead of using cosf()/sinf() inside every FFT
-static int16_t fft_cos_q15[FFT_SIZE / 2];
-static int16_t fft_sin_q15[FFT_SIZE / 2];
+// Frozen in dsp_tables.h; no startup trigonometry.
+
+
 
 // precomputed DCT cosine values used by MFCC
-// calculated once during startup instead of using cosf() for every MFCC coefficient
-static int16_t dct_table[MFCC_COUNT][MEL_FILTERS]; // Q14
+// Frozen in dsp_tables.h; no startup trigonometry.
+ // Q14
 
 // precomputed Mel-filter weights
 // removes repeated divisions from every MFCC calculation
-static int16_t mel_weight_table[MEL_FILTERS][FFT_BINS]; // Q15
+ // Q15
 
 // precomputed frequency value for each FFT bin
 // removes repeated frequency calculations from every frame
-static uint16_t frequency_table[FFT_BINS]; // Hz
+ // Hz
 
 // feature order
 enum {
@@ -224,138 +215,6 @@ static void fft_q15(int16_t *real, int16_t *imag, int N)
 
 // hamming window
 // initialise Hamming window lookup table once at startup
-static void init_hamming_table(void)
-{
-    for (int n = 0; n < FRAME_SIZE; n++) {
-        hamming_table[n] = (int16_t)lrintf(32767.0f *
-            (0.54f - 0.46f * cosf((2.0f * PI * n) / (FRAME_SIZE - 1))));
-    }
-}
-
-// initialise Q15 FFT sine/cosine lookup tables once at startup
-static void init_fft_tables(void)
-{
-    for (int i = 0; i < FFT_SIZE / 2; i++) {
-        float angle = (-2.0f * PI * i) / FFT_SIZE;
-
-        int32_t cq = (int32_t)lrintf(cosf(angle) * Q15_SCALE);
-        int32_t sq = (int32_t)lrintf(sinf(angle) * Q15_SCALE);
-
-        if (cq > 32767) cq = 32767;
-        if (cq < -32768) cq = -32768;
-        if (sq > 32767) sq = 32767;
-        if (sq < -32768) sq = -32768;
-
-        fft_cos_q15[i] = (int16_t)cq;
-        fft_sin_q15[i] = (int16_t)sq;
-    }
-}
-
-// initialise MFCC DCT cosine lookup table once at startup
-static void init_dct_table(void)
-{
-    for (int c = 0; c < MFCC_COUNT; c++) {
-        int coefficient = c + 1;
-
-        for (int m = 0; m < MEL_FILTERS; m++) {
-            dct_table[c][m] = (int16_t)lrintf(16384.0f *
-                cosf((PI * coefficient * (m + 0.5f)) / MEL_FILTERS));
-        }
-    }
-}
-
-// initialise FFT-bin frequency lookup table once at startup
-static void init_frequency_table(void)
-{
-    for (int bin = 0; bin < FFT_BINS; bin++) {
-        frequency_table[bin] =
-            (uint16_t)((bin * SAMPLE_RATE) / FFT_SIZE);
-    }
-}
-
-// mel conversion
-static float hz_to_mel(float hz)
-{
-    return 2595.0f * log10f(1.0f + (hz / 700.0f));
-}
-
-static float mel_to_hz(float mel)
-{
-    return 700.0f * (powf(10.0f, mel / 2595.0f) - 1.0f);
-}
-
-// mel filterbank initialisation
-static void init_mel_filterbank(void)
-{
-    float min_mel = hz_to_mel(MIN_FREQ);
-    float max_mel = hz_to_mel(MAX_FREQ);
-
-    for (int i = 0; i < MEL_FILTERS + 2; i++) {
-        float mel =
-            min_mel +
-            ((max_mel - min_mel) * i / (MEL_FILTERS + 1));
-
-        float hz = mel_to_hz(mel);
-
-        int bin =
-            (int)floorf(((FFT_SIZE + 1) * hz) / SAMPLE_RATE);
-
-        if (bin < 0) {
-            bin = 0;
-        }
-
-        if (bin > FFT_SIZE / 2) {
-            bin = FFT_SIZE / 2;
-        }
-
-        mel_bins[i] = bin;
-    }
-}
-
-// precompute all Mel-filter weights once at startup
-// this keeps the same triangular Mel filters but removes repeated division operations
-static void init_mel_weight_table(void)
-{
-    for (int m = 0; m < MEL_FILTERS; m++) {
-        for (int k = 0; k < FFT_BINS; k++) {
-            mel_weight_table[m][k] = 0;
-        }
-
-        int left = mel_bins[m];
-        int centre = mel_bins[m + 1];
-        int right = mel_bins[m + 2];
-
-        // rising triangle
-        if (centre > left) {
-            for (int k = left; k < centre; k++) {
-                mel_weight_table[m][k] =
-                    (int16_t)((32767L * (k - left)) /
-                              (centre - left));
-            }
-        }
-
-        // falling triangle
-        if (right > centre) {
-            for (int k = centre; k < right; k++) {
-                mel_weight_table[m][k] =
-                    (int16_t)((32767L * (right - k)) /
-                              (right - centre));
-            }
-        }
-    }
-}
-
-/*
-   preprocessing
-   1. estimate DC microphone bias
-   2. remove DC
-   3. high-pass filter
-
-   Integer representation:
-   ADC samples: unsigned 12-bit
-   Centered/filtered samples: signed Q4 ADC counts
-   HPF alpha: Q15, accumulators: int64_t
-*/
 #define HPF_ALPHA_Q15 31228  // round(0.953 * 32768)
 #define FEATURE_Q 8           // 20 final features use Q8 (value * 256)
 #define LOG2_TO_LN_Q12 2839   // round(ln(2) * 4096)
@@ -536,15 +395,7 @@ static void build_feature_vector(
 }
 
 
-void audio_dsp_init(void)
-{
-    init_mel_filterbank();
-    init_hamming_table();
-    init_fft_tables();
-    init_dct_table();
-    init_frequency_table();
-    init_mel_weight_table();
-}
+void audio_dsp_init(void) { /* Constant tables in flash. */ }
 
 void audio_dsp_process(const uint16_t samples[AUDIO_DSP_WINDOW_SAMPLES],
                        int32_t out_q8[AUDIO_DSP_FEATURE_COUNT])

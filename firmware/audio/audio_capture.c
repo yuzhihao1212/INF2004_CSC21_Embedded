@@ -13,8 +13,8 @@
 #define MIC_ADC_INPUT 0
 #define SAMPLE_RATE AUDIO_DSP_SAMPLE_RATE
 #define AUDIO_SAMPLES AUDIO_DSP_WINDOW_SAMPLES
-#define ADC_CLOCK_HZ 48000000.0f
-#define ADC_CLKDIV ((ADC_CLOCK_HZ / SAMPLE_RATE) - 1.0f)
+#define ADC_CLOCK_HZ 48000000u
+#define ADC_CLKDIV_INTEGER ((ADC_CLOCK_HZ / SAMPLE_RATE) - 1u)
 static uint16_t raw_audio[2][AUDIO_SAMPLES];
 static uint dma_chan;
 static dma_channel_config dma_cfg;
@@ -65,7 +65,7 @@ static void init_dma_audio_capture(void)
     adc_fifo_setup(true, true, 1, false, false);
 
     // fixed 16 kHz ADC conversion-start rate
-    adc_set_clkdiv(ADC_CLKDIV);
+    adc_hw->div = ADC_CLKDIV_INTEGER << ADC_DIV_INT_LSB;
 
     dma_chan = dma_claim_unused_channel(true);
     dma_cfg = dma_channel_get_default_config(dma_chan);

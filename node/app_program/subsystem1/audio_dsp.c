@@ -23,10 +23,6 @@
 #define FFT_BINS ((FFT_SIZE / 2) + 1)
 
 // frequency band
-#define MIN_FREQ 125.0f
-#define LOW_END 500.0f
-#define MID_END 2000.0f
-#define MAX_FREQ 7500.0f
 
 // exact FFT-bin boundaries for 16 kHz / 512-point FFT
 // bin spacing = 16000 / 512 = 31.25 Hz
@@ -44,15 +40,10 @@
 #define FINAL_FEATURES 20
 
 // constants
-#define PI 3.14159265358979323846f
-#define EPSILON 1e-12f
 
 // approximately 125 Hz first-order HPF at 16 kHz
-#define HPF_ALPHA 0.953f
 
 // Q15 constants
-#define Q15_SCALE 32767.0f
-#define Q15_HEADROOM 30000.0f
 
 /*
 RP2040 ADC: 48 MHz ADC clock
@@ -64,8 +55,6 @@ adc_set_clkdiv() sets the average conversion-start period to:
 
 divider = 3000 - 1 = 2999
 */
-#define ADC_CLOCK_HZ 48000000.0f
-#define ADC_CLKDIV ((ADC_CLOCK_HZ / SAMPLE_RATE) - 1.0f)
 
 #include "dsp_tables.h"
 // AUDIO / DSP BUFFERS
@@ -92,16 +81,16 @@ static int32_t all_frame_features[NUM_FRAMES][FRAME_FEATURES]; // all Q8
 
 
 // precomputed Hamming window values
-// calculated once during startup instead of using cosf() for every frame
+// Frozen in dsp_tables.h; no startup trigonometry.
  // Q15
 
 // precomputed Q15 FFT twiddle factors
-// calculated once during startup instead of using cosf()/sinf() inside every FFT
+// Frozen in dsp_tables.h; no startup trigonometry.
 
 
 
 // precomputed DCT cosine values used by MFCC
-// calculated once during startup instead of using cosf() for every MFCC coefficient
+// Frozen in dsp_tables.h; no startup trigonometry.
  // Q14
 
 // precomputed Mel-filter weights
