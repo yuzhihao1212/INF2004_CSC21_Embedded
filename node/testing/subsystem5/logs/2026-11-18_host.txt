@@ -1,0 +1,27 @@
+S5 host run (S5-U01..U11 plus edge cases). Host only: not on a Pico W, so U12 and U13 are not covered.
+Date: 2026-11-18 13:04 +0800
+Commit: bf3c7f9 (tree clean; only untracked: .claude/ and this log file). S5 code and host tests here are identical to origin/main 6123d58.
+Machine: Darwin arm64
+Compiler: Apple clang version 17.0.0 (clang-1700.0.13.5)
+Python: Python 3.14.0
+
+$ cc -std=c11 -Wall -Wextra -Werror -I firmware/common/include node/testing/subsystem5/host/s5_protocol_host_test.c node/app_program/subsystem5/s5_protocol.c -o s5host
+compile exit: 0
+
+$ ./s5host | xxd   (asserts U01..U11 and edge cases, then writes one TELEMETRY + one CONFIG_ACK)
+run exit: 0
+bytes: 84 (expected 84 = 64 TELEMETRY + 20 ACK)
+00000000: 4d53 0201 0101 3000 0000 0000 e803 0000  MS....0.........
+00000010: 7b00 0000 1500 0000 40e2 0100 fb00 9102  {.......@.......
+00000020: 5203 0700 0000 0200 a000 0205 5a00 0500  R...........Z...
+00000030: 4001 0405 0500 5a00 021e 0b2a bf00 0000  @.....Z....*....
+00000040: 4d53 0203 0100 0400 0100 0000 2a00 0000  MS..........*...
+00000050: 0700 0000                                ....
+
+$ cd pc && python3 -m unittest tests.test_node_s5 -v   (decodes those bytes with the PC protocol code)
+test_logic_cases_and_c_python_wire_agreement (tests.test_node_s5.Subsystem5Protocol.test_logic_cases_and_c_python_wire_agreement) ... ok
+
+----------------------------------------------------------------------
+Ran 1 test in 0.347s
+
+OK
