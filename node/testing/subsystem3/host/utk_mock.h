@@ -10,6 +10,9 @@ typedef int32_t INT, W;
 typedef uint32_t UW;
 typedef struct { uint32_t lo; int32_t hi; } SYSTIM;
 #define IMPORT extern
+#define TMO_POL 0
+ER tk_loc_mtx(ID, int);
+ER tk_unl_mtx(ID);
 #define E_OK 0
 #define E_TMOUT (-50)
 #define E_OBJ (-41)

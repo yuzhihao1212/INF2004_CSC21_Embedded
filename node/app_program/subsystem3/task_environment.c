@@ -8,6 +8,35 @@
 
 static s3_service_t service; /* single owning task; inspect with debugger */
 static uint32_t progress;
+#if APP_TEST
+static s3_diagnostic_snapshot_t diagnostic_snapshot;
+static bool diagnostic_available;
+static uint32_t diagnostic_ms;
+
+bool s3_diagnostic_read(s3_diagnostic_snapshot_t *out)
+{
+    if (!out || tk_loc_mtx(mtx_stats, TMO_POL) != E_OK) return false;
+    bool available = diagnostic_available;
+    if (available) *out = diagnostic_snapshot;
+    (void)tk_unl_mtx(mtx_stats);
+    return available;
+}
+
+/* Called only by the peripheral owner. A busy mutex drops this snapshot. */
+static void diagnostic_publish(uint32_t completed)
+{
+    if (tk_loc_mtx(mtx_stats, TMO_POL) != E_OK) return;
+    diagnostic_snapshot.record = service.record;
+    diagnostic_snapshot.counts = service.diag;
+    diagnostic_snapshot.progress = completed;
+    diagnostic_snapshot.s5_errors = service.s5_errors;
+    diagnostic_snapshot.co2_warmed = service.co2.protocol.warmed;
+    diagnostic_snapshot.dht_active = service.dht.active;
+    diagnostic_snapshot.dht_stopping = service.dht.stopping;
+    diagnostic_available = true;
+    (void)tk_unl_mtx(mtx_stats);
+}
+#endif
 
 uint32_t s3_environment_progress(void)
 {
@@ -60,6 +89,14 @@ void environment_task(INT stacd, void *exinf)
         er = monotonic_ms(&now); /* S5 calls may have taken up to 30 ms */
         if (er != E_OK) { environment_exit(er, "S3 clock"); return; }
         s3_service_start_due(&service, now);
+#if APP_TEST
+        /* Leave the PIO/DMA capture service path untouched. */
+        if ((!service.dht.active || service.dht.stopping) &&
+            s3_elapsed(now, diagnostic_ms, 500)) {
+            diagnostic_publish(count + 1u);
+            diagnostic_ms = now;
+        }
+#endif
         /* Kernel tick is 10 ms; this is cooperative polling, not a busy wait. */
         er = tk_dly_tsk(10);
         if (er != E_OK) { environment_exit(er, "S3 delay"); return; }
