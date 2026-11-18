@@ -23,9 +23,6 @@ target_include_directories(audio_dsp PUBLIC
     ${CMAKE_CURRENT_LIST_DIR}
 )
 
-target_link_libraries(audio_dsp PUBLIC
-    m
-)
 
 # ============================================================
 # Microphone ADC + DMA capture module
@@ -63,6 +60,9 @@ pico_enable_stdio_usb(audio_benchmark 1)
 pico_enable_stdio_uart(audio_benchmark 0)
 
 pico_add_extra_outputs(audio_benchmark)
+target_compile_definitions(audio_benchmark PRIVATE PICO_PRINTF_SUPPORT_FLOAT=0 PICO_PRINTF_SUPPORT_EXPONENTIAL=0)
+pico_set_float_implementation(audio_benchmark none)
+pico_set_double_implementation(audio_benchmark none)
 
 # Own trained three-class model; retains the existing benchmark target.
 add_executable(audio_talking
@@ -70,9 +70,12 @@ add_executable(audio_talking
     classifier/dsp_int8_candidate.c classifier/classifier_probabilities.c
     audio_signal_quality.c
 )
-target_link_libraries(audio_talking PRIVATE pico_stdlib audio_capture audio_dsp m)
+target_link_libraries(audio_talking PRIVATE pico_stdlib audio_capture audio_dsp)
 target_compile_options(audio_talking PRIVATE -O2 -Wall -Wextra -Wno-array-parameter)
 target_compile_definitions(audio_talking PRIVATE PICO_STDIO_USB_STDOUT_TIMEOUT_US=2000 PICO_STACK_SIZE=4096)
 pico_enable_stdio_usb(audio_talking 1)
 pico_enable_stdio_uart(audio_talking 0)
 pico_add_extra_outputs(audio_talking)
+target_compile_definitions(audio_talking PRIVATE PICO_PRINTF_SUPPORT_FLOAT=0 PICO_PRINTF_SUPPORT_EXPONENTIAL=0)
+pico_set_float_implementation(audio_talking none)
+pico_set_double_implementation(audio_talking none)

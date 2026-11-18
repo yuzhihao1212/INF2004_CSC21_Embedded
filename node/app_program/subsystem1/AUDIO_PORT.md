@@ -13,7 +13,9 @@ S1 next calls the driver. Timeouts and queue rejection leave sequence gaps.
 The DSP processing maths and feature order are preserved. Startup tables are
 generated once on the host into `dsp_tables.h`, removing runtime libm dependencies.
 Regenerate using `py node/testing/subsystem1/generate_dsp.py`. The original
-standalone implementation remains under `firmware/audio/` as a reference.
+standalone implementation under `firmware/audio/` now uses the same integer-only
+tables. The historical comparison baseline is pinned by Git blob in the host
+generator/replay script and is never compiled into a Pico image.
 
 S2's classifier task runs on core 1 at priority 15 (core 0 under SMP=0).
 It receives copied feature records through a two-message buffer owned by S2.

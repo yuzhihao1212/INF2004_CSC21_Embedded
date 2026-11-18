@@ -1,0 +1,188 @@
+﻿
+C:\Users\nyikh\esproject\node\build_make\mtkernel_3\app_program\subsystem1\audio_dsp.o:
+         U __aeabi_idiv
+         U __aeabi_ldivmod
+         U __aeabi_lmul
+         U __aeabi_uidiv
+         U __aeabi_uldivmod
+         U memset
+
+C:\Users\nyikh\esproject\node\build_make\mtkernel_3\app_program\subsystem1\audio_signal_quality.o:
+         U __aeabi_lmul
+         U __aeabi_uldivmod
+
+C:\Users\nyikh\esproject\node\build_make\mtkernel_3\app_program\subsystem1\drv_audio.o:
+         U ClearInt
+         U dma_channel_unclaim
+         U dma_claim_unused_channel
+         U EnableInt
+         U memset
+         U tk_cre_sem
+         U tk_def_int
+         U tk_del_sem
+         U tk_sig_sem
+         U tk_wai_sem
+
+C:\Users\nyikh\esproject\node\build_make\mtkernel_3\app_program\subsystem1\subsystem1.o:
+         U app_start_task
+         U audio_task
+         U led_cyclic_handler
+         U led_task
+         U memset
+         U tk_cre_cyc
+         U tk_cre_tsk
+         U tk_sta_cyc
+         U tk_sta_tsk
+
+C:\Users\nyikh\esproject\node\build_make\mtkernel_3\app_program\subsystem1\subsystem1_test.o:
+
+C:\Users\nyikh\esproject\node\build_make\mtkernel_3\app_program\subsystem1\task_audio.o:
+         U __aeabi_uidiv
+         U audio_capture_start
+         U audio_capture_wait
+         U audio_clock_us
+         U audio_dsp_init
+         U audio_dsp_process
+         U audio_signal_quality
+         U mbf_audio_features
+         U memset
+         U s5_get_config
+         U tk_exd_tsk
+         U tk_snd_mbf
+         U tm_printf
+
+C:\Users\nyikh\esproject\node\build_make\mtkernel_3\app_program\subsystem1\task_led.o:
+         U gpio_set_pin
+         U gpio_set_val
+         U tid_led
+         U tk_can_wup
+         U tk_slp_tsk
+         U tk_wup_tsk
+
+C:\Users\nyikh\esproject\node\build_make\mtkernel_3\app_program\subsystem2\audio_inference.o:
+         U classifier_probabilities
+         U classifier_timing_step
+         U dsp_int8_predict
+         U memset
+
+C:\Users\nyikh\esproject\node\build_make\mtkernel_3\app_program\subsystem2\classifier_probabilities.o:
+         U __aeabi_lmul
+         U __aeabi_uidiv
+
+C:\Users\nyikh\esproject\node\build_make\mtkernel_3\app_program\subsystem2\classifier_timing.o:
+         U memset
+
+C:\Users\nyikh\esproject\node\build_make\mtkernel_3\app_program\subsystem2\dsp_int8_candidate.o:
+         U __aeabi_lmul
+
+C:\Users\nyikh\esproject\node\build_make\mtkernel_3\app_program\subsystem2\subsystem2.o:
+         U app_start_task
+         U classifier_task
+         U memset
+         U producer_task
+         U tk_cre_mbf
+         U tk_cre_mpf
+         U tk_cre_sem
+         U tk_cre_tsk
+         U tk_sta_tsk
+
+C:\Users\nyikh\esproject\node\build_make\mtkernel_3\app_program\subsystem2\subsystem2_test.o:
+
+C:\Users\nyikh\esproject\node\build_make\mtkernel_3\app_program\subsystem2\task_classifier.o:
+         U audio_clock_us
+         U classifier_event_name
+         U classify_audio
+         U mbf_audio_features
+         U memset
+         U s5_audio_dropped
+         U s5_post_audio_window
+         U tk_rcv_mbf
+         U tm_printf
+
+C:\Users\nyikh\esproject\node\build_make\mtkernel_3\app_program\subsystem2\task_producer.o:
+         U __aeabi_uidivmod
+         U mbx_samples
+         U mpf_samples
+         U sem_slots
+         U tk_dly_tsk
+         U tk_get_mpf
+         U tk_get_prc
+         U tk_get_tim
+         U tk_sig_sem
+         U tk_snd_mbx
+         U tk_wai_sem
+         U tm_printf
+
+C:\Users\nyikh\esproject\firmware\build\audio\CMakeFiles\audio_benchmark.dir\audio_benchmark.c.obj:
+         U __aeabi_lmul
+         U __aeabi_uidiv
+         U __aeabi_uidivmod
+         U __aeabi_uldivmod
+         U audio_capture_init
+         U audio_capture_next_window
+         U audio_dsp_init
+         U audio_dsp_process
+         U printf
+         U putchar
+         U puts
+         U sleep_ms
+         U stdio_init_all
+         U time_us_64
+
+C:\Users\nyikh\esproject\firmware\build\audio\CMakeFiles\audio_benchmark.dir\audio_signal_quality.c.obj:
+         U __aeabi_lmul
+         U __aeabi_uldivmod
+
+C:\Users\nyikh\esproject\firmware\build\audio\CMakeFiles\audio_capture.dir\audio_capture.c.obj:
+         U __assert_func
+         U adc_init
+         U dma_claim_unused_channel
+         U gpio_set_function
+         U gpio_set_input_enabled
+         U gpio_set_pulls
+         U irq_set_enabled
+         U irq_set_exclusive_handler
+
+C:\Users\nyikh\esproject\firmware\build\audio\CMakeFiles\audio_dsp.dir\audio_dsp.c.obj:
+         U __aeabi_idiv
+         U __aeabi_ldivmod
+         U __aeabi_lmul
+         U __aeabi_uldivmod
+         U memset
+
+C:\Users\nyikh\esproject\firmware\build\audio\CMakeFiles\audio_talking.dir\audio_signal_quality.c.obj:
+         U __aeabi_lmul
+         U __aeabi_uldivmod
+
+C:\Users\nyikh\esproject\firmware\build\audio\CMakeFiles\audio_talking.dir\audio_talking.c.obj:
+         U __aeabi_idiv
+         U __aeabi_idivmod
+         U __aeabi_uidiv
+         U __aeabi_uidivmod
+         U audio_capture_init
+         U audio_capture_next_window
+         U audio_dsp_init
+         U audio_dsp_process
+         U audio_signal_quality
+         U classifier_event_name
+         U classifier_probabilities
+         U classifier_timing_step
+         U dsp_int8_predict
+         U memset
+         U printf
+         U puts
+         U sleep_ms
+         U stdio_init_all
+         U stdio_set_translate_crlf
+         U stdio_usb
+         U time_us_64
+
+C:\Users\nyikh\esproject\firmware\build\audio\CMakeFiles\audio_talking.dir\classifier_timing.c.obj:
+         U memset
+
+C:\Users\nyikh\esproject\firmware\build\audio\CMakeFiles\audio_talking.dir\classifier\classifier_probabilities.c.obj:
+         U __aeabi_lmul
+         U __aeabi_uidiv
+
+C:\Users\nyikh\esproject\firmware\build\audio\CMakeFiles\audio_talking.dir\classifier\dsp_int8_candidate.c.obj:
+         U __aeabi_lmul
