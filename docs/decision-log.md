@@ -5,6 +5,15 @@ ideas we dropped. Status lines get updated in place; a reversed decision gets a 
 that links back. Entries dated before 14 Nov 2026 were backfilled on 14 Nov from the chat
 where they were decided and the commits that built them.
 
+## 2026-11-18 · Subsystem 5 records host test runs apart from hardware results
+- **From → to:** `subsystem5/TEST_LOG.md` had no results at all. It now has a "Host runs" table above "Results", with one PASS row for S5-U01…U11 on a PC and its saved log `logs/2026-11-18_host.txt`.
+- **Why:** ZhiHao asked to log S5's results after the team status check (chat, 18 Nov) showed S5 had none.
+- **Problem it solves:** S5's host tests had been run during development (PR #33) but no result was written down, so under the testing rules S5 counted as untested.
+- **Why this way:** the S5 log's own rule keeps "Results" for hardware runs. Putting host passes there (as subsystem 3 did, "provisional PASS") would look like board evidence. A separate table keeps both honest.
+- **Risks to watch:** readers may still take a host PASS for a hardware PASS. The sign that this worked: a U13 row in "Results" once a board is flashed.
+- **Verified:** ran the host binary and `tests.test_node_s5` at `bf3c7f9`; output saved in the log. Not verified: anything on a Pico W.
+- **Status:** built, not committed; branch `test/s5-host-results` (from `docs/restore-decision-log`, PR #42).
+
 ## 2026-11-16 · Demo controls button: clickable pause, skip and speed
 - **From → to:** the demo controls were keys only, with a hint that showed on hover (entry "Presenter keys for the simulated demo", below). Now a button at the end of the simulation strip opens a row with pause or play, next phase and 1×/2×/4×, plus the keys listed beside them. The keys still work.
 - **Why:** ZhiHao asked for a button that shows the controls, and picked option A from a mockup of three: A, a toggle that opens a clickable row; B, a help button that lists the keys only; C, a text button with the controls in the top row (chat, 16 Nov).
