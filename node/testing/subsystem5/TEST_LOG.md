@@ -33,6 +33,17 @@ Include `subsystem5.h` before `app.h`/other subsystem headers when using the
 protocol alongside kernel APIs; this uses the kernel's `PROHIBIT_DEF_SIZE_T`
 guard, like the template's `sys_arch.c`.
 
+## Host runs
+
+Runs of the pure S5 logic compiled for a PC, not on a Pico W. They check the
+protocol code and C/Python byte agreement, but they are not hardware evidence:
+U12 (live CONFIG/ACK) and U13 (target self-tests) need a flashed board. Add a
+new row for every host run. Never edit or delete old rows.
+
+| Date | Test ID | Commit | Tester | Result | Log / evidence | Notes |
+|---|---|---|---|---|---|---|
+| 2026-11-18 | S5-U01…U11 + edge cases | `bf3c7f9` | ZhiHao (run by Claude Code) | PASS (host) | `logs/2026-11-18_host.txt` | `host/s5_protocol_host_test.c` built with Apple clang 17, `-Wall -Wextra -Werror`, exit 0; 84 bytes out; `pc/tests/test_node_s5.py` decodes them: OK. U12, U13 not run. |
+
 ## Results
 
 Add a new row for every hardware run. Never edit or delete old rows.
