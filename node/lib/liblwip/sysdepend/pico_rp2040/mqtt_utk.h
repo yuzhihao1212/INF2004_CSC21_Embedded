@@ -15,4 +15,7 @@
  */
 void mqtt_utk_start(void);
 
+/* Call only from cyw43_utk_task(). Returns 1 while connected to the broker. */
+int mqtt_utk_is_connected(void);
+
 #endif /* MQTT_UTK_H */

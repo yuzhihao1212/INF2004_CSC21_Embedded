@@ -184,6 +184,11 @@ static void connection_cb(mqtt_client_t *c, void *arg, mqtt_connection_status_t 
 	}
 }
 
+int mqtt_utk_is_connected(void)
+{
+	return client != NULL && mqtt_client_is_connected(client);
+}
+
 void mqtt_utk_start(void)
 {
 	struct mqtt_connect_client_info_t	client_info = {0};
