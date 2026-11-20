@@ -1,0 +1,48 @@
+/* Click feedback ("press and glide", picked 20 Nov; see docs/decision-log.md).
+ * Loaded after style.css. Buttons sink a little while pressed and fade their
+ * colours. In each choice group (and the page tabs) one pill slides to the new
+ * choice: motion.js adds a .glide-ind element and the .glide class, so if the
+ * script doesn't run, style.css's own selected look is untouched.
+ * style.css's reduced-motion rule turns every transition and animation off;
+ * the press scale is also limited to people who haven't asked for less motion. */
+
+.btn, .chip-btn, .icon-btn, a.pill, .pages a, .segmented span, .sim-fan {
+  transition: transform .12s ease, background-color .25s ease, color .25s ease .05s,
+    border-color .25s ease, box-shadow .25s ease;
+}
+.icon-btn svg { transition: transform .4s var(--ease-spring); }
+
+@media (prefers-reduced-motion: no-preference) {
+  .btn:not(:disabled):not([aria-disabled="true"]):active, .chip-btn:active, .icon-btn:active,
+  a.pill:active, .pages a:active, .sim-fan:active { transform: scale(.95); }
+  .segmented input:not(:disabled):active + span { transform: scale(.95); }
+  .icon-btn.spin svg { animation: icon-spin .45s var(--ease-spring); }
+}
+@keyframes icon-spin { from { transform: rotate(-180deg) scale(.6); } to { transform: none; } }
+
+/* The sliding pill copies the selected look. In a choice group the other
+ * pills are opaque, so it slides over them and only the chosen label (.is-on,
+ * set by motion.js) sits above it. Page tabs are see-through, so it slides
+ * underneath them. */
+.segmented.glide, .pages.glide { position: relative; }
+.segmented.glide > label { position: relative; z-index: 0; }
+.segmented.glide > label.is-on { z-index: 2; }
+.pages.glide > a { position: relative; z-index: 1; }
+.glide-ind { position: absolute; left: 0; top: 0; width: 0; height: 0; z-index: 0; pointer-events: none;
+  border-radius: 999px; opacity: 0;
+  transition: transform .38s var(--ease-spring), width .38s var(--ease-spring), height .38s var(--ease-spring), opacity .2s ease; }
+.glide-ind.jump { transition: opacity .2s ease; }   /* Moving to another line: fade in, don't fly across */
+.glide-ind.on { opacity: 1; }
+.glide-ind.on.dim { opacity: .6; }   /* The chosen option is waiting (disabled), as in style.css */
+.segmented > .glide-ind { z-index: 1; background: var(--accent-control); }
+.pages > .glide-ind { background: var(--bg); box-shadow: inset 0 0 0 2px var(--accent); }
+
+@media (forced-colors: none) {
+  .segmented.glide input:checked + span { background: transparent; border-color: transparent; }
+  .pages.glide a[aria-current="page"] { background: transparent; box-shadow: none; }
+}
+@media (forced-colors: active) { .glide-ind { display: none; } }
+
+@media (min-width: 960px) {
+  .pages > .glide-ind { background: var(--accent-soft); box-shadow: none; }
+}

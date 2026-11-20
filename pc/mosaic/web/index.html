@@ -19,6 +19,7 @@
 <script type="importmap">{ "imports": { "three": "./three.module.min.js" } }</script>
 <link rel="preload" href="plus-jakarta-sans-latin.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="motion.css">
 <link rel="icon" href="logo.svg" type="image/svg+xml">
 </head>
 <body>
@@ -271,9 +272,20 @@
   <!-- 3. History -->
   <section class="page" data-page="history" aria-labelledby="h-history" hidden>
     <div class="page-head"><h1 id="h-history" class="page-title" tabindex="-1">History</h1></div>
-    <section class="card" aria-labelledby="h-events">
-      <h2 id="h-events">What happened</h2>
-      <ol class="timeline" id="timeline"></ol>
+    <section class="card log-card" aria-labelledby="h-events">
+      <div class="card-head">
+        <h2 id="h-events">What happened</h2>
+        <p class="log-sum" id="log-sum"></p>
+      </div>
+      <fieldset class="segmented small" id="log-filter">
+        <legend class="sr-only">Show changes in</legend>
+        <label><input type="radio" name="log-kind" value="all" checked><span>All <b class="log-n" data-kind="all"></b></span></label>
+        <label><input type="radio" name="log-kind" value="sound"><span>Sound <b class="log-n" data-kind="sound"></b></span></label>
+        <label><input type="radio" name="log-kind" value="air"><span>Air <b class="log-n" data-kind="air"></b></span></label>
+        <label><input type="radio" name="log-kind" value="comfort"><span>Comfort <b class="log-n" data-kind="comfort"></b></span></label>
+        <label><input type="radio" name="log-kind" value="alert"><span>Alerts <b class="log-n" data-kind="alert"></b></span></label>
+      </fieldset>
+      <ol class="log" id="timeline"></ol>
     </section>
     <section class="trends" aria-labelledby="h-trends">
       <div class="card-head">
@@ -285,18 +297,28 @@
           <label><input type="radio" name="range" value="600"><span>10 min</span></label>
         </fieldset>
       </div>
-      <div class="chips legend" id="legend" role="group" aria-label="Show sensors"></div>
+      <div class="chips legend" id="legend" role="group" aria-label="Show areas"></div>
+      <p class="chart-help" id="chart-help">Point at a chart, or select it and use the arrow keys, to read the values at a moment. Esc clears.</p>
+      <p class="readout" id="readout"></p>
       <div class="charts">
         <figure class="card chart-card">
+          <figcaption class="chart-title"><svg class="icon icon-sm" aria-hidden="true"><use href="#i-sound"/></svg>Sound (% of the noise limit)</figcaption>
+          <div class="chart" id="chart-loud" tabindex="0" role="slider" aria-describedby="chart-help"></div>
+          <p class="chart-summary" id="sum-loud"></p>
+          <details class="chart-table" id="tbl-loud"><summary>Show as table</summary></details>
+        </figure>
+        <figure class="card chart-card">
           <figcaption class="chart-title"><svg class="icon icon-sm" aria-hidden="true"><use href="#i-air"/></svg>Air (CO₂, ppm)</figcaption>
-          <div class="chart" id="chart-co2" role="img"></div>
+          <div class="chart" id="chart-co2" tabindex="0" role="slider" aria-describedby="chart-help"></div>
           <p class="chart-summary" id="sum-co2"></p>
           <div class="bands" aria-hidden="true"><span><i class="sw sw-good"></i>Fresh</span><span><i class="sw sw-fair"></i>Getting stuffy</span><span><i class="sw sw-poor"></i>Stuffy</span></div>
+          <details class="chart-table" id="tbl-co2"><summary>Show as table</summary></details>
         </figure>
         <figure class="card chart-card">
           <figcaption class="chart-title"><svg class="icon icon-sm" aria-hidden="true"><use href="#i-thermo"/></svg>Temperature (°C)</figcaption>
-          <div class="chart" id="chart-temp" role="img"></div>
+          <div class="chart" id="chart-temp" tabindex="0" role="slider" aria-describedby="chart-help"></div>
           <p class="chart-summary" id="sum-temp"></p>
+          <details class="chart-table" id="tbl-temp"><summary>Show as table</summary></details>
         </figure>
       </div>
     </section>
@@ -488,5 +510,6 @@
 
 <script src="intro.js"></script>
 <script src="app.js"></script>
+<script src="motion.js"></script>
 </body>
 </html>

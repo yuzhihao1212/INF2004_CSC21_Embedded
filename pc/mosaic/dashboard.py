@@ -199,6 +199,8 @@ class Dashboard:
             round(t.humidity_pct, 1) if p.Valid.TEMP_HUM in v else None,
             t.co2_ppm if p.Valid.CO2 in v else None,
             t.pir_active_pct if p.Valid.PIR in v else None,
+            # Latest audio window's AC RMS (ADC counts), for the History sound chart
+            t.latest_audio.rms_x16 / 16 if t.latest_audio else None,
         ]
         points = self.history.setdefault(header.node_id, deque())
         points.append(point)

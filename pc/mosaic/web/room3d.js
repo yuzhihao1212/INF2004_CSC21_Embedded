@@ -260,8 +260,11 @@ export function createRoom(host, { onZoneClick } = {}) {
       const tag = document.createElement("div"); tag.className = "r3-tag"; tag.innerHTML = "<i></i><span></span>";
       tag.lastChild.textContent = z.node;
       overlay.append(label, tag);
-      return { id: z.id, a, b, cx: (a + b) / 2, tile, line, led, label, tag, color: new THREE.Color(0x888888),
-               anchor: new THREE.Vector3(px, .1, 7.7), labelAnchor: new THREE.Vector3((a + b) / 2, 2.72, .05) };
+      return { id: z.id, lecturer: !!z.lecturer, a, b, cx: (a + b) / 2, tile, line, led, label, tag, color: new THREE.Color(0x888888),
+               anchor: new THREE.Vector3(px, .1, 7.7),
+               // The lecturer's label sits on the front wall over the whiteboard's
+               // centre; the others sit on the side wall above their own band.
+               labelAnchor: z.lecturer ? new THREE.Vector3(-.07, 2.5, 4.45) : new THREE.Vector3((a + b) / 2, 2.72, .05) };
     });
     pools = zones.map((z) => { const l = new THREE.PointLight(0xffd7a8, 0, 7, 1.6); l.position.set(z.cx, 2.3, 4); world.add(l); return l; });
 
@@ -354,6 +357,44 @@ export function createRoom(host, { onZoneClick } = {}) {
     el.style.visibility = "";
     const x = (v3.x * .5 + .5) * host.clientWidth, y = (-v3.y * .5 + .5) * host.clientHeight;
     el.style.transform = `translate(${x.toFixed(1)}px, ${y.toFixed(1)}px) translate(${dx}, ${dy})`;
+  }
+
+  // The room's outline on screen: the convex hull of the floor slab and the two
+  // walls. Everything else in the room is lower than the 2.5 m walls and sits
+  // on the slab, so a label kept outside this outline never covers the model.
+  const BOUNDS = [[-.3, 12.3, -.36, 0, -.3, 8.3], [-.14, 0, 0, 2.5, 0, 8], [-.14, 12, 0, 2.5, -.14, 0]]
+    .flatMap(([x0, x1, y0, y1, z0, z1]) => [x0, x1].flatMap((x) => [y0, y1].flatMap((y) => [z0, z1].map((z) => new THREE.Vector3(x, y, z)))));
+  function roomOutline() {
+    const pts = BOUNDS.map((p) => { v3.copy(p).project(camera); return { x: (v3.x * .5 + .5) * host.clientWidth, y: (-v3.y * .5 + .5) * host.clientHeight }; })
+      .sort((a, b) => a.x - b.x || a.y - b.y);
+    const cross = (o, a, b) => (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x);
+    const half = (list) => { const h = []; for (const p of list) { while (h.length > 1 && cross(h[h.length - 2], h[h.length - 1], p) <= 0) h.pop(); h.push(p); } h.pop(); return h; };
+    const hull = [...half(pts), ...half([...pts].reverse())];
+    return hull.map((p, i) => [p, hull[(i + 1) % hull.length]]);
+  }
+  // Place a label's bottom centre at world3, but keep its whole box above the
+  // room's outline and inside the view. If there's no room above the outline
+  // there, slide it left (toward the front of the room, where the wall top is
+  // lower, or clear of the room altogether).
+  function placeClear(el, world3, gap = 6) {
+    v3.copy(world3).project(camera);
+    if (v3.z > 1) { el.style.visibility = "hidden"; return; }
+    el.style.visibility = "";
+    const W = host.clientWidth, ax = (v3.x * .5 + .5) * W, ay = (-v3.y * .5 + .5) * host.clientHeight;
+    const w = el.offsetWidth, h = el.offsetHeight, edges = roomOutline();
+    // Lowest bottom (screen y) for a label centred on x that clears the outline.
+    const bottomAt = (x) => {
+      let y = Infinity;
+      for (const [a, b] of edges) {
+        const lo = Math.max(x - w / 2, Math.min(a.x, b.x)), hi = Math.min(x + w / 2, Math.max(a.x, b.x));
+        if (lo > hi || a.x === b.x) continue;   // this edge isn't under the label
+        for (const sx of [lo, hi]) y = Math.min(y, a.y + (sx - a.x) / (b.x - a.x) * (b.y - a.y) - gap);
+      }
+      return y === Infinity ? Math.max(ay - gap, h + 2) : Math.min(ay - gap, y);   // clear of the room: stay level with the anchor
+    };
+    let x = Math.min(Math.max(ax, w / 2 + 2), W - w / 2 - 2), y = bottomAt(x);
+    for (let i = 0; i < 200 && y - h < 2 && x - w / 2 > 2; i++) { x -= 3; y = bottomAt(x); }
+    el.style.transform = `translate(${x.toFixed(1)}px, ${y.toFixed(1)}px) translate(-50%, -100%)`;
   }
 
   function updateStudent(p, t, dt, zd) {
@@ -486,7 +527,8 @@ export function createRoom(host, { onZoneClick } = {}) {
       z.led.material.emissiveIntensity = d.offline ? 0 : 2 + .3 * Math.sin(t * 2 + i);
       z.led.material.color.setHex(d.offline ? 0x555a62 : 0x3ddc84);
       z.hazeNow = damp(z.hazeNow ?? 0, d.offline ? 0 : d.haze || 0, .6, dt);
-      place(z.label, z.labelAnchor); place(z.tag, z.anchor, "-50%", "10px");
+      if (z.lecturer) placeClear(z.label, z.labelAnchor); else place(z.label, z.labelAnchor);
+      place(z.tag, z.anchor, "-50%", "10px");
     });
     haze.forEach((s) => {
       const u = s.userData, z = zones.find((q) => u.x >= q.a && u.x < q.b);
