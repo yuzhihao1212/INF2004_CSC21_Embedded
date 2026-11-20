@@ -69,6 +69,12 @@ static T_CYW43_UTK_STATUS radio_status = {
 };
 
 #if TM_NET_LWIP
+#ifndef STATUS_LED_WL_GPIO
+#define STATUS_LED_WL_GPIO 0 /* WL_GPIO 0 is the Pico W on-board LED. */
+#endif
+
+enum { LED_STEADY = 0, LED_FAST_US = 125000, LED_SLOW_US = 500000 };
+
 static const char *link_status_str(int32_t status)
 {
     switch(status) {
@@ -202,7 +208,9 @@ static int scan_result(void *env, const cyw43_ev_scan_result_t *result)
 
 void cyw43_utk_task(int32_t stacd, void *exinf)
 {
-#if !TM_NET_LWIP
+#if TM_NET_LWIP
+    bool radio_up = false;
+#else
     cyw43_wifi_scan_options_t options = {0};
     bool was_scanning;
 #endif
@@ -236,6 +244,7 @@ void cyw43_utk_task(int32_t stacd, void *exinf)
         (void)cyw43_wifi_get_mac(&cyw43_state, CYW43_ITF_STA,
                                  radio_status.mac);
 #if TM_NET_LWIP
+        radio_up = true;
         /* Join instead of scan: with lwIP wired in, the point of coming up
          * is a working network, not a diagnostic scan. cyw43_cb_tcpip_init()
          * already ran (from inside cyw43_wifi_set_up() above) and started
@@ -269,13 +278,21 @@ void cyw43_utk_task(int32_t stacd, void *exinf)
     /* A failed bus has nothing useful to poll.  More importantly, repeatedly
      * waking a failed high-rate service must not interfere with USB or the
      * rest of the kernel qualification. */
+#if TM_NET_LWIP
+    /* A rejected join request still leaves a working radio and LED. */
+    if(!radio_up) {
+#else
     if(result != 0) {
+#endif
         for(;;) (void)tk_dly_tsk(1000);
     }
 
 #if TM_NET_LWIP
     int32_t  prev_link_status = radio_status.link_status;
-    uint64_t rejoin_at = 0;
+    uint64_t rejoin_at = result != 0 ? time_us_64() + WIFI_REJOIN_DELAY_US : 0;
+    int led_half_period = -1;
+    uint64_t led_toggle_at = 0;
+    bool led_on = false;
 #endif
 
     for(;;) {
@@ -300,16 +317,15 @@ void cyw43_utk_task(int32_t stacd, void *exinf)
                           (int)radio_status.link_status);
             }
 
-            /* Negative == the association attempt is over and lost. Arm a
-             * retry; a positive-but-not-UP status (JOIN/NOIP) is still making
-             * progress, so leave it alone and let DHCP finish. */
-            rejoin_at = (radio_status.link_status < 0)?
+            /* Retry a lost association or down link. JOIN/NOIP is still
+             * making progress, so leave it alone and let DHCP finish. */
+            rejoin_at = (radio_status.link_status <= CYW43_LINK_DOWN)?
                         time_us_64() + WIFI_REJOIN_DELAY_US: 0;
         }
 
         if(rejoin_at != 0 && time_us_64() >= rejoin_at) {
             rejoin_at = 0;
-            if(radio_status.link_status < 0) {
+            if(radio_status.link_status <= CYW43_LINK_DOWN) {
                 (void)wifi_try_join();
                 /* Force the next iteration to treat whatever comes back as a
                  * change, so the new outcome is always reported. Must be a
@@ -342,6 +358,42 @@ void cyw43_utk_task(int32_t stacd, void *exinf)
             mqtt_utk_start();
         }
 #endif
+        int half_period = LED_FAST_US;
+        const char *pattern = "fast (wifi joining or down)";
+        if(radio_status.link_status == CYW43_LINK_UP) {
+#if TM_MQTT
+            if(mqtt_utk_is_connected()) {
+                half_period = LED_STEADY;
+                pattern = "steady (mqtt connected)";
+            } else {
+                half_period = LED_SLOW_US;
+                pattern = "slow (mqtt disconnected)";
+            }
+#else
+            half_period = LED_STEADY;
+            pattern = "steady (wifi up)";
+#endif
+        }
+
+        uint64_t now = time_us_64();
+        bool on = led_on;
+        if(half_period != led_half_period) {
+            led_half_period = half_period;
+            on = true;
+            led_toggle_at = now + half_period;
+            tm_printf((UB*)"led: %s\n", pattern);
+        } else if(half_period != LED_STEADY && now >= led_toggle_at) {
+            on = !led_on;
+            led_toggle_at = now + half_period;
+        }
+        if(on != led_on) {
+            /* MQTT state is current after sys_check_timeouts(). Re-enter
+             * briefly for the GPIO write so this edge uses that state. */
+            cyw43_thread_enter();
+            cyw43_gpio_set(&cyw43_state, STATUS_LED_WL_GPIO, on);
+            cyw43_thread_exit();
+            led_on = on;
+        }
 #endif
         (void)tk_dly_tsk(CYW43_POLL_MS);
     }
