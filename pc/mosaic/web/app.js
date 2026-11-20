@@ -5,7 +5,7 @@
 
   const POLL_MS = 1000;
   const SVG_NS = "http://www.w3.org/2000/svg";
-  const PAGES = { live: "Live room", history: "History", sensors: "Sensors", setup: "Setup" };
+  const PAGES = { live: "Live room", history: "History", sensors: "Sensors" };  // Setup is a dialog over these
   const OLD_PAGES = { overview: "live", map: "live" };  // Links from before the Live room
   const KICKER = { fine: "All good", heads_up: "Heads up", act_now: "Act now", none: "Waiting" };
   // Area looks on the Live room map (docs/ui_design.md): zone activity -> look
@@ -99,8 +99,35 @@
   }
 
   /* ---- Pages: #/live ... #/setup; Back/Forward and links work ---- */
+  /* Setup opens as a dialog over the page you're on (blurred behind it), so you
+   * can try a setting and see the Live room react without losing your place.
+   * #/setup links still work: they open the dialog and the address goes back. */
+  const setupDialog = $("#setup-dialog");
+  function openSetup() {
+    if (!setupDialog.open) setupDialog.showModal();
+    $$('.pages a[data-page="setup"]').forEach((a) => a.setAttribute("aria-expanded", "true"));
+    $("#h-setup").focus();
+    if (state) renderSetup();
+  }
+  setupDialog.addEventListener("close", () => {
+    $$('.pages a[data-page="setup"]').forEach((a) => a.setAttribute("aria-expanded", "false"));
+  });
+  $("#setup-close").addEventListener("click", () => setupDialog.close());
+  setupDialog.addEventListener("click", (e) => { if (e.target === setupDialog) setupDialog.close(); });  // Click on the blur
+  $$('.pages a[data-page="setup"]').forEach((a) => {
+    a.setAttribute("aria-haspopup", "dialog");
+    a.setAttribute("aria-expanded", "false");
+    a.addEventListener("click", (e) => { e.preventDefault(); openSetup(); });
+  });
+
   function route(fromUser) {
     const [raw, arg] = location.hash.replace(/^#\/?/, "").split("/");
+    if (raw === "setup") {  // Open over the current page and put the address back
+      history.replaceState(null, "", page === "live" ? "#/live" : `#/${page}`);
+      route(false);
+      openSetup();
+      return;
+    }
     const id = OLD_PAGES[raw] || raw;
     page = PAGES[id] ? id : "live";
     if (raw === "map" && arg) selectedZone = decodeURIComponent(arg);
@@ -1908,7 +1935,7 @@
     if (page === "live") renderLive();
     else if (page === "history") renderHistory();
     else if (page === "sensors") renderSensors();
-    else if (page === "setup") renderSetup();
+    if (setupDialog.open) renderSetup();
     if (page !== "live" && fb()) {  // Keep the headline announcement current on every page
       if (lastHeadline !== null && lastHeadline !== fb().headline) announcer.textContent = `${fb().headline}. ${fb().summary}`;
       lastHeadline = fb().headline;
