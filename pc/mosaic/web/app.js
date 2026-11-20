@@ -345,6 +345,7 @@
     lastHeadline = f.headline;
 
     renderPlan($("#zone-map"), mapMetric);
+    renderPeople();
     renderKey();
     renderZoneDetail();
     renderLoudness(f);
@@ -627,11 +628,12 @@
     const rebuilt = container.dataset.key !== key;
     if (rebuilt) buildPlan(container, portrait, compact, f.zones, key);
     container.dataset.metric = metric;  // Footsteps only in the Movement view
-    const view = portrait ? "flat" : mapView;
+    const view = portrait ? "flat" : mapView === "people" ? "3d" : mapView;
     if (container.dataset.view !== view) { container.dataset.view = view; labelBurst(); }
     $("#map-view").hidden = portrait;
     if (view === "3d") fit3D(container);
     $("#map-front").textContent = portrait ? "Front of the room at the top"
+      : mapView === "people" ? "Drag to look around"
       : view === "3d" ? "Whiteboard on the far left wall" : "Front of the room on the left";
     const czones = (state.classroom && state.classroom.zones) || [];
     for (const z of f.zones) {
@@ -665,7 +667,8 @@
       el.style.setProperty("--heat", String(offline || !cz ? 0 : heatOf(cz.temperature_c)));
       el.style.setProperty("--steps", String(offline || !cz ? 0 : stepsOf(cz.motion_pct)));
       if (!compact) el.setAttribute("aria-pressed", String(z.zone === selectedZone));
-      el.setAttribute("aria-label", `${z.name}: ${label}${detail ? ", " + detail : ""}.${m.why ? " " + m.why : ""}`);
+      $$(`.plan-node[data-node-zone="${CSS.escape(z.zone)}"]`, container).forEach((t) => { t.dataset.offline = String(offline); });
+      el.setAttribute("aria-label", `${z.name}, ${nodeName(z).toLowerCase()}: ${label}${detail ? ", " + detail : ""}.${m.why ? " " + m.why : ""}`);
       const st = $(".plan-state", el);
       st.dataset.level = level;
       $("span", st).textContent = label;
@@ -699,6 +702,14 @@
       const [x0, y0] = P(g.u0, g.v0), [x1, y1] = P(g.u1, g.v1);
       const [sx, sy] = P((g.u0 + g.u1) / 2, g.v1 - 0.08);
       svg("circle", { cx: sx, cy: sy, r: 8, class: "room-sensor" }, root);
+      const tag = make("span", "plan-node", nodeName(z));  // Flat: lies on the floor beside the dot
+      tag.dataset.nodeZone = z.zone;  // Not data-zone: that finds the area button
+      tag.setAttribute("aria-hidden", "true");  // The zone button names it
+      Object.assign(tag.style, { left: pct(sx, vbW), top: pct(sy, vbH) });
+      const dot = make("span", "plan-dot");  // 1 px marker on the dot, for the 3D tag to follow
+      dot.dataset.nodeZone = z.zone;
+      Object.assign(dot.style, { left: pct(sx, vbW), top: pct(sy, vbH) });
+      nodes.push(tag, dot);
       const el = make("button", "plan-zone");
       el.dataset.zone = z.zone;
       el.type = "button";
@@ -730,7 +741,9 @@
       const lab = make("div", "plan-label");
       lab.dataset.zone = z.zone;
       lab.append(make("span", "plan-name", z.name), make("span", "plan-word"), make("span", "plan-detail"));
-      labels.append(lab);
+      const up = make("span", "plan-node plan-node-up", nodeName(z));  // 3D: stands upright at the dot
+      up.dataset.nodeZone = z.zone;
+      labels.append(lab, up);
     }
     container.replaceChildren(plane, labels);
   }
@@ -766,14 +779,65 @@
     }
   }
 
-  /* Map view: flat (as drawn) or 3D (tilted). Phones are always flat. */
+  /* People view: the room in real 3D (room3d.js, three.js), with people acting
+   * out each area's state. Loaded on first use; phones stay flat; if WebGL is
+   * missing the page falls back to the 3D plan. */
+  let room3d = null, room3dLoading = false, room3dFailed = false;
+  const isDark = () => { const t = document.documentElement.dataset.theme; return t ? t === "dark" : matchMedia("(prefers-color-scheme: dark)").matches; };
+  function peopleData() {
+    const f = fb(), cl = state.classroom || {}, czones = cl.zones || [];
+    const ordered = [...f.zones].sort((a, b) => Number(b.lecturer_area) - Number(a.lecturer_area));  // Lecturer's area first
+    const zones = ordered.map((z) => {
+      const cz = czones.find((c) => c.zone === z.zone) || {};
+      const offline = z.status === "Not connected", tech = z.activity.tech;
+      let look = ACT_LOOK[tech] || LEVEL_LOOK[z.activity.level] || "none";
+      if (tech === "TALKING" && z.activity.level === "fine") look = "settled";  // Group work: talking is expected
+      return { id: z.zone, name: z.name, node: nodeName(z), word: offline ? "Not connected" : z.activity.label, look, lecturer: !!z.lecturer_area,
+               talking: tech === "TALKING" || tech === "LOUD", loud: tech === "LOUD", offline,
+               haze: cz.co2_ppm == null ? 0 : clamp((cz.co2_ppm - 800) / 600, 0, 1),
+               warm: cz.temperature_c != null && cz.temperature_c >= 27, motion: !!cz.motion_active };
+    });
+    const sim = state.simulation;
+    return { dark: isDark(), occupied: cl.occupied !== false && cl.activity !== "EMPTY", mode: cl.mode,
+             walkers: Math.min(2, zones.filter((z) => !z.lecturer && z.motion && !z.offline).length),
+             ventilation: sim && typeof sim.ventilation === "boolean" ? sim.ventilation : null, zones };
+  }
+  function renderPeople() {
+    const host = $("#room3d"), plan = $("#zone-map");
+    const width = $("#map-key").clientWidth || plan.clientWidth;
+    const on = mapView === "people" && width >= 560 && !room3dFailed;
+    host.hidden = !on;
+    plan.hidden = on;
+    if (!on) { if (room3d) room3d.stop(); return; }
+    if (!room3d) {
+      if (!room3dLoading) {
+        room3dLoading = true;
+        import("./room3d.js")
+          .then((m) => {
+            room3d = m.createRoom(host, { onZoneClick: openZone });
+            if (new URLSearchParams(location.search).has("debug")) window.__room3d = room3d;  // Test hook: step and snapshot
+          })
+          .catch((err) => {
+            room3dFailed = true;
+            console.warn("People view unavailable:", err);
+            announcer.textContent = "The People view can't run in this browser, so the map shows 3D.";
+          })
+          .finally(() => { room3dLoading = false; if (state) renderLive(); });
+      }
+      return;
+    }
+    room3d.update(peopleData());
+    room3d.start();
+  }
+
+  /* Map view: flat (as drawn), 3D (tilted) or People. Phones are always flat. */
   let mapView = "3d";
-  try { if (localStorage.getItem("mosaic-view") === "flat") mapView = "flat"; } catch (e) { /* Blocked */ }
+  try { const v = localStorage.getItem("mosaic-view"); if (v === "flat" || v === "people") mapView = v; } catch (e) { /* Blocked */ }
   $$('input[name="map-view"]').forEach((r) => {
     r.checked = r.value === mapView;
     r.addEventListener("change", () => {
       mapView = r.value;
-      store("mosaic-view", mapView === "flat" ? "flat" : null);
+      store("mosaic-view", mapView === "3d" ? null : mapView);
       if (state) renderLive();
       labelBurst();
     });
@@ -795,6 +859,13 @@
       const a = anchor.getBoundingClientRect();
       lab.style.left = `${a.left - box.left}px`;
       lab.style.top = `${a.top - box.top}px`;
+    });
+    $$(".plan-node-up", container).forEach((up) => {
+      const dot = $(`.plan-dot[data-node-zone="${CSS.escape(up.dataset.nodeZone)}"]`, container);
+      if (!dot) return;
+      const d = dot.getBoundingClientRect();  // Wherever the tilt puts the dot
+      up.style.left = `${d.left - box.left}px`;
+      up.style.top = `${d.top - box.top}px`;
     });
   }
   let burstEnd = 0;
@@ -875,6 +946,9 @@
     $("#sim-next").disabled = last;
     $("#sim-next").title = last ? "Already on the last phase" : "Next phase";
     document.querySelectorAll('input[name="sim-rate"]').forEach((r) => { r.checked = Number(r.value) === sim.rate; });
+    const fan = $("#sim-fan");
+    fan.setAttribute("aria-pressed", String(!!sim.ventilation));
+    fan.textContent = sim.ventilation ? "Fresh-air fan on" : "Fresh-air fan";
   }
   async function simControl(body) {
     try {
@@ -882,6 +956,7 @@
       renderSim();
       const s = state.simulation;
       announcer.textContent = body.pause !== undefined ? (s.paused ? "Script paused" : "Script playing")
+        : body.ventilation !== undefined ? (s.ventilation ? "Fresh-air fan on: CO₂ will fall" : "Fresh-air fan off")
         : body.rate ? `Script speed ${s.rate}×` : `Phase ${s.phase + 1}: ${s.label}`;
     } catch (err) {
       announcer.textContent = err.message;
@@ -895,6 +970,7 @@
   });
   $("#sim-play").addEventListener("click", () => state.simulation && simControl({ pause: !state.simulation.paused }));
   $("#sim-next").addEventListener("click", () => simControl({ next: true }));
+  $("#sim-fan").addEventListener("click", () => state.simulation && simControl({ ventilation: !state.simulation.ventilation }));
   document.querySelectorAll('input[name="sim-rate"]').forEach((r) =>
     r.addEventListener("change", () => simControl({ rate: Number(r.value) })));
   document.addEventListener("keydown", (e) => {
@@ -1034,6 +1110,10 @@
       return b;
     }));
   }
+
+  /* The board's own name, as printed on it and in its MQTT topic: the lecturer's
+   * area holds the reference node, every other area is "Node <id>". */
+  const nodeName = (z) => (z.lecturer_area ? "Reference node" : `Node ${z.node_id}`);
 
   function sensorName(id) {
     const z = fb() && fb().zones.find((x) => x.node_id === id);

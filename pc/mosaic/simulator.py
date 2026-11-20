@@ -37,6 +37,8 @@ from mosaic import scenarios
 
 CO2_WARMUP_S = 10.0  # Real ACD1100 is 120 s; shortened so tests see both states
 DRIFT = 1 / 30       # Per report, CO2 and temperature move this share of the way to target
+VENT_PPM = 520.0     # Fresh-air fan on: CO2 heads towards outdoor air (about 420) plus the people in the room
+VENT_SPEEDUP = 4     # ... and gets there this many times faster than the script's own drift
 
 
 @dataclass
@@ -179,14 +181,17 @@ class Simulator:
             pir = rng.choice([0, 0, 10, 40, 80, 100])
         else:
             zone = phase[1].zone(node.node_id)
+            vent = self.clock.ventilation
+            co2_target = min(zone.co2_ppm, VENT_PPM) if vent else zone.co2_ppm
             if node.seen_jumps != self.clock.jumps:  # Skipped ahead: the room is already in the new phase
                 node.seen_jumps = self.clock.jumps
                 node.temperature_c, node.humidity_pct = zone.temperature_c, zone.humidity_pct
-                node.co2_ppm = zone.co2_ppm
+                node.co2_ppm = co2_target
             drift = 1 - (1 - DRIFT) ** self.clock.drift_rate  # Same catch-up per script second at 2x and 4x
+            co2_drift = 1 - (1 - DRIFT * (VENT_SPEEDUP if vent else 1)) ** self.clock.drift_rate
             node.temperature_c += (zone.temperature_c - node.temperature_c) * drift + rng.gauss(0, 0.03)
             node.humidity_pct += (zone.humidity_pct - node.humidity_pct) * drift + rng.gauss(0, 0.1)
-            node.co2_ppm += (zone.co2_ppm - node.co2_ppm) * drift + rng.gauss(0, 3.0)
+            node.co2_ppm += (co2_target - node.co2_ppm) * co2_drift + rng.gauss(0, 3.0)
             # Audio is stamped from its TRUE completion time, before report
             # batching/jitter. All nodes hear the same lecturer envelope, sampled
             # on their independent audio clocks. Phase transitions are not dated
