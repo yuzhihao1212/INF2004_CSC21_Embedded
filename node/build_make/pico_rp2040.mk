@@ -308,6 +308,7 @@ CYW43_OBJS := ./mtkernel_3/cyw43/cyw43_ll.o \
               ./mtkernel_3/cyw43/cyw43_bus_pio_spi.o \
               ./mtkernel_3/cyw43/pio.o \
               ./mtkernel_3/cyw43/dma.o \
+              ./mtkernel_3/cyw43/adc.o \
               ./mtkernel_3/cyw43/gpio.o
 
 WIFI_INCLUDES := -I"$(WIFIDIR)" \
@@ -331,6 +332,7 @@ WIFI_INCLUDES := -I"$(WIFIDIR)" \
                  -I"$(PICO_SDK_PATH)/src/rp2_common/hardware_pio/include" \
                  -I"$(PICO_SDK_PATH)/src/rp2_common/hardware_gpio/include" \
                  -I"$(PICO_SDK_PATH)/src/rp2_common/hardware_dma/include" \
+                 -I"$(PICO_SDK_PATH)/src/rp2_common/hardware_adc/include" \
                  -I"$(PICO_SDK_PATH)/src/rp2_common/hardware_irq/include" \
                  -I"$(PICO_SDK_PATH)/src/rp2_common/hardware_sync/include" \
                  -I"$(PICO_SDK_PATH)/src/rp2_common/hardware_sync_spin_lock/include" \
@@ -380,6 +382,11 @@ mtkernel_3/cyw43/pio.o: $(PICO_SDK_PATH)/src/rp2_common/hardware_pio/pio.c
 	$(GCC) $(CFLAGS) -D$(TARGET) $(INCPATH) -MF"$(@:%.o=%.d)" -MT"$(@)" -c -o "$@" "$<"
 
 mtkernel_3/cyw43/dma.o: $(PICO_SDK_PATH)/src/rp2_common/hardware_dma/dma.c
+	@mkdir -p "$(@D)"
+	$(GCC) $(CFLAGS) -D$(TARGET) $(INCPATH) -MF"$(@:%.o=%.d)" -MT"$(@)" -c -o "$@" "$<"
+
+# S1 uses the same SDK ADC initialization as its standalone reference.
+mtkernel_3/cyw43/adc.o: $(PICO_SDK_PATH)/src/rp2_common/hardware_adc/adc.c
 	@mkdir -p "$(@D)"
 	$(GCC) $(CFLAGS) -D$(TARGET) $(INCPATH) -MF"$(@:%.o=%.d)" -MT"$(@)" -c -o "$@" "$<"
 

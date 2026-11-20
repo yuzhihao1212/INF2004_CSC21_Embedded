@@ -34,9 +34,14 @@ void classifier_task(INT stacd,void *exinf)
         if (s5_post_audio_window(&out,in.dsp_us,(uint32_t)(end-start))!=E_OK) {
             ++dropped; state=(classifier_timing_state_t){0};
         }
-        if (++logged%4==0)
+        if (++logged%4==0) {
             tm_printf((UB*)"audio seq=%u class=%u p=%u/%u/%u event=%s dsp_us=%u ml_us=%u\n",
                 in.sequence,out.audio_class,out.prob_pct[0],out.prob_pct[1],out.prob_pct[3],
                 classifier_event_name(event),in.dsp_us,(uint32_t)(end-start));
+            tm_printf((UB*)"audio input seq=%u min=%u max=%u mean_q8=%u rms_q8=%u clipped=%u threshold=%u capture_us=%u features_q8=",
+                in.sequence,in.adc_min,in.adc_max,in.adc_mean_q8,in.rms_q8,in.clipped,in.threshold_pct,in.capture_us);
+            for (unsigned i=0;i<20;++i)
+                tm_printf((UB*)"%d%s",in.features[i],i==19?"\n":",");
+        }
     }
 }
