@@ -5,6 +5,24 @@ ideas we dropped. Status lines get updated in place; a reversed decision gets a 
 that links back. Entries dated before 14 Nov 2026 were backfilled on 14 Nov from the chat
 where they were decided and the commits that built them.
 
+## 2026-11-20 · People view: lecturer's label sits above the whiteboard
+- **From → to:** in the 3D People view, the "Lecturer's area" label sat on top of the side wall by the door, at the very top of the view, where its first line was cut off. Now it sits above the front wall over the whiteboard's centre, in the empty space left of the room.
+- **Why:** ZhiHao asked for it to stay visible and picked option A ("above the board") from the mockup, adding that the words must not run onto the 3D model (chat, 20 Nov).
+- **Problem it solves:** at the default camera the label was clipped by the top edge of the view, so the lecturer's state ("Lecturer speaking") was half hidden during the demo.
+- **Why this way:** `room3d.js` keeps the label's whole box above the room's on-screen outline (the hull of the floor slab and both walls) and inside the view. Where there's no space above the wall, it slides left toward the front of the room, or clear of it. Rejected: option B, writing it on the board itself (covers the board, and the lecturer walks in front of it). Rejected: a fixed position over the board centre with no check (its top line still clipped, and at side angles it overlapped the wall).
+- **Risks to watch:** at the steepest top-down tilt there's no clear space at all; the label then sits off the top of the view, as the other area labels already do there. The other labels still use the old placement.
+- **Verified:** in the browser preview (simulated demo, 1400×900): at the default view the whole label shows above the board and clear of the wall; also checked at both side limits and the flattest tilt. Not checked: dark mode, narrow widths, a real node.
+- **Status:** built, not committed; it's in the same working tree as the node-health change (branch `feat/node-health`).
+
+## 2026-11-20 · Node health: a dot per node in the header, a health card per node on Sensors
+- **From → to:** the header said "All 4 sensors working" (on a fault: "3 of 4 sensors working: middle rows not connected", which wrapped), and the Sensors page showed health as one "Working" chip and a line of small text. Now the header shows one dot per configured node (filled working, ring delayed, dashed offline) with "4/4 nodes" or the node that needs attention ("Node 3 offline · 12 s"); hovering lists every node. The Sensors page opens with a health card per node: signal, last heard, messages lost and round trip, CPU load, audio work against the 500 ms window, free memory and restarts, and a 10-minute uptime strip. The readings table follows under "Readings".
+- **Why:** ZhiHao asked to improve the sensor health view and the header tag, and picked H1 + A from the mockups (chat, 20 Nov).
+- **Problem it solves:** the header grew into a sentence on a fault, and nothing on the page showed loss, latency or the node's own load, so the unplug demo and the resource budget had no live view.
+- **Why this way:** the vitals (CPU, free heap, DSP and inference time, audio overruns) were already in every telemetry packet and the gateway's CSV; the dashboard now passes them through `_telemetry` instead of dropping them. Dots come from the configured zones, so a node that never connected still shows. Each state has a shape as well as a colour. The uptime strip is computed in the page from each node's 10-minute history against its report interval. Rejected: H2 (text only, no at-a-glance shape) and B (health column in the table, vitals hidden behind an expander).
+- **Risks to watch:** with simulated nodes every vital is made up by the simulator (the page says so once); real CPU and heap numbers only mean something once S4 fills them on the node. The header pill stays amber, not red, for one offline node, as before (red is kept for fewer than half working).
+- **Verified:** `cd pc && python3 -m unittest`: new `test_node_vitals_reach_the_page`. In the browser: all-working header and cards at 1440 px and 375 px (header on one row, no sideways scroll); a node fed by a script and then stopped, to check the offline header and the red gap in its strip.
+- **Status:** built, not committed; branch `feat/node-health`.
+
 ## 2026-11-20 · ZhiHao's UI pull requests are admin-merged
 - **From → to:** every PR waited for teammates' reviews. Now ZhiHao's own UI/dashboard PRs (and docs-only fixes such as log restores) are merged with `gh pr merge --admin` straight after they're opened, without review requests.
 - **Why:** ZhiHao's call (chat, 20 Nov): the dashboard is his area, and the week before the demo, waiting for reviews held up UI work.
