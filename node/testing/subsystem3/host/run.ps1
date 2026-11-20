@@ -18,6 +18,14 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'Service test compile failed' }
     & $exe
     if ($LASTEXITCODE -ne 0) { throw 'Service test failed' }
+    & gcc -std=c11 -Wall -Wextra -Werror -DAPP_TEST=1 -include "$hostTests/utk_mock.h" -I $s3 -I node/app_program/subsystem5 "$s3/environment.c" "$s3/acd1100_protocol.c" "$s3/drv_acd1100.c" "$s3/drv_dht22.c" "$s3/s3_telemetry.c" "$s3/environment_service.c" "$s3/task_environment.c" "$hostTests/service_host_test.c" -o $exe
+    if ($LASTEXITCODE -ne 0) { throw 'Diagnostic test compile failed' }
+    & $exe
+    if ($LASTEXITCODE -ne 0) { throw 'Diagnostic test failed' }
+    & gcc -std=c11 -Wall -Wextra -Werror -DAPP_TEST=1 -I $hostTests -I $s3 -I node/app_program/subsystem5 "$hostTests/observer_host_test.c" -o $exe
+    if ($LASTEXITCODE -ne 0) { throw 'Observer test compile failed' }
+    & $exe
+    if ($LASTEXITCODE -ne 0) { throw 'Observer test failed' }
     & gcc -std=c11 -Wall -Wextra -Werror -include "$hostTests/utk_mock.h" -I "$hostTests/registers" -I $s3 "$s3/drv_uart1.c" "$hostTests/uart_register_host_test.c" -o $exe
     if ($LASTEXITCODE -ne 0) { throw 'UART register test compile failed' }
     & $exe

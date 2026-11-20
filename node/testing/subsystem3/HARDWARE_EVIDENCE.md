@@ -1,0 +1,36 @@
+# S3 μT-Kernel hardware test and B4/N3 evidence
+
+**Status: not run.** Use the actual integrated node, not the older standalone firmware test. Results are observations, not implied by the host tests or cross-build. Commit the tested revision before formal evidence collection, as `node/testing/README.md` requires; record the commit, tester, date, build options and saved log in a new row without changing old results. Do not commit credentials.
+
+## Build, flash and record
+
+1. On the supported WSL/Linux build host install the Arm toolchain and Pico SDK 2.2.0 (or tested 2.3.0), including `lib/tinyusb`, `lib/cyw43-driver`, `lib/lwip`. Set `PICO_SDK_PATH`. Copy `node/config/wifi_secrets.example.h` to ignored `node/config/wifi_secrets.h` and set the private Wi-Fi and broker settings locally, without putting them in the evidence or screenshot. Broker/bridge configuration remains a team integration dependency.
+2. From `node/build_make`, run `make NET=lwip MQTT=1 TEST=1 -j4`. Output: `mtk3pico_smp1_usb_cdc_wifi_lwip_mqtt_test.uf2`. Hold BOOTSEL while connecting USB; copy that UF2 to `RPI-RP2`, and let it reboot. Open the USB serial port at 115200 using PuTTY logging or a serial capture tool, start logging and reset the board. Keep the complete output and capture the firmware hash and build command separately.
+3. Connect DHT DATA to GP2 with an appropriate pull-up to 3.3 V, common ground; CO2 UART1 TX GP8 to sensor RX, sensor TX to GP9, with correct module power and level protection; PIR output to GP16 and common ground. Verify module supply and pinout, and ensure Pico inputs never see 5 V. Allow PIR stabilization and use a powered, properly positioned reference thermometer/hygrometer beside the sensor.
+4. The S3 self-test emits S3-U11 and starts an S3 test-only observer, then returns so S4/S5 startup self-tests can run. The observer waits 5 s between 65 snapshots, plus three 10 ms yields per snapshot; expect about 327 s plus scheduling and printing time. Each snapshot uses four lines (`[S3]`, `[S3 DHT]`, `[S3 CO2]`, `[S3 PIR]`) sharing `ms`. The observer uses a 4096-byte stack, priority 17 on core 0 in SMP, reads no peripherals and deletes itself after completion or a delay/clock error. Creation or start errors are printed. No manual test is automatically marked PASS. The SMP USB console masks local interrupts during each print; the short calls and yields limit but do not eliminate timing interference or output loss. Measure timing separately and never infer hard real-time guarantees from the log.
+
+## Record fields
+
+`ms` is the snapshot record's monotonic ms; `age` is its age at the first line, `progress` counts service loops at publication, `live` is an independent current progress read, and `tid` is the current environment task ID (zero after exit). `flags` and all readings describe the snapshot at `ms`, not the later print time. If `age` grows, `live` stops advancing, or `tid=0`, do not treat even set snapshot flags as current sensor validity. `t10`, `h10` are signed tenths °C and tenths %RH; `flags` is the **S3** mask (`1` temp, `2` humidity, `4` CO2, `8` PIR). `ds`/`cs`: 0 stale, 1 OK, 2 warming, 3 timeout, 4 checksum, 5 range, 6 protocol, 7 resource. A numerical value with its flag clear is retained old data, not a new reading.
+
+`dok`/`dfail`: completed successful/failed DHT acquisitions; `cap`: captures started; `dto`: capture timeouts detected even if DMA retirement is still pending; `rec`: first success after a completed failure; `da`/`stop`: capture active/stopping at snapshot. Counts cannot establish a physically stuck DMA from a normal disconnect. `co2` is ppm, `warm` is warm-up complete (1/0); `cok`, `cto`, `csum`, `cuart` count completed good responses, response timeouts, checksum failures, and protocol/transport failures respectively. `cuart` includes malformed headers, UART read errors, a failed send and an exhausted input drain; UART initialization failure is reflected in `cs`, not counted as a request failure. `pir` is the latest sampled GPIO state; `ps` and `pact` are cumulative valid/high samples. `s5post` counts failed environment/PIR posts; `s5all` also includes config-get errors. All test counters saturate; progress wraps. A skipped snapshot or USB output loss is not a sensor failure.
+
+## Procedure and acceptance
+
+- **S3-U11/U24/U25/U30:** From cold boot, keep all sensors connected. Verify progress increases, `dok` increases, `ds=1` and both DHT validity bits are set. Record values and reference readings at matching times. During the first 120 s after environment task initialization CO2 should be warming and invalid; after warm-up verify `warm=1`, `cok` rises and bit 2 is valid. Obtain a separate screenshot of the PC showing warm-up and a later reading; this requires functional S4/S5/MQTT integration and cannot be inferred from serial output.
+- **S3-U26:** After PIR stabilization, remain still for 30 s, then move a hand in view for 30 s. Record the two time windows and `ps`/`pact` deltas and `pir`; account for the sensor module's hold time. No response or an open input must not be interpreted as proof of no occupancy.
+- **S3-U27/U28/U29:** With safe power-off handling for reconnection, or an appropriate bench switch in the DATA line, disconnect DHT DATA while observing. Record `dto`/`dfail`, cleared DHT bits, progress and PIR count. After CO2 warm-up also check it continues. Reconnect and record a new valid acquisition and `rec` increment. Capture GP2 and DMA status with a suitable nonintrusive trace if available: while `stop=1` and DMA BUSY remains high, `cap` must not rise and the buffer must not be reused; after BUSY clears, a later capture may start. If BUSY never remains high long enough to observe, mark that portion **not demonstrated**, not PASS. Host register doubles exercise prolonged BUSY but do not prove physical behavior.
+- **S3-U31 / B4 / N3:** Capture at least five consecutive minutes with DHT and reference colocated and label simultaneous comparison points. Calculate absolute differences from actual paired observations: B4 requires temperature ±1 °C and humidity ±5 %RH, CO2 valid after warm-up, and PIR reaction. For N3 retain PC screenshots of CO2 warm-up and the later plausible reading plus the comparison evidence. Record ambient conditions, sensor/reference placement, reference model/specification and timestamps. Do not invent numbers or pass results.
+
+## Evidence checklist (fill only after measurements)
+
+- [ ] Exact committed revision, test image build options and toolchain/SDK recorded:
+- [ ] Five-minute serial log and paired time-stamped reference readings saved:
+- [ ] Reference instrument identification, stated accuracy and photo saved:
+- [ ] Measured temperature and humidity differences and B4 result:
+- [ ] Cold-start warm-up and later CO2 response saved:
+- [ ] PIR still/motion windows and B4 reaction saved:
+- [ ] DHT disconnect, isolation and recovery log and photo/trace saved:
+- [ ] DMA retirement evidence or explicit not-demonstrated finding saved:
+- [ ] N3 PC warm-up/value screenshots and MQTT profile details saved:
+- [ ] New results rows added with actual commit and links; evidence copied to `docs/evidence/` per week 13 plan:

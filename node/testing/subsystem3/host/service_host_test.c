@@ -17,6 +17,12 @@ static uint8_t posted_flags;
 static int16_t posted_temp;
 static uint16_t posted_ppm;
 ID tid_environment;
+#if APP_TEST
+ID mtx_stats = 1;
+static bool lock_busy;
+ER tk_loc_mtx(ID id, int timeout) { (void)id; (void)timeout; return lock_busy ? E_TMOUT : E_OK; }
+ER tk_unl_mtx(ID id) { (void)id; return E_OK; }
+#endif
 static uint32_t fake_time, delay_calls, task_exits, hw_stops;
 ER tk_get_otm(SYSTIM *t) { t->lo = fake_time; fake_time += 1000; return E_OK; }
 ER tk_dly_tsk(unsigned ms) { (void)ms; return ++delay_calls == 3 ? E_OBJ : E_OK; }
@@ -189,11 +195,57 @@ static void task_progress_and_exit(void)
     assert(task_exits==1 && tid_environment==0 && posted_samples>0 && hw_stops==1);
     puts("PASS S3-U20: real task loop progresses through sensor error and stops active capture on exit (simulated)");
 }
+#if APP_TEST
+static void diagnostic_accounting(void)
+{
+    reset(); s3_service_t s; s3_service_init(&s,0);
+    step(&s,0); step(&s,2000);
+    assert(s.diag.dht_captures == 1);
+    dma_stopped=false; step(&s,2010); step(&s,2020);
+    assert(s.diag.dht_timeouts==1 && s.diag.dht_fail==0 && s.dht.stopping);
+    dma_stopped=true; step(&s,2030);
+    assert(s.diag.dht_fail==1 && s.diag.dht_ok==0);
+    step(&s,4500); assert(s.diag.dht_captures==2);
+    pulses(&s.dht); capture_result=1; step(&s,4510);
+    assert(s.diag.dht_ok==1 && s.diag.dht_recoveries==1);
+    assert(s.diag.pir_valid_samples>0 && s.diag.pir_motion_samples>0);
+    env_error=E_OBJ; step(&s,4700); assert(s.diag.s5_post_errors>0);
+    s.co2.protocol.warmed=true; s.co2.protocol.attempted=false;
+    step(&s,5000); assert(s.co2.protocol.waiting);
+    step(&s,6000); assert(s.diag.co2_timeouts==1);
+    step(&s,7000); assert(s.co2.protocol.waiting);
+    int bad[]={0xfe,0xa6,4,1,3,0x52,0,0,1};
+    memcpy(input,bad,sizeof bad); read_pos=0; read_count=9;
+    step(&s,7010); assert(s.diag.co2_checksums==1);
+    step(&s,9000); assert(s.co2.protocol.waiting);
+    bad[8]=0; for (unsigned i=1;i<8;++i) bad[8]=(bad[8]+bad[i])&255;
+    memcpy(input,bad,sizeof bad); read_pos=0; read_count=9;
+    step(&s,9010); assert(s.diag.co2_ok==1);
+    step(&s,11000); assert(s.co2.protocol.waiting);
+    read_pos=read_count; step(&s,14000);
+    assert(s.diag.co2_timeouts==2 && s.co2.protocol.waiting);
+    /* Timeout and failed replacement send occur in one service iteration. */
+    tx_ready=false; step(&s,17000);
+    assert(s.diag.co2_timeouts==3 && s.diag.co2_protocol_errors==1);
+    step(&s,17010); assert(s.diag.co2_protocol_errors==1);
+    step(&s,19000); assert(s.diag.co2_protocol_errors==2);
+    s.diag.pir_valid_samples=UINT32_MAX; step(&s,19200);
+    assert(s.diag.pir_valid_samples==UINT32_MAX);
+    puts("PASS S3-U23: test-only diagnostic accounting (simulated hardware)");
+}
+#endif
 int main(void)
 {
     scheduling(0); scheduling(UINT32_MAX-2050);
     posting_and_isolation(); uart_transport(); dht_recovery(); stuck_dma_isolation();
     task_progress_and_exit();
+#if APP_TEST
+    diagnostic_accounting();
+    s3_diagnostic_snapshot_t snapshot;
+    lock_busy=true; assert(!s3_diagnostic_read(&snapshot));
+    lock_busy=false; assert(s3_diagnostic_read(&snapshot));
+    assert(snapshot.progress>0);
+#endif
     char tiny[1]={42}; environment_format_x10(tiny,1,INT16_MIN); assert(!tiny[0]);
     environment_format_x10(NULL,0,INT16_MIN);
     puts("PASS S3-U06..U09: scheduling/config/S5 errors, UART transport, DHT recovery, rollover and bounded formatting");
