@@ -1,225 +1,115 @@
-/*
- *	mqtt_utk.c
- *	MQTT client wiring for micro T-Kernel (RP2040, NO_SYS=1)
- *
- *	Runs entirely on the single processor-1-owned task that already owns
- *	the CYW43439 and the rest of lwIP (docs/RELEASE.md safety rule 6):
- *	cyw43_utk_task() (cyw43_utk.c) calls mqtt_utk_start() once, the first
- *	time it observes CYW43_LINK_UP. mqtt.c's own keepalive/ping/retry
- *	timers, and the heartbeat below, both ride the same sys_check_timeouts()
- *	polling that task already does for DHCP and TCP -- nothing extra runs
- *	on any other task or core.
- *
- *	This file does not include tk/tkernel.h or any pico-sdk/cyw43 header
- *	(unlike cyw43_utk.c and sys_arch.c), so it isn't subject to either
- *	file's size_t workaround -- tm/tmonitor.h alone is namespace-safe here.
- */
-
+/* All lwIP calls run inside cyw43_utk_task via its timeout processing. */
 #include "lwip/apps/mqtt.h"
 #include "lwip/ip_addr.h"
 #include "lwip/timeouts.h"
+#include "lwip/sys.h"
 #include "wifi_secrets.h"
 #include "mqtt_utk.h"
-#include <tm/tmonitor.h>
+#include "../../../../../app_program/subsystem4/s4_network.h"
 
-#define MQTT_UTK_HEARTBEAT_MS   5000
-#define MQTT_UTK_KEEPALIVE_S    60
-#define MQTT_UTK_RETRY_MS       3000
+static mqtt_client_t *client;
+static ip_addr_t broker_addr;
+static u8_t connecting, subscribed;
+static char rx_topic[64];
+static u8_t rx_data[MOSAIC_MAX_DATAGRAM];
+static unsigned rx_len, rx_expected;
+static int rx_invalid;
+static u8_t pending[S5_TX_MAX];
+static INT pending_len;
+static char client_id[32];
 
-/* Inbound message staging. A publish arrives as one topic callback followed by
- * one or more data callbacks, so the topic has to be kept until the fragment
- * carrying MQTT_DATA_FLAG_LAST shows up. Both buffers are sized well past the
- * heartbeat this demo publishes; anything longer is truncated and flagged
- * rather than being allowed to run off the end. */
-#define MQTT_UTK_RX_TOPIC_MAX   64
-#define MQTT_UTK_RX_DATA_MAX    128
-
-static mqtt_client_t	*client;
-static ip_addr_t	broker_addr;
-static u8_t		connecting;
-
-static char		rx_topic[MQTT_UTK_RX_TOPIC_MAX];
-static UB		rx_data[MQTT_UTK_RX_DATA_MAX];
-static u16_t		rx_len;
-static u8_t		rx_truncated;
-
-static void heartbeat_timeout(void *arg);
-
-/* mqtt.c NUL-terminates the topic before handing it over, but it is only
- * valid for the duration of this call -- copy it out. */
-static void incoming_publish_cb(void *arg, const char *topic, u32_t tot_len)
+static void pump(void *arg);
+static void incoming_publish(void *arg,const char *topic,u32_t length)
 {
-	u32_t	i;
-
-	(void)arg;
-	(void)tot_len;
-
-	for(i = 0; i < (MQTT_UTK_RX_TOPIC_MAX - 1) && topic[i] != '\0'; i++) {
-		rx_topic[i] = topic[i];
-	}
-	rx_topic[i] = '\0';
-
-	rx_len = 0;
-	rx_truncated = 0;
+    (void)arg;
+    unsigned i=0;
+    for(;i<sizeof(rx_topic)-1 && topic[i];++i) rx_topic[i]=topic[i];
+    rx_topic[i]=0;
+    rx_len=0; rx_expected=length;
+    rx_invalid=topic[i]!=0 || length>sizeof(rx_data);
 }
-
-static void incoming_data_cb(void *arg, const u8_t *data, u16_t len, u8_t flags)
+static void incoming_data(void *arg,const u8_t *data,u16_t len,u8_t flags)
 {
-	u16_t	i;
-
-	(void)arg;
-
-	for(i = 0; i < len; i++) {
-		if(rx_len < (MQTT_UTK_RX_DATA_MAX - 1)) {
-			/* The console is a terminal -- keep raw bytes from a
-			 * payload this demo did not publish from scrambling it. */
-			UB c = data[i];
-			rx_data[rx_len++] = (c >= 0x20 && c < 0x7f)? c: '.';
-		} else {
-			rx_truncated = 1;
-		}
-	}
-
-	if((flags & MQTT_DATA_FLAG_LAST) != 0) {
-		rx_data[rx_len] = '\0';
-		tm_printf((UB*)"mqtt: RX [%s] \"%s\"%s\n", rx_topic, rx_data,
-			  rx_truncated? " (truncated)": "");
-	}
+    (void)arg;
+    if (!rx_invalid && rx_len+len<=sizeof(rx_data)) {
+        for(unsigned i=0;i<len;++i) rx_data[rx_len++]=data[i];
+    } else rx_invalid=1;
+    if ((flags & MQTT_DATA_FLAG_LAST) && !rx_invalid && rx_len==rx_expected) {
+        ER er=s4_mqtt_receive(rx_topic,rx_data,(INT)rx_len);
+        if(er<E_OK) tm_printf((UB*)"mqtt: control rejected/queue full %d\n",er);
+    }
 }
-
-static void subscribe_done_cb(void *arg, err_t result)
+static void subscribed_cb(void *arg,err_t result)
 {
-	(void)arg;
-	if(result == ERR_OK) {
-		tm_printf((UB*)"mqtt: subscribed to " MQTT_TOPIC "\n");
-	} else {
-		tm_printf((UB*)"mqtt: subscribe failed, err=%d\n", (int)result);
-	}
+    (void)arg;
+    subscribed=result==ERR_OK;
+    tm_printf((UB*)"mqtt: CONFIG subscription result=%d\n",result);
 }
-
-static void publish_done_cb(void *arg, err_t result)
+static void publish_cb(void *arg,err_t result)
 {
-	(void)arg;
-	if(result != ERR_OK) {
-		tm_printf((UB*)"mqtt: publish failed, err=%d\n", (int)result);
-	}
+    (void)arg;
+    if(result!=ERR_OK) tm_printf((UB*)"mqtt: publish result=%d\n",result);
 }
-
-static void heartbeat_timeout(void *arg)
+static void pump(void *arg)
 {
-	static unsigned int	count = 0;
-	UB			payload[48];
-	int			len;
-
-	(void)arg;
-
-	if(mqtt_client_is_connected(client)) {
-		len = tm_sprintf(payload, (const UB*)"hb %u", count++);
-		tm_printf((UB*)"mqtt: TX [" MQTT_TOPIC "] \"%s\"\n", payload);
-		(void)mqtt_publish(client, MQTT_TOPIC, payload, (u16_t)len,
-				   0 /* qos */, 0 /* retain */,
-				   publish_done_cb, NULL);
-	}
-
-	/* Re-arms itself every call -- mqtt.c's connection callback (below)
-	 * only starts this chain once, on the transition into MQTT_CONNECT_
-	 * ACCEPTED, so there is exactly one heartbeat chain alive at a time. */
-	sys_timeout(MQTT_UTK_HEARTBEAT_MS, heartbeat_timeout, NULL);
+    (void)arg;
+    if(client && mqtt_client_is_connected(client)) {
+        if(!subscribed)
+            (void)mqtt_subscribe(client,s4_mqtt_config_topic(),1,subscribed_cb,NULL);
+        /* Bound work to keep the single radio task responsive. Retain a
+         * dequeued packet if lwIP's output buffer is temporarily full. */
+        for(unsigned i=0;i<4;++i) {
+            if(!pending_len) {
+                INT len=s4_mqtt_take_outbound(pending,sizeof pending);
+                if(len<=0) break;
+                pending_len=len;
+            }
+            err_t er=mqtt_publish(client,s4_mqtt_telemetry_topic(),pending,
+                                  (u16_t)pending_len,0,0,publish_cb,NULL);
+            if(er!=ERR_OK) break;
+            pending_len=0;
+        }
+    }
+    sys_timeout(50,pump,NULL);
 }
-
-static void retry_timeout(void *arg)
+static void connection_cb(mqtt_client_t *c,void *arg,mqtt_connection_status_t status)
 {
-	(void)arg;
-	connecting = 0;
-	mqtt_utk_start();
+    (void)c; (void)arg;
+    connecting=0; subscribed=0;
+    if(status==MQTT_CONNECT_ACCEPTED) {
+        mqtt_set_inpub_callback(client,incoming_publish,incoming_data,NULL);
+        (void)mqtt_publish(client,s4_mqtt_status_topic(),"online",6,1,1,publish_cb,NULL);
+        tm_printf((UB*)"mqtt: node %u connected\n",MOSAIC_NODE_ID);
+        sys_untimeout(pump,NULL);
+        sys_timeout(1,pump,NULL);
+    } else {
+        tm_printf((UB*)"mqtt: connection status=%d\n",status);
+    }
 }
-
-static void connection_cb(mqtt_client_t *c, void *arg, mqtt_connection_status_t status)
-{
-	(void)c;
-	(void)arg;
-
-	if(status == MQTT_CONNECT_ACCEPTED) {
-		err_t	err;
-
-		/* No longer *connecting* -- clear the guard so that if this
-		 * connection later drops, the poll loop's mqtt_utk_start() call
-		 * is allowed to reconnect. Leaving it set would wedge the client
-		 * permanently after the first disconnect. */
-		connecting = 0;
-
-		tm_printf((UB*)"mqtt: connected to " MQTT_BROKER_IP "\n");
-
-		/* Subscribe to the same topic this client publishes to, so every
-		 * heartbeat comes back from the broker and is printed by
-		 * incoming_data_cb(). A matching RX for each TX is end-to-end
-		 * proof of the round trip without needing mosquitto_sub on the
-		 * broker host. Callbacks must be registered before subscribing,
-		 * or the first delivery has nowhere to go. */
-		mqtt_set_inpub_callback(client, incoming_publish_cb,
-					incoming_data_cb, NULL);
-
-		err = mqtt_subscribe(client, MQTT_TOPIC, 0 /* qos */,
-				     subscribe_done_cb, NULL);
-		if(err != ERR_OK) {
-			tm_printf((UB*)"mqtt: mqtt_subscribe() failed, err=%d\n",
-				  (int)err);
-		}
-
-		/* Drop any chain left over from a previous connection before
-		 * arming a new one. Each reconnect would otherwise add another
-		 * self-perpetuating heartbeat, and every one of them holds a
-		 * MEMP_SYS_TIMEOUT slot until the pool is exhausted. */
-		sys_untimeout(heartbeat_timeout, NULL);
-		sys_timeout(MQTT_UTK_HEARTBEAT_MS, heartbeat_timeout, NULL);
-	} else {
-		/* mqtt_client_connect() reconnects on its own for a dropped
-		 * keepalive; a rejected/never-established connection does not
-		 * retry itself, so do that here -- on a delay, so a broker
-		 * that keeps rejecting (e.g. bad client ID) can't turn this
-		 * into a tight reconnect loop. */
-		tm_printf((UB*)"mqtt: connection status %d, retrying in %ds\n",
-			  (int)status, MQTT_UTK_RETRY_MS / 1000);
-		sys_timeout(MQTT_UTK_RETRY_MS, retry_timeout, NULL);
-	}
-}
-
 int mqtt_utk_is_connected(void)
 {
-	return client != NULL && mqtt_client_is_connected(client);
+    return client != NULL && mqtt_client_is_connected(client);
 }
 
 void mqtt_utk_start(void)
 {
-	struct mqtt_connect_client_info_t	client_info = {0};
-	err_t					err;
-
-	if(connecting || (client != NULL && mqtt_client_is_connected(client))) {
-		return;
-	}
-
-	if(client == NULL) {
-		client = mqtt_client_new();
-		if(client == NULL) {
-			tm_printf((UB*)"mqtt: mqtt_client_new() failed\n");
-			return;
-		}
-	}
-
-	if(!ip4addr_aton(MQTT_BROKER_IP, ip_2_ip4(&broker_addr))) {
-		tm_printf((UB*)"mqtt: bad MQTT_BROKER_IP\n");
-		return;
-	}
-	IP_SET_TYPE(&broker_addr, IPADDR_TYPE_V4);
-
-	client_info.client_id = MQTT_CLIENT_ID;
-	client_info.keep_alive = MQTT_UTK_KEEPALIVE_S;
-
-	connecting = 1;
-	err = mqtt_client_connect(client, &broker_addr, MQTT_BROKER_PORT,
-				  connection_cb, NULL, &client_info);
-	if(err != ERR_OK) {
-		tm_printf((UB*)"mqtt: mqtt_client_connect() failed, err=%d\n", (int)err);
-		connecting = 0;
-	}
+    static u32_t next_attempt;
+    u32_t now=sys_now();
+    if(connecting || (client && mqtt_client_is_connected(client))) return;
+    if((s32_t)(now-next_attempt)<0) return;
+    next_attempt=now+3000;
+    if(!client) client=mqtt_client_new();
+    if(!client) return;
+    if(!ip4addr_aton(MQTT_BROKER_IP,ip_2_ip4(&broker_addr))) return;
+    IP_SET_TYPE(&broker_addr,IPADDR_TYPE_V4);
+    /* Unique IDs prevent one Pico disconnecting another at the broker. */
+    tm_sprintf((UB*)client_id,(const UB*)"mosaic-node-%u",MOSAIC_NODE_ID);
+    struct mqtt_connect_client_info_t info={0};
+    info.client_id=client_id;
+    info.keep_alive=30;
+    info.will_topic=s4_mqtt_status_topic();
+    info.will_msg="offline"; info.will_qos=1; info.will_retain=1;
+    connecting=1;
+    if(mqtt_client_connect(client,&broker_addr,MQTT_BROKER_PORT,
+                           connection_cb,NULL,&info)!=ERR_OK) connecting=0;
 }
