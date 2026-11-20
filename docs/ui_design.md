@@ -18,11 +18,11 @@ room and as a banner on top of every other page.
 |---|---|---|
 | Live room | Is the room OK, where, and should I do anything? | Kicker (All good / Heads up / Act now), headline + summary, class type, simulation strip; the live floor plan (front wall with whiteboard, lecturer's desk, door, windows, desks, sensor dots) with each area's look, switchable to air, temperature or movement; beside it the alert card, Loudness, Air, Comfort and the latest 4 changes; below it the last 10 minutes as one bar. Select an area for all its readings. On narrow screens the plan turns so the front is at the top, the side column stacks under it, and the alert card moves to the top of the page so it's seen first. |
 | History | What happened? | Full timeline incl. cleared alerts; CO₂ and temperature charts with a text summary |
-| Sensors | Is the equipment working? | Per-sensor readings, sound class, Wi-Fi signal, lost readings, response time |
+| Sensors | Is the equipment working? | A health card per node: Wi-Fi signal, last heard, messages lost and round trip, CPU load, audio work against the 500 ms window, free memory and restarts, and a 10-minute strip of half-minute stretches (green reporting, amber gaps, red silent, grey not heard yet). Below it, each node's latest readings and sound class. Simulated nodes say so once above the cards. |
 | Setup | How do I change it? | Class type, voice setup (guided), noise limit (guided), report interval, technical names, theme |
 
 ```
-┌ mosaic  ▦ Live room  ↺ History  ((•)) Sensors  ⚙ Setup      ✓ All 4 sensors · Simulated · ● Live  ▭ ◐ ┐
+┌ mosaic  ▦ Live room  ↺ History  ((•)) Sensors  ⚙ Setup      ●●●● 4/4 nodes · Simulated · ● Live  ▭ ◐ ┐
 ├────────────────────────────────────────────────────────────────────────────────────────────────────┤
 │ ● ACT NOW                                                     Class type: (Lecture) Group work Quiet │
 │ Excessive noise                                                                                      │

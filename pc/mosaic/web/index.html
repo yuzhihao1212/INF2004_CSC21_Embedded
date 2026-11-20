@@ -105,8 +105,8 @@
       <a href="#/setup" data-page="setup"><svg class="icon" aria-hidden="true"><use href="#i-setup"/></svg><span>Setup</span></a>
     </nav>
     <div class="topbar-tools">
-      <a class="pill" id="sensors-pill" href="#/sensors" data-level="none">
-        <svg class="icon icon-sm" aria-hidden="true"><use href="#i-none"/></svg><span id="sensors-text">Connecting…</span>
+      <a class="pill" id="sensors-pill" href="#/sensors" data-level="none" aria-label="Sensors: connecting. Open the Sensors page.">
+        <span class="node-dots" id="sensors-dots" aria-hidden="true"></span><span id="sensors-text">Connecting…</span>
       </a>
       <span class="pill source" id="source" hidden title="">
         <svg class="icon icon-sm" aria-hidden="true"><use href="#i-flask"/></svg><span id="source-text"></span>
@@ -320,6 +320,12 @@
       <p class="empty-title">Waiting for sensors</p>
       <p class="empty-hint">Switch a sensor on and connect it to the hotspot, or run <code>python3 -m mosaic.dashboard --scenario demo</code></p>
     </div>
+    <section class="health" id="health" aria-labelledby="h-health" hidden>
+      <div class="card-head"><h2 id="h-health">Node health</h2><span class="metric-note">Bars show the last 10 minutes: green reporting, amber gaps, red silent</span></div>
+      <p class="hc-note" id="health-note"></p>
+      <div class="health-grid" id="health-grid"></div>
+    </section>
+    <h2 class="readings-title" id="h-readings" hidden>Readings</h2>
     <table class="sensor-table" id="nodes-table" hidden>
       <caption class="sr-only">Latest reading from each sensor</caption>
       <thead><tr>
