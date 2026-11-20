@@ -52,6 +52,13 @@ class DashboardState(unittest.TestCase):
         self.assertTrue(two["co2_warmup"])
         self.assertIsNone(two["temperature_c"])
 
+    def test_node_vitals_reach_the_page(self):
+        self.receive(telemetry(cpu_load_pct=55, free_heap_bytes=65536, audio_overruns=2,
+                               dsp_time_us=86000, inference_time_us=1100))
+        t = self.dashboard.state()["nodes"][0]["telemetry"]
+        self.assertEqual((t["cpu_load_pct"], t["free_heap_bytes"], t["audio_overruns"], t["dsp_time_us"],
+                          t["inference_time_us"]), (55, 65536, 2, 86000, 1100))
+
     def test_latest_audio_window_shown(self):
         self.receive(telemetry(audio=(
             p.AudioWindow(100, p.AudioClass.BACKGROUND_NOISE, (90, 8, 0, 2)),

@@ -219,13 +219,33 @@
   }
 
   /* ---- Header + alert banners (every page) ---- */
+  const NODE_DOT = { Working: "ok", Delayed: "late", "Not connected": "off" };
+  const shortAge = (s) => (s < 60 ? `${Math.round(s)} s` : s < 3600 ? `${Math.round(s / 60)} min` : `${Math.round(s / 3600)} h`);
+  function headerHealth(zones, sensors) {  // "4/4 nodes", or the one node that needs attention
+    if (!zones.length) return sensors.text;
+    const bad = zones.filter((z) => z.status !== "Working");
+    if (!bad.length) return `${zones.length}/${zones.length} nodes`;
+    if (bad.length > 1) return `${zones.length - bad.length}/${zones.length} nodes`;
+    const z = bad[0], n = state.nodes.find((x) => x.id === z.node_id);
+    if (z.status === "Delayed") return `${nodeName(z)} delayed`;
+    return n ? `${nodeName(z)} offline · ${shortAge(n.age_s)}` : `${nodeName(z)} not connected`;
+  }
   function renderHeader() {
     const f = fb();
     const pill = $("#sensors-pill");
     const sensors = f ? f.sensors : { text: state.nodes.length ? "Sensors connected" : "No sensors connected yet", level: "none" };
     pill.dataset.level = sensors.level;
-    setIcon($("svg", pill), LEVEL_ICON[sensors.level] || LEVEL_ICON.none);
-    $("#sensors-text").textContent = sensors.text;
+    // One dot per configured node (a node that never connected still counts), with a
+    // shape per state as well as a colour: filled working, ring delayed, dashed offline.
+    const zones = f ? [...f.zones].sort((a, b) => a.node_id - b.node_id) : [];
+    $("#sensors-dots").replaceChildren(...zones.map((z) => {
+      const d = make("span", "node-dot");
+      d.dataset.s = NODE_DOT[z.status] || "off";
+      return d;
+    }));
+    $("#sensors-text").textContent = headerHealth(zones, sensors);
+    pill.setAttribute("aria-label", `${sensors.text}. Open the Sensors page.`);
+    pill.title = zones.map((z) => `${nodeName(z)}, ${z.name.toLowerCase()}: ${z.status.toLowerCase()}`).join("\n");
 
     const source = $("#source");
     source.hidden = !SOURCE[state.source];
@@ -1286,10 +1306,89 @@
     $(".nr-conf", sound).textContent = a && a.class !== "unknown" ? `${a.confidence}% sure` : "";
     $(".nr-probs", sound).textContent = a ? `background ${a.probs[0]}% · speech ${a.probs[1]}% · sudden ${a.probs[3]}%` : "";
   }
+  const healthCards = new Map();
+  const UP_SLICES = 20, UP_SLICE_MS = 30000;   // The 10-minute strip: twenty half-minute stretches
+  function healthCard(id) {
+    const card = make("article", "hc");
+    card.innerHTML = `<header class="hc-head"><h3 class="hc-name"></h3><span class="hc-area"></span>
+        <span class="status" data-status="online"><svg class="icon icon-sm" aria-hidden="true"><use href="#i-check"/></svg><span class="status-text">Working</span></span></header>
+      <dl class="hc-kv">
+        <dt>Signal</dt><dd><span class="sig" aria-hidden="true"><i></i><i></i><i></i><i></i></span><span class="hc-rssi"></span></dd>
+        <dt>Last heard</dt><dd class="hc-seen"></dd>
+        <dt>Messages lost</dt><dd class="hc-loss"></dd>
+        <dt>CPU load</dt><dd><span class="hc-meter" aria-hidden="true"><b></b></span><span class="hc-cpu"></span></dd>
+        <dt>Audio work</dt><dd class="hc-audio"></dd>
+        <dt>Free memory</dt><dd class="hc-heap"></dd>
+      </dl>
+      <div class="hc-up" role="img"></div>
+      <div class="hc-axis" aria-hidden="true"><span>10 min ago</span><span>now</span></div>
+      <p class="hc-note"></p>
+      <p class="tech hc-tech"></p>`;
+    $("#health-grid").append(card);
+    healthCards.set(id, card);
+    return card;
+  }
+  function uptime(n) {  // Per half-minute stretch: did the node report as often as it should?
+    const cz = ((state.classroom && state.classroom.zones) || []).find((c) => c.node_id === n.id) || {};
+    const interval = cz.report_interval_ms || 1000, end = state.time_ms;
+    const first = n.history.length ? n.history[0][0] : null;
+    const counts = new Array(UP_SLICES).fill(0);
+    for (const p of n.history) {
+      const i = Math.floor((p[0] - (end - UP_SLICES * UP_SLICE_MS)) / UP_SLICE_MS);
+      if (i >= 0 && i < UP_SLICES) counts[i]++;
+    }
+    return counts.map((c, i) => {
+      const sliceEnd = end - (UP_SLICES - 1 - i) * UP_SLICE_MS, sliceStart = sliceEnd - UP_SLICE_MS;
+      if (first == null || sliceEnd <= first) return "none";   // Before this node was first heard
+      const expected = (sliceEnd - Math.max(sliceStart, first)) / interval;
+      return c >= expected * 0.8 ? "up" : c > 0 ? "part" : "down";
+    });
+  }
+  function updateHealth(n, allSim) {
+    const card = healthCards.get(n.id) || healthCard(n.id);
+    const t = n.telemetry || {}, live = n.status !== "offline";
+    const z = fb() && fb().zones.find((x) => x.node_id === n.id);
+    card.dataset.status = n.status;
+    $(".hc-name", card).textContent = nodeLabel(n.id);
+    $(".hc-area", card).textContent = z ? z.name : "";
+    const st = $(".status", card);
+    st.dataset.status = n.status;
+    $(".status-text", st).textContent = STATUS[n.status][0];
+    setIcon($("svg", st), STATUS[n.status][1]);
+    const rssi = live ? t.rssi_dbm : null;
+    const bars = !rssi ? 0 : rssi >= -55 ? 4 : rssi >= -65 ? 3 : rssi >= -75 ? 2 : rssi >= -85 ? 1 : 0;
+    $(".sig", card).dataset.bars = String(bars);
+    $(".hc-rssi", card).textContent = rssi ? `${rssi} dBm · ${SIGNAL[bars]}` : "—";
+    const seen = $(".hc-seen", card);
+    seen.textContent = n.age_s == null ? "—" : n.age_s < 10 ? `${n.age_s.toFixed(1)} s ago` : `${shortAge(n.age_s)} ago`;
+    seen.dataset.late = String(n.status !== "online");
+    $(".hc-loss", card).textContent = `${n.loss_pct.toFixed(1)} %${live && n.rtt_ms != null ? ` · round trip ${n.rtt_ms} ms` : ""}`;
+    const cpu = live && t.cpu_load_pct != null ? t.cpu_load_pct : null;
+    $(".hc-meter b", card).style.width = `${cpu ?? 0}%`;
+    $(".hc-meter", card).dataset.high = String(cpu != null && cpu >= 85);
+    $(".hc-cpu", card).textContent = cpu == null ? "—" : `${cpu} %`;
+    const work = live && t.dsp_time_us != null ? (t.dsp_time_us + (t.inference_time_us || 0)) / 1000 : null;
+    $(".hc-audio", card).textContent = work == null ? "—"
+      : `${Math.round(work)} ms of 500 ms · ${t.audio_overruns} overrun${t.audio_overruns === 1 ? "" : "s"}`;
+    $(".hc-heap", card).textContent = `${live && t.free_heap_bytes ? `${Math.round(t.free_heap_bytes / 1024)} KB` : "—"} · ${n.reboots} restart${n.reboots === 1 ? "" : "s"}`;
+    const slices = uptime(n), gaps = slices.filter((s) => s === "down" || s === "part").length;
+    const strip = $(".hc-up", card);
+    strip.replaceChildren(...slices.map((s) => { const i = make("i"); i.dataset.s = s; return i; }));
+    strip.setAttribute("aria-label", gaps ? `Last 10 minutes: gaps in ${gaps} of ${UP_SLICES} half-minute stretches`
+      : "Last 10 minutes: reporting the whole time");
+    $(".hc-note", card).textContent = n.simulated && !allSim ? "Simulated node: these numbers come from the simulator." : "";
+    $(".hc-tech", card).textContent = `cpu_load_pct ${t.cpu_load_pct} · free_heap_bytes ${t.free_heap_bytes} · dsp_time_us ${t.dsp_time_us} · ` +
+      `inference_time_us ${t.inference_time_us} · audio_overruns ${t.audio_overruns} · rssi_dbm ${t.rssi_dbm} · ip ${n.ip}`;
+  }
+
   function renderSensors() {
     const nodes = state.nodes;
     $("#empty").hidden = nodes.length > 0;
     $("#nodes-table").hidden = nodes.length === 0;
+    $("#health").hidden = $("#h-readings").hidden = nodes.length === 0;
+    const allSim = nodes.length > 0 && nodes.every((n) => n.simulated);
+    $("#health-note").textContent = allSim ? "Simulated nodes: these numbers come from the simulator, not real boards." : "";
+    nodes.forEach((n) => updateHealth(n, allSim));
     const f = fb();
     $("#sensors-lead").textContent = f ? f.sensors.text + "." : "";
     nodes.forEach(updateCard);
