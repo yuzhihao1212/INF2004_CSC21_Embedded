@@ -5,6 +5,15 @@ ideas we dropped. Status lines get updated in place; a reversed decision gets a 
 that links back. Entries dated before 14 Nov 2026 were backfilled on 14 Nov from the chat
 where they were decided and the commits that built them.
 
+## 2026-11-20 · Setup opens as a popup over the page instead of a separate page
+- **From → to:** Setup was its own page, so changing a setting took you away from the Live room. Now the Setup tab opens a dialog over whatever page you're on, with that page blurred behind it; on phones it's a bottom sheet. Esc, × or a click outside closes it and focus returns to the Setup tab. `#/setup` links (e.g. "Set it in Setup") open the dialog and put the address back.
+- **Why:** ZhiHao asked for Setup as a pop-up card with the background blurred, so people experimenting in the Live room don't navigate away (chat, 20 Nov), and picked A + C (centred dialog, bottom sheet on phones) from the mockups.
+- **Problem it solves:** switching class type or the noise limit meant leaving the map, then coming back to see the effect.
+- **Why this way:** the existing Setup content moved into a native `<dialog>` unchanged (same IDs, so every control's code keeps working); `showModal` gives the focus trap, Esc and a `::backdrop` that can be blurred. The voice and noise-limit dialogs open on top of it. Rejected: a side drawer (B; you'd see the map change, but ZhiHao chose the focused dialog), and keeping Setup as a page with a second modal copy (two copies of every control).
+- **Risks to watch:** Setup is no longer a page, so browser Back doesn't close it (Esc or × do). The blur uses `backdrop-filter`, which older browsers ignore (they still dim).
+- **Verified:** in the browser at 1440 px and 375 px: opening from the tab keeps `#/live`; switching to Group work inside it updated the Live room; voice setup opens on top; a `#/setup` link opens it; Esc (real key) and a click outside close it, focus back on the tab; no sideways scroll on a phone. `cd pc && python3 -m unittest`: 302 pass.
+- **Status:** built, not committed; branch `feat/setup-popup`.
+
 ## 2026-11-20 · People view: lecturer's label sits above the whiteboard
 - **From → to:** in the 3D People view, the "Lecturer's area" label sat on top of the side wall by the door, at the very top of the view, where its first line was cut off. Now it sits above the front wall over the whiteboard's centre, in the empty space left of the room.
 - **Why:** ZhiHao asked for it to stay visible and picked option A ("above the board") from the mockup, adding that the words must not run onto the 3D model (chat, 20 Nov).

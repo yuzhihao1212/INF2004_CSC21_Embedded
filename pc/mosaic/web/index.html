@@ -342,8 +342,9 @@
   </section>
 
   <!-- 5. Setup -->
-  <section class="page" data-page="setup" aria-labelledby="h-setup" hidden>
-    <div class="page-head"><h1 id="h-setup" class="page-title" tabindex="-1">Setup</h1></div>
+  <dialog class="setup-sheet" id="setup-dialog" aria-labelledby="h-setup">
+    <div class="page-head setup-head"><h1 id="h-setup" class="page-title" tabindex="-1">Setup</h1>
+      <button class="icon-btn" id="setup-close" type="button" aria-label="Close Setup" title="Close (Esc)"><svg class="icon" aria-hidden="true"><use href="#i-close"/></svg></button></div>
     <div class="setup-grid">
       <section class="card" aria-labelledby="h-classtype">
         <h2 id="h-classtype">Class type</h2>
@@ -404,7 +405,7 @@
         <div class="actions"><button class="btn" type="button" id="intro-replay">Play the intro again</button></div>
       </section>
     </div>
-  </section>
+  </dialog>
 
   <div class="sr-only" aria-live="polite" id="announcer"></div>
   <div class="sr-only" role="alert" id="alerter"></div>
