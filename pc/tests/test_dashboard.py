@@ -75,6 +75,12 @@ class DashboardState(unittest.TestCase):
         history = dashboard.state()["nodes"][0]["history"]
         self.assertEqual([point[3] for point in history], [610])
 
+    def test_history_keeps_sound_level(self):
+        self.receive(telemetry(audio=(p.AudioWindow(100, p.AudioClass.SPEECH, (5, 90, 0, 5)),)))
+        self.receive(telemetry(seq=1))  # No audio window in this report
+        history = self.dashboard.state()["nodes"][0]["history"]
+        self.assertEqual([point[5] for point in history], [6.25, None])
+
     def test_simulated_source(self):
         self.assertEqual(self.dashboard.state()["source"], "none")
         self.receive(telemetry())  # From NODE_ADDR, a LAN address

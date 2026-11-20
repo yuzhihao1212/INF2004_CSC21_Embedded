@@ -1160,25 +1160,177 @@
     return ticks;
   }
 
-  function drawChart(container, summary, field, opts) {
+  /* ---- History: "What happened" as a filtered log ----
+   * Each row: clock time, the kind of change (icon and word), what changed,
+   * and how long that state lasted (until the next change of the same kind).
+   * Colour only marks rows that need attention. "Show on chart" moves the
+   * charts' cursor to that moment. */
+  const LOG_KINDS = {
+    sound: { word: "Sound", icon: "i-sound" }, air: { word: "Air", icon: "i-air" },
+    comfort: { word: "Comfort", icon: "i-thermo" }, class: { word: "Class type", icon: "i-setup" },
+    alert: { word: "Alert", icon: "i-alert" },
+  };
+  const REGION_KIND = { activity: "sound", air: "air", comfort: "comfort", mode: "class" };
+  let logKind = "all";
+  const lasted = (ms) => { const s = Math.max(1, Math.round(ms / 1000)); return s < 60 ? `${s} s` : `${Math.round(s / 60)} min`; };
+  const noStop = (s) => s.replace(/\.$/, "");
+
+  function logItems() {
+    const f = fb();
+    const changes = (f ? f.timeline : []).map((t) => {
+      const region = String(t.tech || "").split(":")[0];
+      return { ...t, region, kind: REGION_KIND[region] || "class" };
+    });
+    const asc = [...changes].sort((a, b) => a.wall_ms - b.wall_ms);
+    asc.forEach((c, i) => {
+      const next = asc.slice(i + 1).find((n) => n.region === c.region);
+      c.until = next ? next.wall_ms : null;
+    });
+    const alerts = state.alerts || {};
+    const raised = [...(alerts.active || []), ...(alerts.ended || [])].flatMap((a) => [
+      { wall_ms: a.started_ms, kind: "alert", level: a.level, text: noStop(a.message), until: a.ended_ms || null, tech: `alert ${a.key}` },
+      ...(a.ended_ms ? [{ wall_ms: a.ended_ms, kind: "alert", level: "fine", text: `Cleared: ${noStop(a.message)}`, cleared: true, tech: `alert ${a.key} ended` }] : []),
+    ]);
+    return [...changes, ...raised].sort((a, b) => b.wall_ms - a.wall_ms);
+  }
+
+  function renderLog() {
+    const list = $("#timeline");
+    const all = logItems();
+    for (const b of $$(".log-n")) {
+      const k = b.dataset.kind;
+      b.textContent = String(k === "all" ? all.length : all.filter((i) => i.kind === k).length);
+    }
+    const going = all.filter((i) => i.kind === "alert" && !i.cleared && i.until == null).length;
+    $("#log-sum").textContent = !all.length ? "" : `${all.length} change${all.length === 1 ? "" : "s"} since ${clockTime(all[all.length - 1].wall_ms)}`
+      + (going ? ` · ${going} alert${going === 1 ? "" : "s"} still going` : "");
+    const items = logKind === "all" ? all : all.filter((i) => i.kind === logKind);
+    const oldestOnChart = state.time_ms - state.history_s * 1000;
+    // Rebuild only when something changed, so a focused button keeps its focus.
+    const sig = `${logKind}|${items.map((i) => `${i.wall_ms}:${i.kind}:${i.text}:${i.until}:${i.wall_ms >= oldestOnChart}`).join("|")}`;
+    if (list.dataset.sig === sig) return;
+    list.dataset.sig = sig;
+    const focused = list.contains(document.activeElement) ? document.activeElement.dataset.key : null;
+    if (!items.length) {
+      list.replaceChildren(make("li", "log-empty", logKind === "all" ? "Nothing yet. Changes in the room appear here."
+        : `No ${LOG_KINDS[logKind].word.toLowerCase()} changes yet.`));
+      return;
+    }
+    const seen = Number(list.dataset.newest || 0);  // New rows slide in; the first fill doesn't
+    list.dataset.newest = String(Math.max(seen, ...items.map((i) => i.wall_ms)));
+    list.replaceChildren(...items.map((item) => {
+      const li = make("li", seen && item.wall_ms > seen ? "log-item enter" : "log-item");
+      li.dataset.level = item.level;
+      li.dataset.kind = item.kind;
+      const time = make("time", "log-time", clockTime(item.wall_ms));
+      time.dateTime = new Date(item.wall_ms).toISOString();
+      time.title = new Date(item.wall_ms).toLocaleString();
+      const kind = make("span", "log-kind");
+      kind.append(icon(LOG_KINDS[item.kind].icon, "icon icon-sm"), LOG_KINDS[item.kind].word);
+      const what = make("span", "log-text");
+      what.append(make("span", "log-what", item.text));
+      if (!item.cleared) what.append(make("span", "log-for", item.until == null ? " · still going" : ` · ${lasted(item.until - item.wall_ms)}`));
+      li.append(time, kind, what);
+      if (item.wall_ms >= oldestOnChart) {
+        const b = make("button", "log-show", "Show on chart");
+        b.type = "button";
+        b.dataset.key = `${item.wall_ms}:${item.kind}:${item.text}`;
+        b.setAttribute("aria-label", `Show ${item.text.toLowerCase()} at ${clockTime(item.wall_ms)} on the charts`);
+        b.addEventListener("click", () => showOnChart(item.wall_ms));
+        li.append(b);
+      }
+      li.append(make("span", "tech", item.tech));
+      return li;
+    }));
+    if (focused) { const again = [...list.querySelectorAll(".log-show")].find((b) => b.dataset.key === focused); if (again) again.focus(); }
+  }
+  $$('input[name="log-kind"]').forEach((r) => r.addEventListener("change", () => { logKind = r.value; if (state) renderLog(); }));
+
+  /* ---- History: charts with a shared time cursor ----
+   * One cursor time for all charts. Point at a chart to move it; click, or use
+   * the keyboard (each chart is a slider), to keep it. The readout above the
+   * charts gives every area's value at that moment; each chart's slider value
+   * text says the same for that chart, so screen readers hear it. */
+  let cursorMs = null, cursorKept = false;
+  const RANGES = [60, 300, 600];
+  const clockSec = (ms) => new Date(ms).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+
+  function showOnChart(ms) {
+    const age = (state.time_ms - ms) / 1000;
+    if (age > rangeS) {
+      rangeS = RANGES.find((r) => r >= age) || RANGES[RANGES.length - 1];
+      $$('input[name="range"]').forEach((r) => { r.checked = Number(r.value) === rangeS; });
+    }
+    cursorMs = ms; cursorKept = true;
+    renderCharts();
+    const first = $("#chart-loud");
+    first.scrollIntoView({ block: "center", behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
+    first.focus({ preventScroll: true });
+  }
+
+  function cursorFromPointer(e) {
+    const m = e.currentTarget._map;
+    if (!m) return null;
+    const r = e.currentTarget.getBoundingClientRect();
+    const px = ((e.clientX - r.left) / r.width) * m.w;
+    return clamp(m.start + ((px - m.l) / (m.w - m.l - m.r)) * (m.end - m.start), m.start, m.end);
+  }
+  for (const id of ["chart-loud", "chart-co2", "chart-temp"]) {
+    const c = $(`#${id}`);
+    c.addEventListener("pointermove", (e) => { if (cursorKept) return; cursorMs = cursorFromPointer(e); renderCharts(); });
+    c.addEventListener("pointerleave", () => { if (cursorKept) return; cursorMs = null; renderCharts(); });
+    c.addEventListener("click", (e) => { cursorMs = cursorFromPointer(e); cursorKept = true; renderCharts(); });
+    c.addEventListener("keydown", (e) => {
+      const end = state.time_ms, start = end - rangeS * 1000, step = (rangeS * 1000) / 60;
+      const at = cursorMs ?? end;
+      const to = { ArrowLeft: at - step, ArrowDown: at - step, ArrowRight: at + step, ArrowUp: at + step,
+                   PageDown: at - step * 10, PageUp: at + step * 10, Home: start, End: end }[e.key];
+      if (e.key === "Escape") { cursorMs = null; cursorKept = false; }
+      else if (to != null) { cursorMs = clamp(to, start, end); cursorKept = true; }
+      else return;
+      e.preventDefault();
+      renderCharts();
+    });
+  }
+
+  // The point of one line nearest to t, if it is close enough to count.
+  function nearest(pts, t, within) {
+    let best = null;
+    for (const p of pts) if (!best || Math.abs(p[0] - t) < Math.abs(best[0] - t)) best = p;
+    return best && Math.abs(best[0] - t) <= within ? best : null;
+  }
+
+  function drawChart(container, summary, table, opts) {
     const w = Math.max(container.clientWidth, 200);
-    const h = container.clientHeight || 220;
-    const pad = { l: 42, r: 10, t: 8, b: 22 };
+    const h = container.clientHeight || 200;
     const end = state.time_ms;
     const start = end - rangeS * 1000;
     const lines = state.nodes.filter((n) => !hidden.has(n.id)).map((n) => ({
-      id: n.id, pts: n.history.filter((p) => p[0] >= start && p[field] != null).map((p) => [p[0], p[field]]),
+      id: n.id, name: sensorName(n.id),
+      pts: n.history.filter((p) => p[0] >= start).map((p) => [p[0], opts.value(n, p)]).filter((p) => p[1] != null),
     })).filter((s) => s.pts.length);
+    // Name each line at its end, unless the chart is too narrow to spare the room.
+    const labelled = w >= 480;
+    // Same label space on every chart, so their time axes (and the cursor) line up.
+    const longest = Math.max(...state.nodes.filter((n) => !hidden.has(n.id)).map((n) => sensorName(n.id).length), 8);
+    const labelW = labelled ? (longest + 6) * 7 + 12 : 0;
+    const pad = { l: 42, r: labelled ? labelW : 10, t: 8, b: 22 };
+    container._map = { start, end, l: pad.l, r: pad.r, w };
 
     const root = svg("svg", { viewBox: `0 0 ${w} ${h}`, "aria-hidden": "true" });
     const values = lines.flatMap((s) => s.pts.map((p) => p[1]));
     const span = rangeS >= 60 ? `${rangeS / 60} minute${rangeS > 60 ? "s" : ""}` : `${rangeS} seconds`;
+    container.setAttribute("aria-label", opts.name);
+    container.setAttribute("aria-valuemin", "0");
+    container.setAttribute("aria-valuemax", String(rangeS));
     if (!values.length) {
-      svg("text", { x: w / 2, y: h / 2, "text-anchor": "middle", class: "no-data" }, root).textContent = "No readings yet";
+      svg("text", { x: w / 2, y: h / 2, "text-anchor": "middle", class: "no-data" }, root).textContent = opts.empty || "No readings yet";
       container.replaceChildren(root);
-      container.setAttribute("aria-label", `${opts.name}: no readings yet`);
-      summary.textContent = "No readings yet.";
-      return;
+      container.setAttribute("aria-valuenow", String(rangeS));
+      container.setAttribute("aria-valuetext", opts.empty || "No readings yet");
+      summary.textContent = `${opts.empty || "No readings yet"}.`;
+      table.dataset.rows = "";
+      return null;
     }
     let lo = Math.min(...values), hi = Math.max(...values);
     [lo, hi] = opts.domain(lo, hi);
@@ -1196,6 +1348,7 @@
     [rangeS, rangeS / 2, 0].forEach((s, i) => {
       svg("text", { x: x(end - s * 1000), y: h - 4, "text-anchor": ["start", "middle", "end"][i], class: "axis-text" }, root).textContent = label(s);
     });
+    const ends = [];
     for (const s of lines) {
       let d = "", prev = null;
       for (const [t, v] of s.pts) {
@@ -1206,41 +1359,123 @@
       svg("path", { d, class: "series-line", "stroke-dasharray": dash(s.id) }, g);
       const [lt, lv] = s.pts[s.pts.length - 1];
       svg("circle", { cx: x(lt), cy: y(lv), r: 4, class: "series-dot" }, g);
+      ends.push({ s, g, x: x(lt), y: y(lv), v: lv });
+    }
+    if (labelled) {  // Line-end labels, pushed apart so they never overlap
+      ends.sort((a, b) => a.y - b.y);
+      const gap = 15;
+      ends.forEach((e, i) => { e.ly = Math.max(e.y, i ? ends[i - 1].ly + gap : pad.t + 10); });
+      for (let i = ends.length - 1; i >= 0; i--) ends[i].ly = Math.min(ends[i].ly, (i < ends.length - 1 ? ends[i + 1].ly - gap : h - pad.b - 2));
+      for (const e of ends) {
+        svg("text", { x: w - pad.r + 10, y: e.ly + 4, class: "series-label" }, e.g).textContent = `${e.s.name} ${opts.tick(e.v)}`;
+      }
+    }
+    // The cursor: a line at that moment and a ring on each line's reading there.
+    let at = null;
+    if (cursorMs != null && cursorMs >= start && cursorMs <= end) {
+      const cx = x(cursorMs), within = Math.max(5000, (rangeS * 1000) / 40);
+      svg("line", { x1: cx, x2: cx, y1: pad.t, y2: h - pad.b, class: "cursor-line" }, root);
+      at = lines.map((s) => {
+        const p = nearest(s.pts, cursorMs, within);
+        if (p) svg("circle", { cx: x(p[0]), cy: y(p[1]), r: 5, class: "cursor-dot", style: `--series:${series(s.id)}` }, root);
+        return p ? `${s.name} ${opts.tick(p[1])}${opts.short}` : null;
+      }).filter(Boolean);
     }
     container.replaceChildren(root);
     // Text alternative: the highest line now, and how it moved over the range.
     const top = lines.reduce((a, b) => (b.pts[b.pts.length - 1][1] > a.pts[a.pts.length - 1][1] ? b : a));
     const first = top.pts[0][1], last = top.pts[top.pts.length - 1][1];
     const trend = Math.abs(last - first) < opts.flat ? "stayed about the same" : last > first ? `rose from ${opts.tick(first)}` : `fell from ${opts.tick(first)}`;
-    const text = `Highest now: ${opts.tick(last)} ${opts.unit} (${sensorName(top.id).toLowerCase()}). Over the last ${span} it ${trend}${Math.abs(last - first) < opts.flat ? "" : ` to ${opts.tick(last)}`}.`;
+    const text = `${opts.top}: ${opts.tick(last)}${opts.unit.startsWith("%") ? "" : " "}${opts.unit} (${top.name.toLowerCase()}). Over the last ${span} it ${trend}${Math.abs(last - first) < opts.flat ? "" : ` to ${opts.tick(last)}`}.`;
     summary.textContent = text;
-    container.setAttribute("aria-label", `${opts.name}. ${text}`);
+    container.setAttribute("aria-valuenow", String(Math.round(((cursorMs ?? end) - start) / 1000)));
+    container.setAttribute("aria-valuetext", at ? `${clockSec(cursorMs)}: ${at.length ? at.join(", ") : "no reading"}` : text);
+    table.dataset.rows = JSON.stringify(tableRows(lines, start, end, opts));
+    if (table.open) fillTable(table);
+    return at && { word: opts.word, at };
+  }
+
+  // A row every tenth of the range, plus now: each area's reading nearest that moment.
+  function tableRows(lines, start, end, opts) {
+    const step = (end - start) / 10, within = step / 2, rows = [];
+    for (let t = start + step; t <= end + 1; t += step) {
+      rows.push([clockSec(t), ...lines.map((s) => { const p = nearest(s.pts, t, within); return p ? opts.tick(p[1]) : "—"; })]);
+    }
+    return { head: ["Time", ...lines.map((s) => s.name)], unit: opts.unit, rows };
+  }
+  function fillTable(details) {
+    const data = details.dataset.rows ? JSON.parse(details.dataset.rows) : null;
+    const old = details.querySelector(".table-wrap");
+    if (!data) { if (old) old.remove(); return; }
+    const sig = details.dataset.rows;
+    if (old && old.dataset.sig === sig) return;
+    const wrap = make("div", "table-wrap");
+    wrap.dataset.sig = sig;
+    const t = make("table", "data-table");
+    t.append(make("caption", "sr-only", `Readings in ${data.unit}, oldest first`));
+    const hr = make("tr");
+    data.head.forEach((c) => { const th = make("th", "", c); th.scope = "col"; hr.append(th); });
+    const thead = make("thead");
+    thead.append(hr);
+    t.append(thead);
+    const body = make("tbody");
+    for (const r of data.rows) {
+      const tr = make("tr");
+      r.forEach((c, i) => { const cell = make(i ? "td" : "th", "", c); if (!i) cell.scope = "row"; tr.append(cell); });
+      body.append(tr);
+    }
+    t.append(body);
+    wrap.append(t);
+    if (old) old.replaceWith(wrap); else details.append(wrap);
+  }
+  for (const id of ["tbl-loud", "tbl-co2", "tbl-temp"]) $(`#${id}`).addEventListener("toggle", (e) => { if (e.currentTarget.open) fillTable(e.currentTarget); });
+
+  // Loudness of one reading against that area's noise limit, as on the Live page.
+  function loudLimit(nodeId) {
+    const cz = state.classroom && (state.classroom.zones || []).find((z) => z.node_id === nodeId);
+    return cz && cz.loud && cz.loud.level_x16 ? cz.loud.level_x16 : null;
   }
 
   function renderCharts() {
     if (page !== "history" || !state.nodes.length) return;  // Hidden charts have no width
     renderLegend(state.nodes);
+    if (cursorMs != null && cursorMs < state.time_ms - rangeS * 1000) { cursorMs = null; cursorKept = false; }
     const b = state.co2_bands;
-    drawChart($("#chart-co2"), $("#sum-co2"), 3, {
-      name: "Air, CO₂ in ppm", unit: "ppm", flat: 50,
-      domain: (lo, hi) => [Math.min(400, Math.floor(lo / 100) * 100), Math.max(b.poor + 200, Math.ceil(hi / 100) * 100 + 100)],
-      bands: [{ from: -1e9, to: b.fair, cls: "band-good" }, { from: b.fair, to: b.poor, cls: "band-fair" }, { from: b.poor, to: 1e9, cls: "band-poor" }],
-      tick: (v) => String(Math.round(v)),
-    });
-    drawChart($("#chart-temp"), $("#sum-temp"), 1, {
-      name: "Temperature in °C", unit: "°C", flat: 0.5,
-      domain: (lo, hi) => { const mid = (lo + hi) / 2; return [Math.floor(Math.min(lo - 0.5, mid - 3)), Math.ceil(Math.max(hi + 0.5, mid + 3))]; },
-      tick: (v) => (Number.isInteger(v) ? String(v) : v.toFixed(1)),
-    });
+    const anyLimit = state.nodes.some((n) => loudLimit(n.id));
+    const read = [
+      drawChart($("#chart-loud"), $("#sum-loud"), $("#tbl-loud"), {
+        name: "Sound, percent of the noise limit", word: "Sound", unit: "% of the noise limit", short: "%", top: "Loudest now", flat: 10,
+        empty: anyLimit ? "No sound readings yet" : "Set a noise limit on the Setup page to see sound here",
+        value: (n, p) => { const lim = loudLimit(n.id); return p[5] != null && lim ? (p[5] * 16 * 100) / lim : null; },
+        domain: (lo, hi) => [0, Math.max(140, Math.ceil(hi / 20) * 20 + 10)],
+        bands: [{ from: -1e9, to: 70, cls: "band-good" }, { from: 70, to: 100, cls: "band-fair" }, { from: 100, to: 1e9, cls: "band-poor" }],
+        tick: (v) => String(Math.round(v)),
+      }),
+      drawChart($("#chart-co2"), $("#sum-co2"), $("#tbl-co2"), {
+        name: "Air, CO₂ in ppm", word: "Air", unit: "ppm", short: " ppm", top: "Highest now", flat: 50,
+        value: (n, p) => p[3],
+        domain: (lo, hi) => [Math.min(400, Math.floor(lo / 100) * 100), Math.max(b.poor + 200, Math.ceil(hi / 100) * 100 + 100)],
+        bands: [{ from: -1e9, to: b.fair, cls: "band-good" }, { from: b.fair, to: b.poor, cls: "band-fair" }, { from: b.poor, to: 1e9, cls: "band-poor" }],
+        tick: (v) => String(Math.round(v)),
+      }),
+      drawChart($("#chart-temp"), $("#sum-temp"), $("#tbl-temp"), {
+        name: "Temperature in °C", word: "Temperature", unit: "°C", short: " °C", top: "Highest now", flat: 0.5,
+        value: (n, p) => p[1],
+        domain: (lo, hi) => { const mid = (lo + hi) / 2; return [Math.floor(Math.min(lo - 0.5, mid - 3)), Math.ceil(Math.max(hi + 0.5, mid + 3))]; },
+        tick: (v) => (Number.isInteger(v) ? String(v) : v.toFixed(1)),
+      }),
+    ].filter(Boolean);
+    const ro = $("#readout");
+    if (cursorMs == null) ro.replaceChildren();
+    else ro.replaceChildren(make("b", "ro-time", clockSec(cursorMs)), ...read.map((r) => {
+      const line = make("span", "ro-line");
+      line.append(make("span", "ro-k", r.word), r.at.length ? r.at.join(" · ") : "no reading");
+      return line;
+    }));
   }
 
   function renderHistory() {
-    const f = fb();
-    const ended = ((state.alerts && state.alerts.ended) || []).map((a) => ({
-      wall_ms: a.ended_ms, level: "fine", text: `Cleared: ${a.message}`, tech: `alert ${a.key} ended`,
-    }));
-    const items = [...(f ? f.timeline : []), ...ended].sort((a, b) => b.wall_ms - a.wall_ms);
-    renderTimeline($("#timeline"), items);
+    renderLog();
     renderCharts();
   }
 

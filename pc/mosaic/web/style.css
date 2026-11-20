@@ -32,7 +32,7 @@
   --ok-text: #186b37; --ok-soft: #e6f4ea; --warn-text: #7f4b00; --warn-soft: #fdf1dc; --warn-dot: #c27c0e;
   --error: #b3261e; --error-soft: #fce8e6; --on-error: #ffffff; --none-text: #5b6270;
   --sense-comfort: #d85a30; --sense-air: #168a66; --sense-motion: #7f77dd; --sense-sound: #c47f17;
-  --series-1: #2563c9; --series-2: #0e7490; --series-3: #7a45c7; --series-4: #b0287f;
+  --series-1: #2563c9; --series-2: #0e7490; --series-3: #b45309; --series-4: #b0287f;
   --series-5: #4f5866; --series-6: #1e3a8a;
   --space-1: 4px; --space-2: 8px; --space-3: 12px; --space-4: 16px; --space-5: 20px;
   --space-6: 24px; --space-8: 32px; --space-10: 40px;
@@ -52,7 +52,7 @@
     --ok-text: #7fe0a8; --ok-soft: #10291d; --warn-text: #f7c977; --warn-soft: #2e2412; --warn-dot: #f2b655;
     --error: #ff8a7c; --error-soft: #331816; --on-error: #14090a; --none-text: #9aa3b2;
     --sense-comfort: #f28b6b; --sense-air: #4fd1a5; --sense-motion: #b9b3ff; --sense-sound: #f2b655;
-    --series-1: #7fb0ff; --series-2: #67c6e0; --series-3: #c3a2ff; --series-4: #f08cc9;
+    --series-1: #7fb0ff; --series-2: #67c6e0; --series-3: #ffb066; --series-4: #f08cc9;
     --series-5: #b4bcc8; --series-6: #a5b8f5;
     --look-speak: #7cc4ff; --look-speak-text: #a9d8ff;
     --look-settled: #4fd1a5; --look-settled-text: #7fe0be;
@@ -71,7 +71,7 @@
   --ok-text: #7fe0a8; --ok-soft: #10291d; --warn-text: #f7c977; --warn-soft: #2e2412; --warn-dot: #f2b655;
   --error: #ff8a7c; --error-soft: #331816; --on-error: #14090a; --none-text: #9aa3b2;
   --sense-comfort: #f28b6b; --sense-air: #4fd1a5; --sense-motion: #b9b3ff; --sense-sound: #f2b655;
-  --series-1: #7fb0ff; --series-2: #67c6e0; --series-3: #c3a2ff; --series-4: #f08cc9;
+  --series-1: #7fb0ff; --series-2: #67c6e0; --series-3: #ffb066; --series-4: #f08cc9;
   --series-5: #b4bcc8; --series-6: #a5b8f5;
   --look-speak: #7cc4ff; --look-speak-text: #a9d8ff;
   --look-settled: #4fd1a5; --look-settled-text: #7fe0be;
@@ -556,10 +556,51 @@ main.wrap { padding-top: var(--space-6); padding-bottom: var(--space-10); }  /* 
 .chip-btn { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; padding: 0 16px; border-radius: 999px; border: 1px solid var(--control-border); background: var(--bg); color: var(--text); font: 600 14px var(--font); cursor: pointer; }
 .chip-btn[aria-pressed="true"] { background: var(--accent-soft); color: var(--accent-text); border-color: var(--accent-text); }
 .legend .chip-btn[aria-pressed="false"] { color: var(--muted); text-decoration: line-through; }
-.charts { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: var(--space-4); }
+.charts { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-4); }   /* Full width: room for line labels */
 .chart-card { margin: 0; }
 .chart-title { display: flex; align-items: center; gap: var(--space-2); font-weight: 600; }
-.chart { height: 220px; }
+.chart { height: 200px; cursor: crosshair; border-radius: 8px; touch-action: pan-y; }
+.chart:focus-visible { outline: 3px solid var(--focus); outline-offset: 4px; }
+.series-label { fill: var(--series); font: 600 12px var(--font); font-variant-numeric: tabular-nums; }
+.cursor-line { stroke: var(--text); stroke-width: 1; stroke-dasharray: 3 3; }
+.cursor-dot { fill: var(--surface); stroke: var(--series); stroke-width: 2.5; }
+.chart-help { margin: 0; font-size: 14px; color: var(--muted); }
+.readout { margin: 0; min-height: 1.5em; display: grid; grid-template-columns: max-content minmax(0, 1fr); column-gap: var(--space-3); row-gap: 2px; font-size: 14px; font-variant-numeric: tabular-nums; }
+.readout:empty { display: block; }
+.ro-time { grid-row: 1 / span 3; font-size: 15px; }
+.ro-line { display: grid; grid-template-columns: 96px minmax(0, 1fr); column-gap: var(--space-2); }
+.ro-k { color: var(--muted); font-weight: 600; }
+.chart-table summary { display: inline-flex; align-items: center; min-height: 36px; cursor: pointer; font-weight: 600; font-size: 14px; color: var(--accent-text); }
+.table-wrap { overflow-x: auto; margin-top: var(--space-2); }
+.data-table { border-collapse: collapse; width: 100%; font-size: 14px; font-variant-numeric: tabular-nums; }
+.data-table th, .data-table td { text-align: right; padding: 6px 10px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+.data-table th:first-child { text-align: left; }
+.data-table thead th { color: var(--muted); font-weight: 600; }
+
+/* History: "What happened" as a filtered log. The kind is an icon and a word
+ * in grey; colour only marks what needs attention. */
+.log-sum { margin: 0; color: var(--muted); font-size: 14px; }
+.log-n { margin-left: 4px; font-weight: 500; font-variant-numeric: tabular-nums; opacity: .8; }
+.log { list-style: none; padding: 0; margin: 0; display: grid; }
+.log-item { display: grid; grid-template-columns: 52px 116px minmax(0, 1fr) auto; align-items: center; gap: var(--space-3); padding: 8px 0; border-top: 1px solid var(--border); font-size: 15px; }
+.log-time { font-variant-numeric: tabular-nums; font-weight: 600; font-size: 14px; color: var(--muted); }
+.log-kind { display: inline-flex; align-items: center; gap: 6px; font-size: 14px; color: var(--muted); }
+.log-item[data-kind="alert"]:not([data-level="fine"]) .log-kind { color: var(--error); }
+.log-item[data-level="act_now"] .log-what { color: var(--error); font-weight: 600; }
+.log-item[data-level="heads_up"] .log-what { color: var(--warn-text); font-weight: 600; }
+.log-for { color: var(--muted); font-size: 14px; }
+.log-show { min-height: 36px; padding: 0 10px; border: 0; border-radius: 8px; background: none; color: var(--accent-text); font: 600 14px var(--font); cursor: pointer; white-space: nowrap; }
+.log-show:hover { background: var(--accent-soft); }
+.log-item .tech { grid-column: 3 / -1; }
+.log-item.enter { animation: alert-in .5s var(--ease-out) both; }
+.log-empty { padding: 8px 0; color: var(--muted); font-size: 15px; }
+@media (max-width: 560px) {
+  .log-item { grid-template-columns: 48px minmax(0, 1fr) auto; row-gap: 2px; }
+  .log-time { grid-row: 1; }
+  .log-kind { grid-row: 1; grid-column: 2; }
+  .log-show { grid-row: 1; grid-column: 3; }
+  .log-text { grid-column: 2 / -1; }
+}
 .chart svg { display: block; width: 100%; height: 100%; overflow: visible; }
 .chart-summary { font-size: 15px; }
 .grid-line { stroke: var(--border); stroke-width: 1; }
