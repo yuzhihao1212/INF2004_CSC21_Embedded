@@ -143,7 +143,7 @@ export function createRoom(host, { onZoneClick } = {}) {
 
   const scene = new THREE.Scene();
   const camera = new THREE.PerspectiveCamera(28, 1.6, .1, 200);
-  const TARGET = new THREE.Vector3(6.5, -.1, 4.7);
+  const TARGET = new THREE.Vector3(6.1, .9, 4.2);   // The room's middle, so fitting keeps it centred
   const HOME = { az: Math.PI / 4 + .04, polar: .94, r: 21 };
   const controls = new OrbitControls(camera, renderer.domElement);
   controls.target.copy(TARGET);
@@ -326,12 +326,37 @@ export function createRoom(host, { onZoneClick } = {}) {
   }
 
   // ---------- size ----------
+  // The room's corners plus headroom for the wall labels and the node tags in front.
+  const FIT_BOX = [];
+  for (const x of [-.3, 12.4]) for (const y of [-.4, 3.1]) for (const z of [-.3, 8.4]) FIT_BOX.push(new THREE.Vector3(x, y, z));
+  const fitV = new THREE.Vector3();
+  function fitDistance(az, polar) {  // Closest camera distance that keeps the whole room in view
+    let lo = 6, hi = 90;
+    for (let i = 0; i < 22; i++) {
+      const r = (lo + hi) / 2;
+      placeCamera(az, polar, r); camera.updateMatrixWorld();
+      const inside = FIT_BOX.every((p) => { fitV.copy(p).project(camera); return Math.abs(fitV.x) <= .97 && Math.abs(fitV.y) <= .94; });
+      if (inside) hi = r; else lo = r;
+    }
+    return hi;
+  }
   function resize() {
     const w = host.clientWidth, h = host.clientHeight;
     if (!w || !h) return;
     renderer.setSize(w, h, false);
     camera.aspect = w / h; camera.updateProjectionMatrix();
-    HOME.r = w / h < 1.2 ? 32 : w / h < 1.5 ? 24 : 22.5;
+    const s = new THREE.Spherical().setFromVector3(camera.position.clone().sub(TARGET));
+    // Wide, short panels (the one-screen Live room) look more from the front, so the room
+    // comes out wide and shallow like the panel; squarer panels keep the diagonal view.
+    const aspect = w / h, wasHome = Math.abs(s.theta - HOME.az) < .02 && Math.abs(s.phi - HOME.polar) < .02;
+    HOME.az = aspect >= 2.2 ? .2 : aspect >= 1.7 ? .5 : Math.PI / 4 + .04;
+    HOME.polar = aspect >= 2.2 ? 1.06 : .94;
+    controls.minAzimuthAngle = HOME.az - .75; controls.maxAzimuthAngle = HOME.az + .6;
+    HOME.r = fitDistance(HOME.az, HOME.polar);
+    if (wasHome) { s.theta = HOME.az; s.phi = HOME.polar; s.radius = HOME.r; }
+    controls.maxDistance = Math.max(42, HOME.r * 1.3);
+    if (controls.enabled) placeCamera(s.theta, s.phi, Math.max(s.radius, fitDistance(s.theta, s.phi)));
+    else placeCamera(s.theta || HOME.az, s.phi || HOME.polar, s.radius || HOME.r);
   }
   new ResizeObserver(resize).observe(host);
 
