@@ -12,7 +12,7 @@ from itertools import accumulate
 from mosaic import protocol as p
 from mosaic import scenarios
 from mosaic.fusion import FusionConfig, FusionEngine
-from mosaic.simulator import Simulator
+from mosaic.simulator import VENT_PPM, Simulator
 
 LECTURE = ("FOCUSED_LECTURE", "NORMAL", "COMFORTABLE")
 
@@ -181,6 +181,26 @@ class Scenarios(unittest.TestCase):
         start, goal = scenarios.CO2_BUILDS.zone(1).co2_ppm, scenarios.WINDOW_OPEN.zone(1).co2_ppm
         self.assertLess(abs(co2_after(4) - goal), abs(co2_after(1) - goal) / 3)  # 4x catches up faster
         self.assertGreater(start, goal)
+
+    def test_fresh_air_fan_clears_co2(self):
+        demo = scenarios.SCENARIOS["demo"]
+        target = demo.phases.index(scenarios.CO2_BUILDS)
+
+        def co2_after(fan):  # 30 s into the closed-room phase, starting from stuffy air
+            c = scenarios.ScriptClock(demo)
+            s = Simulator(1, seed=3, scenario=demo, clock=c, warmup_s=0)
+            s.poll(0.0)
+            for _ in range(target):
+                c.next_phase(0.1)
+            s.poll(0.5)
+            s.nodes[0].co2_ppm = scenarios.CO2_BUILDS.zone(1).co2_ppm
+            c.set_ventilation(fan)
+            s.poll(31.0)
+            return s.nodes[0].co2_ppm
+        stuffy = scenarios.CO2_BUILDS.zone(1).co2_ppm
+        self.assertGreater(co2_after(False), stuffy - 100)       # Without the fan the room stays stuffy
+        self.assertLess(co2_after(True), 800)                    # With it, CO2 falls below the "fair" line
+        self.assertGreater(co2_after(True), VENT_PPM - 60)  # ... but not below outdoor air
 
     def test_aligned_reference_fixture_still_available(self):
         self.assertEqual(play(scenarios.SCENARIOS["reference"], p.Mode.LECTURE, 1, aligned=True),
