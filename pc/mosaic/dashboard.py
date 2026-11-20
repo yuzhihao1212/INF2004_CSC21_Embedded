@@ -277,6 +277,12 @@ def _telemetry(t: p.Telemetry) -> dict:
         "audio": audio,
         "rssi_dbm": t.wifi_rssi_dbm,
         "config_version": t.config_version,
+        # Node vitals for the Sensors page's health cards (S4 node health, S1/S2 timing)
+        "cpu_load_pct": t.cpu_load_pct,
+        "free_heap_bytes": t.free_heap_bytes,
+        "audio_overruns": t.audio_overruns,
+        "dsp_time_us": t.dsp_time_us,
+        "inference_time_us": t.inference_time_us,
     }
 
 
