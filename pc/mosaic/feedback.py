@@ -101,6 +101,20 @@ def place(name: str) -> str:
     return "the " + name[0].lower() + name[1:]
 
 
+STUFFIEST_MARGIN_PPM = 100  # Name the stuffiest area only when it is this much above the next
+
+
+def _stuffiest(co2: list[tuple[int, str]]) -> Optional[str]:
+    """The area with clearly the most CO2, or None when the top two are within
+    sensor noise (otherwise the named place hops between areas every refresh)."""
+    ranked = sorted(co2, reverse=True)
+    if not ranked:
+        return None
+    if len(ranked) == 1 or ranked[0][0] - ranked[1][0] >= STUFFIEST_MARGIN_PPM:
+        return ranked[0][1]
+    return None
+
+
 def _mean(values: list) -> Optional[float]:
     values = [v for v in values if v is not None]
     return sum(values) / len(values) if values else None
@@ -221,13 +235,23 @@ def describe(c: dict, nodes: list[dict], events: list[dict] = (), wall_ms: int =
     # Air
     co2 = [(z["co2_ppm"], names[z["zone"]]) for z in zones if z.get("co2_ppm") is not None]
     peak = max(co2) if co2 else None
-    if air == "POOR_VENTILATION":
+    stuffiest = _stuffiest(co2)
+    # The engine keeps "stuffy" until readings stay under its recovery line for its
+    # dwell time (no flicker). Once every reading is already under that line, say
+    # the air is clearing, so the page doesn't contradict its own numbers.
+    recovered = c.get("air_recovered_ppm")
+    clearing = (air == "POOR_VENTILATION" and recovered is not None and peak is not None and peak[0] < recovered)
+    if clearing:
+        air_level, air_label = FINE, "Clearing"
+        air_why = (f"CO₂ is back down to {peak[0]} ppm. The stuffy warning ends once it stays "
+                   "down for about a minute.")
+    elif air == "POOR_VENTILATION":
         empty = activity == "EMPTY"
         air_level = HEADS_UP if empty else ACT_NOW
         air_label = "Stuffy"
         air_why = ("Air the room before the next class." if empty else
-                   f"Stuffiest in {place(peak[1])}. Open a door or window." if peak else
-                   "Open a door or window.")
+                   f"Stuffiest in {place(stuffiest)}. Open a door or window." if stuffiest else
+                   "Stuffy across the room. Open a door or window.")
     elif air == "NORMAL":
         air_level, air_label, air_why = FINE, "Fresh", "The air is fine in every area."
     else:
@@ -260,14 +284,28 @@ def describe(c: dict, nodes: list[dict], events: list[dict] = (), wall_ms: int =
          "why": comfort_why, "tech": comfort},
     ]
 
-    summary = [sound_why,
-               {"NORMAL": "The air is fresh.", "POOR_VENTILATION": "The air is stuffy."}.get(
-                   air, "Air quality isn't available yet."),
-               ("Temperature is comfortable." if comfort == "COMFORTABLE" else
-                f"It's {join(reasons)}." if comfort == "OUT_OF_RANGE" and reasons else "")]
+    air_sentence = ("The air is clearing." if clearing else
+                    {"NORMAL": "The air is fresh.", "POOR_VENTILATION": "The air is stuffy."}.get(
+                        air, "Air quality isn't available yet."))
+    comfort_sentence = ("Temperature is comfortable." if comfort == "COMFORTABLE" else
+                        f"It's {join(reasons)}." if comfort == "OUT_OF_RANGE" and reasons else "")
+    # The headline names the most urgent thing, so it matches the "Act now" or
+    # "Heads up" above it. Sound wins ties; that's the room's usual story.
+    headline, summary = sound_label, [sound_why, air_sentence, comfort_sentence]
+    if _RANK[air_level] > _RANK[sound_level] and _RANK[air_level] >= _RANK[comfort_level]:
+        headline = "The air is stuffy"
+        summary = [air_why, f"{sound_label}: {sound_why[0].lower() + sound_why[1:]}" if sound_why else sound_label,
+                   comfort_sentence]
+    elif _RANK[comfort_level] > _RANK[sound_level]:
+        headline = comfort_label
+        summary = [comfort_why, f"{sound_label}: {sound_why[0].lower() + sound_why[1:]}" if sound_why else sound_label,
+                   air_sentence]
+    if sensors["level"] == ACT_NOW and _RANK[sound_level] < _RANK[ACT_NOW] and headline == sound_label:
+        headline = "Most sensors aren't working"
+        summary = [sensors["text"] + ".", sound_why, air_sentence]
 
     return {
-        "headline": sound_label,
+        "headline": headline,
         "summary": " ".join(s for s in summary if s),
         "level": worst(sound_level, air_level, comfort_level, sensors["level"]),
         "tech": {"activity": activity, "air": air, "comfort": comfort, "mode": mode},
@@ -278,7 +316,7 @@ def describe(c: dict, nodes: list[dict], events: list[dict] = (), wall_ms: int =
         "voice": _voice(c.get("reference"), names),
         "loudness": _loudness(zones, names),
         "timeline": [_timeline(e, mode) for e in reversed(events)],
-        "alerts_wanted": _alerts(activity, air, mode, where, sensors, peak, names, loud_where),
+        "alerts_wanted": _alerts(activity, "NORMAL" if clearing else air, mode, where, sensors, stuffiest, names, loud_where),
     }
 
 
@@ -341,7 +379,7 @@ def _timeline(e: dict, mode: str) -> dict:
 
 
 def _alerts(activity: str, air: str, mode: str, where: str, sensors: dict,
-            peak: Optional[tuple], names: dict, loud_where: str = "") -> dict[str, dict]:
+            stuffiest: Optional[str], names: dict, loud_where: str = "") -> dict[str, dict]:
     """Act-now conditions, keyed so the same situation keeps one alert."""
     wanted = {}
     if loud_where and loud_level(mode) == ACT_NOW:
@@ -358,7 +396,7 @@ def _alerts(activity: str, air: str, mode: str, where: str, sensors: dict,
         wanted["chatter"] = {"message": f"Ongoing chatter in {where}.",
                              "action": "Consider re-engaging the class.", "vague": where == "some desks"}
     elif stuffy:
-        near = f" Stuffiest in {place(peak[1])}." if peak else ""
+        near = f" Stuffiest in {place(stuffiest)}." if stuffiest else ""
         wanted["air"] = {"message": "The air is stuffy." + near, "action": "Open a door or window."}
     if sensors["low_coverage"]:
         wanted["coverage"] = {"message": "Fewer than half the sensors are working, so readings may be wrong.",
