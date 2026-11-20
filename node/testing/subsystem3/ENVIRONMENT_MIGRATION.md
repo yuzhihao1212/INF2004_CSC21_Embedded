@@ -262,3 +262,7 @@ is made from host tests/cross-builds.
   MMIO and PIO reproduction tests added; test boundaries only live here.
 - `testing/subsystem3/build_uart.ps1`, this document, `TEST_LOG.md`, `logs/`:
   reproducible builds, limitations, append-only results and evidence.
+
+## Current test-only diagnostics
+
+See `HARDWARE_EVIDENCE.md` for the TEST=1 snapshot fields, physical procedures, test IDs and the B4/N3 checklist. The on-target observations have not been run. The separate environmental numeric contract is in `docs/environment_numeric_representation.md`. A test-only observer task reads snapshots for approximately 327 seconds while the S4/S5 startup self-tests proceed; it does not acquire sensor data, and deletes itself on completion.

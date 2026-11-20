@@ -153,7 +153,7 @@ change it only by team agreement. Write down every task you create.
 |---|---|---|
 | 1 | 12–13 | *example:* led_task – 12 – any |
 | 2 | 14–15 | *example:* producer_task – 14 – core 1 |
-| 3 | 16–17 | consumer_task – 16 – core 0 (example compatibility); environment_task – 17 – core 0 |
+| 3 | 16–17 | consumer_task – 16 – core 0 (example compatibility); environment_task – 17 – core 0; TEST=1 observer – 17 – core 0, 4096-byte stack, self-deletes |
 | 4 | 18–19 | *example:* monitor_task – 18 – any |
 | 5 | 20–21 | report_task – 20 – any |
 
@@ -190,7 +190,7 @@ limit there. The numbers below are the example's usage.
 
 | Object | Limit | S1 | S2 | S3 | S4 | S5 |
 |---|---|---|---|---|---|---|
-| Task | 32 | 1 | 1 | 2 | 1 | 1 |
+| Task | 32 | 1 | 1 | 2 (+1 during TEST=1 observation) | 1 | 1 |
 | Semaphore | 16 | | 1 | | | |
 | Event flag | 16 | | | | 1 | |
 | Mailbox | 12 | | | 1 | | |

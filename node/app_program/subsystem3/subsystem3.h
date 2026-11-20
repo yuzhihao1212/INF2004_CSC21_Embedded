@@ -40,4 +40,16 @@ IMPORT ID tid_environment;
 /* Atomic snapshot of completed environment service iterations. */
 IMPORT uint32_t s3_environment_progress(void);
 
+#if APP_TEST
+#include "environment_service.h"
+typedef struct {
+    environment_record_t record;
+    s3_diagnostic_counts_t counts;
+    uint32_t progress, s5_errors;
+    bool co2_warmed, dht_active, dht_stopping;
+} s3_diagnostic_snapshot_t;
+/* Returns false when no snapshot is available or the existing mutex is busy. */
+bool s3_diagnostic_read(s3_diagnostic_snapshot_t *out);
+#endif
+
 #endif /* SUBSYSTEM3_H */

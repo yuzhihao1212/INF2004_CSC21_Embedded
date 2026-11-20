@@ -29,14 +29,58 @@ void s3_service_step(s3_service_t *s, uint32_t now, bool pio_available)
     if (s3_elapsed(now, s->boot_ms, 2000)) s->powered = true;
     if (s->powered && !s->dht_initialized)
         environment_apply_dht(&s->record, SENSOR_RESOURCE_ERROR, 0, 0, now);
+#if APP_TEST
+    bool dht_was_active = s->dht.active;
+    bool dht_was_stopping = s->dht.stopping;
+#endif
     s3_dht_service(&s->dht, &s->record, now);
+#if APP_TEST
+    if (dht_was_active && !dht_was_stopping &&
+        (s->dht.stopping || !s->dht.active) && s->dht.result == SENSOR_TIMEOUT)
+        increment(&s->diag.dht_timeouts);
+    if (dht_was_active && !s->dht.active) {
+        if (s->record.dht_status == SENSOR_OK) {
+            increment(&s->diag.dht_ok);
+            if (s->diag.dht_failed) increment(&s->diag.dht_recoveries);
+            s->diag.dht_failed = false;
+        } else {
+            increment(&s->diag.dht_fail);
+            s->diag.dht_failed = true;
+        }
+    }
+    bool co2_was_waiting = s->co2.protocol.waiting;
+    bool co2_was_attempted = s->co2.protocol.attempted;
+    uint32_t co2_last_attempt = s->co2.protocol.last_attempt_ms;
+    bool co2_timeout_due = co2_was_waiting &&
+        s3_elapsed(now, s->co2.protocol.request_ms, 1000);
+#endif
     s->co2.protocol.interval_ms = s->config.co2_interval_ms;
     s3_co2_service(&s->co2, &s->record, now);
+#if APP_TEST
+    if (co2_timeout_due) increment(&s->diag.co2_timeouts);
+    /* A new request can fail during drain/transmit, including in the same
+     * iteration that an old request times out. Count both events. */
+    bool co2_new_attempt = s->co2.protocol.attempted &&
+        (!co2_was_attempted || s->co2.protocol.last_attempt_ms != co2_last_attempt);
+    if (!s->co2.protocol.waiting &&
+        ((co2_was_waiting && !co2_timeout_due) || co2_new_attempt)) {
+        switch (s->record.co2_status) {
+        case SENSOR_OK: increment(&s->diag.co2_ok); break;
+        case SENSOR_CHECKSUM_ERROR: increment(&s->diag.co2_checksums); break;
+        case SENSOR_PROTOCOL_ERROR: increment(&s->diag.co2_protocol_errors); break;
+        default: break;
+        }
+    }
+#endif
     if (s3_elapsed(now, s->pir_ms, 100)) {
         s->pir_ms = now; /* skip missed samples; never invent catch-up readings */
         if (s->pir_ready) {
             bool high = s3_pir_read() != 0;
             environment_apply_pir(&s->record, high, now);
+#if APP_TEST
+            increment(&s->diag.pir_valid_samples);
+            if (high) increment(&s->diag.pir_motion_samples);
+#endif
             if (!s->pir_samples) s->pir_batch_ms = now;
             if (s->pir_samples != UINT32_MAX) {
                 ++s->pir_samples;
@@ -66,7 +110,12 @@ void s3_service_step(s3_service_t *s, uint32_t now, bool pio_available)
         s->post_ms = now;
         s->environment_result = s5_post_environment(s->record.temperature_x10,
             s->record.humidity_x10, s->record.co2_ppm, s3_environment_wire_flags(&s->record));
-        if (s->environment_result != E_OK) increment(&s->s5_errors);
+        if (s->environment_result != E_OK) {
+            increment(&s->s5_errors);
+#if APP_TEST
+            increment(&s->diag.s5_post_errors);
+#endif
+        }
         if (s->pir_samples) {
             if (s3_elapsed(now, s->pir_batch_ms, 2000)) {
                 increment(&s->pir_dropped); /* stale batch, not current activity */
@@ -76,6 +125,9 @@ void s3_service_step(s3_service_t *s, uint32_t now, bool pio_available)
                 if (s->pir_result == E_OK) s->pir_samples = s->pir_active = 0;
                 else {
                     increment(&s->s5_errors);
+#if APP_TEST
+                    increment(&s->diag.s5_post_errors);
+#endif
                     /* E_TMOUT/E_OBJ occur before any copy in current S5.
                      * Other errors could follow a successful copy (unlock);
                      * discard that batch to avoid double-counting on retry. */
@@ -94,6 +146,9 @@ void s3_service_start_due(s3_service_t *s, uint32_t now)
     if (s->dht.ready && !s->dht.active && s->powered &&
         (!s->dht_attempted || s3_elapsed(now, s->dht_ms, s->config.dht_interval_ms))) {
         if (s3_dht_start(&s->dht, now)) {
+#if APP_TEST
+            increment(&s->diag.dht_captures);
+#endif
             s->dht_attempted = true;
             s->dht_ms = now;
         }
