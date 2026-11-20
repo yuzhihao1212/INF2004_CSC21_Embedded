@@ -5,6 +5,16 @@ ideas we dropped. Status lines get updated in place; a reversed decision gets a 
 that links back. Entries dated before 14 Nov 2026 were backfilled on 14 Nov from the chat
 where they were decided and the commits that built them.
 
+## 2026-11-20 · Built-in LED shows each node's connection status
+- **From → to:** the Pico W's on-board LED was unused (the template says to leave it, as it sits on the radio chip). Now the network task `cyw43_utk_task` drives it: fast blink = looking for Wi-Fi, slow blink = on Wi-Fi but not on the MQTT broker, steady = connected to the broker, off = no power or the radio failed to start.
+- **Why:** ZhiHao asked whether the node can light up (chat, 20 Nov). The instructor agreed to the built-in LED being used (reported by ZhiHao, 20 Nov; written confirmation to be added here). ZhiHao chose option 1.
+- **Problem it solves:** during the live unplug demo nobody can tell from the room which node is connected; a status light shows it at a glance.
+- **Why this way:** only `cyw43_utk_task` may touch the radio chip, and it already tracks the link, so it drives the LED itself: one shared file plus a small "is MQTT connected" query in `mqtt_utk.c`, no new interface for our tasks, no owner dispute over GP19. Rejected: letting S4/S5 set LED patterns through a new API (new shared interface; showing room alerts would also need a protocol change, so it's future work). Rejected: an external LED on GP19 (needs parts; the GP19 example task belongs to S1 while the state belongs to S4).
+- **Also changed (found in review, kept on purpose):** Codex also changed how the network task rejoins Wi-Fi in `cyw43_utk.c`. If the very first join request fails, the task now keeps polling and retries every 5 s; before, it stopped for good. And it now rejoins after a disassociation (`link_status` ≤ `CYW43_LINK_DOWN`), not only after a failure. Both help the Wi-Fi drop test (N9) and the unplug demo. Side effect: `radio_status.ready` stays 0 after a failed first join even if the link comes up later; nothing reads it today (S3 uses `init_complete`).
+- **Risks to watch:** this changes the instructor's shared code, so a `git subtree pull` of the template may conflict in `cyw43_utk.c` and `mqtt_utk.c`. The LED shows the broker link, not that telemetry is flowing, until `mqtt_utk.c` publishes our packets.
+- **Verified:** an Opus review of the diff (20 Nov) found the LED logic right: timing, one GPIO write per level change, radio lock held, LED stays off if the radio fails to start, the non-lwIP build unchanged, nothing under `app_program/` touched. Its fixes to the test steps (slow blink can be too brief to see; check a fresh heartbeat after reconnecting) are in INT-03. Built on 20 Nov with Pico SDK 2.3.0 and Arm GNU Toolchain 15.2.Rel1, each after a `make clean`, from `node/build_make`: `make NET=lwip MQTT=1 -j8`, `make NET=lwip -j8` and `make -j8` all finished with exit 0 and a `.uf2`, and the logs held no compiler warnings or errors (a temporary `wifi_secrets.h` copied from the example, deleted afterwards). No source fix was needed. Not verified: anything on a Pico W. Hardware test INT-03 has not been run, so the LED patterns, the rejoin behaviour and the slow-blink timing are untested.
+- **Status:** built, reviewed, builds clean in all three configurations, not committed. Branch `feat/status-led`. Needs INT-03 on a Pico W before the demo.
+
 ## 2026-11-18 · Subsystem 5 records host test runs apart from hardware results
 - **From → to:** `subsystem5/TEST_LOG.md` had no results at all. It now has a "Host runs" table above "Results", with one PASS row for S5-U01…U11 on a PC and its saved log `logs/2026-11-18_host.txt`.
 - **Why:** ZhiHao asked to log S5's results after the team status check (chat, 18 Nov) showed S5 had none.
@@ -12,7 +22,7 @@ where they were decided and the commits that built them.
 - **Why this way:** the S5 log's own rule keeps "Results" for hardware runs. Putting host passes there (as subsystem 3 did, "provisional PASS") would look like board evidence. A separate table keeps both honest.
 - **Risks to watch:** readers may still take a host PASS for a hardware PASS. The sign that this worked: a U13 row in "Results" once a board is flashed.
 - **Verified:** ran the host binary and `tests.test_node_s5` at `bf3c7f9`; output saved in the log. Not verified: anything on a Pico W.
-- **Status:** built, not committed; branch `test/s5-host-results` (from `docs/restore-decision-log`, PR #42).
+- **Status:** merged in PR #43 (`c6a33c8`; commit `7c781a4`).
 
 ## 2026-11-16 · Demo controls button: clickable pause, skip and speed
 - **From → to:** the demo controls were keys only, with a hint that showed on hover (entry "Presenter keys for the simulated demo", below). Now a button at the end of the simulation strip opens a row with pause or play, next phase and 1×/2×/4×, plus the keys listed beside them. The keys still work.
