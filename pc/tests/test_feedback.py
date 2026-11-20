@@ -165,6 +165,41 @@ class CombinedRules(unittest.TestCase):
         self.assertEqual(set(out["alerts_wanted"]), {"air"})
         self.assertEqual(out["tiles"][1]["level"], fb.ACT_NOW)
 
+    def test_headline_names_the_most_urgent_thing(self):
+        stuffy = [zone(n, i, "LECTURER" if n == "A" else "STILL", co2_ppm=1300 + 10 * i) for i, n in enumerate("ABCD", 1)]
+        out = fb.describe(classroom("FOCUSED_LECTURE", "POOR_VENTILATION", zones=stuffy), NODES)
+        self.assertEqual((out["level"], out["headline"]), (fb.ACT_NOW, "The air is stuffy"))
+        self.assertTrue(out["summary"].startswith("Stuffy across the room. Open a door or window."))
+        self.assertIn("Lecture in progress", out["summary"])
+        warm = fb.describe(classroom(comfort="OUT_OF_RANGE", reasons=("too warm",)), NODES)
+        self.assertEqual(warm["headline"], "Too warm")
+        calm = fb.describe(classroom(), NODES)
+        self.assertEqual(calm["headline"], "Lecture in progress")  # Nothing more urgent: sound leads
+        loud = [zone("A", 1, "LECTURER"), zone("B", 2), zone("C", 3), zone("D", 4, "LOUD", co2_ppm=1300)]
+        both = fb.describe(classroom("SUSTAINED_CHATTER", "POOR_VENTILATION", zones=loud), NODES)
+        self.assertEqual(both["headline"], "Excessive noise")  # A tie keeps the sound state
+
+    def test_stuffiest_area_only_when_it_stands_out(self):
+        close = [zone(n, i, co2_ppm=1300 + 20 * i) for i, n in enumerate("ABCD", 1)]
+        out = fb.describe(classroom("FOCUSED_LECTURE", "POOR_VENTILATION", zones=close), NODES)
+        self.assertNotIn("Stuffiest in", out["tiles"][1]["why"])
+        self.assertEqual(out["alerts_wanted"]["air"]["message"], "The air is stuffy.")
+        apart = [zone(n, i, co2_ppm=1300 + (200 if n == "D" else 0)) for i, n in enumerate("ABCD", 1)]
+        out = fb.describe(classroom("FOCUSED_LECTURE", "POOR_VENTILATION", zones=apart), NODES)
+        self.assertIn("Stuffiest in the back rows", out["tiles"][1]["why"])
+
+    def test_clearing_once_readings_are_back_down(self):
+        c = classroom("FOCUSED_LECTURE", "POOR_VENTILATION")   # Every area at 700 ppm, engine still holding "stuffy"
+        c["air_recovered_ppm"] = 1000
+        out = fb.describe(c, NODES)
+        self.assertEqual((out["tiles"][1]["label"], out["tiles"][1]["level"]), ("Clearing", fb.FINE))
+        self.assertIn("700 ppm", out["tiles"][1]["why"])
+        self.assertEqual(out["alerts_wanted"], {})
+        self.assertEqual(out["headline"], "Lecture in progress")
+        self.assertIn("The air is clearing.", out["summary"])
+        c["zones"][3]["co2_ppm"] = 1100   # One area still above the recovery line: still stuffy
+        self.assertEqual(fb.describe(c, NODES)["tiles"][1]["label"], "Stuffy")
+
     def test_warm_and_restless(self):
         zones = [zone("A", 1, "MOTION"), zone("B", 2, "MOTION"), zone("C", 3), zone("D", 4)]
         out = fb.describe(classroom("QUIET", comfort="OUT_OF_RANGE", reasons=("too warm",), zones=zones), NODES)

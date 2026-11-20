@@ -5,6 +5,23 @@ ideas we dropped. Status lines get updated in place; a reversed decision gets a 
 that links back. Entries dated before 14 Nov 2026 were backfilled on 14 Nov from the chat
 where they were decided and the commits that built them.
 
+## 2026-11-20 · ZhiHao's UI pull requests are admin-merged
+- **From → to:** every PR waited for teammates' reviews. Now ZhiHao's own UI/dashboard PRs (and docs-only fixes such as log restores) are merged with `gh pr merge --admin` straight after they're opened, without review requests.
+- **Why:** ZhiHao's call (chat, 20 Nov): the dashboard is his area, and the week before the demo, waiting for reviews held up UI work.
+- **Problem it solves:** UI fixes sat open while the team worked on the node, and merges of `main` into stale branches twice dropped decision-log entries.
+- **Why this way:** only for his UI and docs PRs. Node code, the shared template under `node/`, and teammates' PRs still get the whole team as reviewers.
+- **Risks to watch:** nobody else looks at UI changes before they land; if a UI change breaks the demo, go back to reviews for the last week.
+- **Status:** decided; first used for this branch (`feat/ux-review-fixes`).
+
+## 2026-11-20 · UX review fixes: headline, "Clearing", phone alert, one name per node
+- **From → to:** nine fixes from a page-by-page review (desktop and phone, light and dark). (1) The headline names the most urgent thing, so "Act now" no longer sits over "Lecture in progress"; (2) the Air card and alert say "Clearing" once every CO₂ reading is under the engine's 1,000 ppm recovery line, instead of "Stuffy" at 774 ppm; (3) on narrow screens the alert moves to the top of the Live room (it was about three screens down); (4) an area is called "stuffiest"/"highest" only when it's 100 ppm above the next ("Stuffy across the room" / "Similar in every area" otherwise); (5) "Sensor 2" became "Node 2" and the lecturer's node "Reference node" on every page; (6) the Last 10 minutes bar is 28 px tall (was 18, under the 24 px WCAG 2.2 target); (7) on phones the status chips show icons only and the presenter button is hidden (P still works), so they fit one row; (8) the temperature chart shows at least 6 °C, so 0.1 °C noise looks flat; (9) Loudness reads "34% in the front rows, the loudest area" under "% of the noise limit".
+- **Why:** ZhiHao asked for a UI/UX review and then "fix all" (chat, 20 Nov), skipping the mockup step for this request.
+- **Problem it solves:** in the demo the page contradicted itself (red "Act now" with a calm headline; "Stuffy" next to 774 ppm after the window opened), the named stuffiest area hopped between all four areas within two minutes on a 20 ppm spread, and a phone user had to scroll to find the alert.
+- **Why this way:** presentation only: the fusion engine's 60 s air dwell is unchanged (it stops flicker); "Clearing" reads the engine's own `co2_recovered_ppm` through `present_classroom`, so the threshold isn't copied. Sound wins headline ties so the usual story stays. Rejected: shortening the air dwell (would make the state flap), and moving the alert with `display: contents` (loses the side column's landmark in some screen readers).
+- **Risks to watch:** "Clearing" ends the alert up to a minute before the engine's state changes; the event log still records the engine's times. The headline now changes more often (air/comfort can take it); the tests pin the tie rule.
+- **Verified:** `cd pc && python3 -m unittest`: 301 pass (3 new: headline, stuffiest margin, clearing). In the browser on the demo script: headline "The air is stuffy" under Act now; "Clearing" at 669 ppm with no alert; phone alert above the headline with the header on one row; Sensors page "Node 2 … / Reference node (ID 1)"; chart 22–28 °C; no console errors on any page. Not checked: a real phone, a screen reader.
+- **Status:** built, not committed; branch `feat/ux-review-fixes`.
+
 ## 2026-11-20 · No CI guard for the decision log yet; restore by hand and admin-merge
 - **From → to:** proposed a CI check that fails any PR whose `docs/decision-log.md` loses a `## ` entry. Not doing it for now: dropped entries get restored by hand (this time from `d15ba3e`) and the docs-only restore PR is admin-merged.
 - **Why:** ZhiHao's call (chat, 20 Nov), the week before the demo.

@@ -324,6 +324,7 @@ def present_classroom(fusion: FusionEngine) -> dict:
     """Decimals belong to this display boundary, never fusion/reference.py."""
     result = fusion.state()
     result["confidence"] = result["confidence_pct"] / 100
+    result["air_recovered_ppm"] = fusion.config.co2_recovered_ppm  # For the page's "Clearing" wording
     present_reference(result["reference"], fusion)
     for zone in result["zones"]:
         for raw, shown in (("temperature_x10", "temperature_c"), ("humidity_x10", "humidity_pct")):
