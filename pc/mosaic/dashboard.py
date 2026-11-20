@@ -94,8 +94,9 @@ class Dashboard:
         clock = self._simulation[2] if self._simulation else None
         if clock is None:
             raise LookupError("no scenario script is running")
-        if not isinstance(body, dict) or len(body) != 1 or not set(body) <= {"pause", "next", "rate"}:
-            raise ValueError('expected {"pause": true|false}, {"next": true} or {"rate": 1|2|4}')
+        if not isinstance(body, dict) or len(body) != 1 or not set(body) <= {"pause", "next", "rate", "ventilation"}:
+            raise ValueError('expected {"pause": true|false}, {"next": true}, {"rate": 1|2|4} '
+                             'or {"ventilation": true|false}')
         (action, value), = body.items()
         if action == "pause":
             if not isinstance(value, bool):
@@ -105,6 +106,10 @@ class Dashboard:
             if isinstance(value, bool) or value not in clock.RATES:
                 raise ValueError(f'"rate" must be one of {list(clock.RATES)}')
             clock.set_rate(now, value)
+        elif action == "ventilation":
+            if not isinstance(value, bool):
+                raise ValueError('"ventilation" must be true or false')
+            clock.set_ventilation(value)
         elif value is not True:
             raise ValueError('"next" must be true')
         elif not clock.next_phase(now):
@@ -112,7 +117,8 @@ class Dashboard:
         index, phase = clock.phase(now)
         # Logged so an evaluation run that was skipped or sped up can be told apart
         self.server._log("simulation", now, action=action, value=value,
-                         phase=index + 1, label=phase.label, rate=clock.rate, paused=clock.paused)
+                         phase=index + 1, label=phase.label, rate=clock.rate, paused=clock.paused,
+                         ventilation=clock.ventilation)
         return self.simulation(now)
 
     def simulation(self, now: float) -> Optional[dict]:
@@ -143,6 +149,7 @@ class Dashboard:
             "finished": elapsed >= scenario.seconds,
             "paused": clock.paused,
             "rate": clock.rate,
+            "ventilation": clock.ventilation,
         }
 
     def _log_alert(self, action: str, fields: dict) -> None:

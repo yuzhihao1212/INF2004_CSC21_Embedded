@@ -181,6 +181,9 @@ class ScriptClock:
         self.rate = 1
         self.paused = False
         self.jumps = 0  # Counts skips, so the simulator can move the room to the new phase
+        # Presenter's fresh-air fan (the dashboard's People view draws it). While it
+        # runs the simulator pulls CO2 towards outdoor air, faster than the script.
+        self.ventilation = False
 
     def _elapsed(self, now: float) -> float:
         if self._anchor is None:
@@ -227,6 +230,10 @@ class ScriptClock:
             self._anchor = now
             self.jumps += 1
             return True
+
+    def set_ventilation(self, on: bool) -> None:
+        with self._lock:
+            self.ventilation = on
 
     @property
     def drift_rate(self) -> int:

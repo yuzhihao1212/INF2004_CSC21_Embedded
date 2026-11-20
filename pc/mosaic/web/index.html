@@ -15,6 +15,8 @@
     if (!sessionStorage.getItem("mosaic-intro")) document.documentElement.dataset.intro = "play";
   } catch (e) {}
 </script>
+<!-- three.js is bundled here (the demo hotspot has no internet); only the People map view loads it -->
+<script type="importmap">{ "imports": { "three": "./three.module.min.js" } }</script>
 <link rel="preload" href="plus-jakarta-sans-latin.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="style.css">
 <link rel="icon" href="logo.svg" type="image/svg+xml">
@@ -166,6 +168,7 @@
           <label><input type="radio" name="sim-rate" value="2"><span>2×</span></label>
           <label><input type="radio" name="sim-rate" value="4"><span>4×</span></label>
         </fieldset>
+        <button class="btn small sim-fan" id="sim-fan" type="button" aria-pressed="false" title="Run a fresh-air fan in the simulated room: CO₂ falls">Fresh-air fan</button>
         <p class="sim-keys">Keys: <kbd>Space</kbd> pause or play · <kbd>→</kbd> next phase · <kbd>1</kbd> <kbd>2</kbd> <kbd>4</kbd> speed</p>
       </div>
       <p class="tech sim-tech" id="sim-tech"></p>
@@ -210,9 +213,11 @@
             <legend class="sr-only">Map view</legend>
             <label><input type="radio" name="map-view" value="flat"><span>Flat</span></label>
             <label><input type="radio" name="map-view" value="3d"><span>3D</span></label>
+            <label><input type="radio" name="map-view" value="people"><span>People</span></label>
           </fieldset>
         </div>
         <div class="plan" id="zone-map" role="group"></div>
+        <div class="room3d" id="room3d" role="img" aria-label="Classroom in 3D" hidden></div>
         <ul class="key" id="map-key" aria-label="Key"></ul>
       </section>
 
