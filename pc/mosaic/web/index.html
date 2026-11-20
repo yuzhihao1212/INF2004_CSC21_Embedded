@@ -217,9 +217,17 @@
             <label><input type="radio" name="map-view" value="people"><span>People</span></label>
           </fieldset>
         </div>
-        <div class="plan" id="zone-map" role="group"></div>
-        <div class="room3d" id="room3d" role="img" aria-label="Classroom in 3D" hidden></div>
+        <div class="map-stage">
+          <div class="plan" id="zone-map" role="group"></div>
+          <div class="room3d" id="room3d" role="img" aria-label="Classroom in 3D" hidden></div>
+        </div>
         <ul class="key" id="map-key" aria-label="Key"></ul>
+      </section>
+
+      <section class="card lesson" aria-labelledby="h-lesson">
+        <div class="card-head"><h2 id="h-lesson">Last <span id="lesson-span">10 minutes</span></h2><span class="metric-note">Hover or tap a stretch to see what happened</span></div>
+        <div class="lesson-bar" id="lesson-bar"></div>
+        <div class="lesson-axis" id="lesson-axis" aria-hidden="true"></div>
       </section>
 
       <aside class="live-side" aria-label="Details">
@@ -262,11 +270,6 @@
       </aside>
     </div>
 
-    <section class="card lesson" aria-labelledby="h-lesson">
-      <div class="card-head"><h2 id="h-lesson">Last <span id="lesson-span">10 minutes</span></h2><span class="metric-note">Hover or tap a stretch to see what happened</span></div>
-      <div class="lesson-bar" id="lesson-bar"></div>
-      <div class="lesson-axis" id="lesson-axis" aria-hidden="true"></div>
-    </section>
   </section>
 
   <!-- 3. History -->

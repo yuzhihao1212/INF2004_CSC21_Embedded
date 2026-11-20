@@ -378,6 +378,18 @@
     }
   }
 
+  /* One-screen Live room (wide screens): the grid fills from where it starts to the
+   * bottom of the window, so the map, readings and side column all fit without scrolling. */
+  function measureGridTop() {
+    const g = $(".live-grid");
+    if (!g || page !== "live") return;
+    const top = Math.round(g.getBoundingClientRect().top + window.scrollY);
+    document.documentElement.style.setProperty("--grid-top", `${top}px`);
+  }
+  window.addEventListener("resize", measureGridTop);
+  new ResizeObserver(measureGridTop).observe($(".live-head"));
+  new ResizeObserver(measureGridTop).observe($("#sim-strip"));
+
   /* ---- Live room: headline, map, side cards, the last 10 minutes ---- */
   function renderLive() {
     renderSim();
@@ -395,6 +407,7 @@
     }
     lastHeadline = f.headline;
 
+    measureGridTop();
     renderPlan($("#zone-map"), mapMetric);
     renderPeople();
     renderKey();
@@ -748,6 +761,7 @@
     const { P, vbW, vbH } = drawRoom(root, portrait, geo);
     root.setAttribute("viewBox", `0 0 ${vbW} ${vbH}`);
     container.style.setProperty("--ratio", `${vbW} / ${vbH}`);
+    container.style.setProperty("--r", (vbW / vbH).toFixed(4));  // One-screen layout fits the plan to the height it gets
     const pct = (x, total) => `${(100 * x) / total}%`;
     const nodes = [root];
     for (const z of zones) {
