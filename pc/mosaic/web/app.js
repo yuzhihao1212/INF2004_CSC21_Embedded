@@ -235,11 +235,15 @@
     }
   }
 
+  const STACKED = matchMedia("(max-width: 900px)");   // Same breakpoint as the one-column Live room
+  STACKED.addEventListener("change", () => { if (state) renderBanners(); });
   function renderBanners() {
     const alerts = state.alerts || { banner: [], hidden: 0 };
-    // On the Live room the alert sits in the side column, next to the map; elsewhere on top.
-    const box = page === "live" ? $("#alert-slot") : $("#banners");
-    const other = page === "live" ? $("#banners") : $("#alert-slot");
+    // On a wide Live room the alert sits in the side column, next to the map. Elsewhere,
+    // and on narrow screens where the side column drops below the map, it goes on top.
+    const beside = page === "live" && !STACKED.matches;
+    const box = beside ? $("#alert-slot") : $("#banners");
+    const other = beside ? $("#banners") : $("#alert-slot");
     if (other.childElementCount) { other.replaceChildren(); delete other.dataset.key; }
     $(".brand").toggleAttribute("data-alert", alerts.banner.some((a) => a.level === "act_now"));
     // Rebuild only when the alerts change, so focus on "Hide" survives the refresh.
@@ -396,7 +400,7 @@
     }
     card.dataset.tone = best.pct >= 100 ? "act_now" : best.pct >= 70 ? "heads_up" : "fine";
     countTo($("#loud-num"), Math.round(best.pct), (v) => `${Math.round(v)}%`);
-    $("#loud-where").textContent = best.name;
+    $("#loud-where").textContent = `in the ${best.name.charAt(0).toLowerCase()}${best.name.slice(1)}, the loudest area`;
     $("#loud-fill").style.width = `${clamp(best.pct / 140, 0, 1) * 100}%`;
     spark($("#loud-spark"), loudHistory, 0, 140);
   }
@@ -413,7 +417,9 @@
       airCard.dataset.tone = airTile ? airTile.level : CO2_TONE[level];
       countTo($("#air-num"), top.telemetry.co2_ppm, (v) => Math.round(v).toLocaleString());
       $("#air-word").textContent = airTile ? airTile.label : CO2_LEVEL[level];
-      $("#air-where").textContent = withCo2.length > 1 ? `Highest: ${sensorName(top.id).toLowerCase()}` : "";
+      const second = Math.max(...withCo2.filter((n) => n !== top).map((n) => n.telemetry.co2_ppm), -Infinity);
+      $("#air-where").textContent = withCo2.length < 2 ? ""
+        : top.telemetry.co2_ppm - second >= 100 ? `Highest: ${sensorName(top.id).toLowerCase()}` : "Similar in every area";
       const since = state.time_ms - 300000;
       spark($("#air-spark"), top.history.filter((p) => p[0] >= since && p[3] != null).map((p) => [p[0], p[3]]),
             400, Math.max(state.co2_bands.poor + 200, top.telemetry.co2_ppm));
@@ -674,7 +680,7 @@
       $("span", st).textContent = label;
       $(".plan-detail", el).textContent = detail;
       const techLine = $(".tech", el);
-      if (techLine) techLine.textContent = `zone ${z.zone} · sensor ${z.node_id}${m.tech ? " · " + m.tech : ""}`;
+      if (techLine) techLine.textContent = `zone ${z.zone} · node ${z.node_id}${m.tech ? " · " + m.tech : ""}`;
       const lab = $(`.plan-label[data-zone="${CSS.escape(z.zone)}"]`, container);
       if (lab) {
         lab.dataset.look = look;
@@ -1063,7 +1069,7 @@
     $(".zd-small", move).textContent = "movement";
     move.setAttribute("aria-label", `Movement: ${MOVE_WORD(pct).toLowerCase()}${pct != null ? `, ${pct} % of the time` : ""}`);
 
-    $("#zone-detail-sensor").textContent = `Sensor ${z.node_id} · ${z.status.toLowerCase()}`;
+    $("#zone-detail-sensor").textContent = `${nodeName(z)} · ${z.status.toLowerCase()}`;
     $("#zone-detail-tech").textContent = `zone ${z.zone} · ${tech} · ${z.air.tech} ${cz.co2_ppm ?? "—"} ppm · ${z.comfort.tech} ${z.comfort.detail} · motion ${pct ?? "—"} %`;
   }
 
@@ -1115,9 +1121,14 @@
    * area holds the reference node, every other area is "Node <id>". */
   const nodeName = (z) => (z.lecturer_area ? "Reference node" : `Node ${z.node_id}`);
 
+  function nodeLabel(id) {
+    const z = fb() && fb().zones.find((x) => x.node_id === id);
+    return z ? nodeName(z) : `Node ${id}`;
+  }
+
   function sensorName(id) {
     const z = fb() && fb().zones.find((x) => x.node_id === id);
-    return z ? z.name : `Sensor ${id}`;
+    return z ? z.name : `Node ${id}`;
   }
 
   function niceTicks(lo, hi, count = 4) {
@@ -1198,7 +1209,7 @@
     });
     drawChart($("#chart-temp"), $("#sum-temp"), 1, {
       name: "Temperature in °C", unit: "°C", flat: 0.5,
-      domain: (lo, hi) => [Math.floor(lo - 0.5), Math.ceil(hi + 0.5)],
+      domain: (lo, hi) => { const mid = (lo + hi) / 2; return [Math.floor(Math.min(lo - 0.5, mid - 3)), Math.ceil(Math.max(hi + 0.5, mid + 3))]; },
       tick: (v) => (Number.isInteger(v) ? String(v) : v.toFixed(1)),
     });
   }
@@ -1245,7 +1256,8 @@
 
     const rssi = t.rssi_dbm;
     const bars = !rssi ? 0 : rssi >= -55 ? 4 : rssi >= -65 ? 3 : rssi >= -75 ? 2 : rssi >= -85 ? 1 : 0;
-    const meta = [`Sensor ${n.id}`];
+    const label = nodeLabel(n.id);
+    const meta = [label === "Reference node" ? `Reference node (ID ${n.id})` : label];
     if (n.simulated) meta.push("Simulated");
     if (rssi && n.status !== "offline") meta.push(`${SIGNAL[bars]} signal`);
     if (n.status !== "online" && n.age_s != null) meta.push(`last reading ${Math.round(n.age_s)} s ago`);
@@ -1450,7 +1462,7 @@
     $("#loud-area-title").textContent = loud.phase === "saved" ? "Saved" : "Make the sound now";
     $("#loud-how").textContent = loud.phase === "saved"
       ? `Above this level, the ${place} show Excessive noise. You can stop the sound.`
-      : `Stand by the ${place} sensor (sensor ${a.node_id}). Hold the phone next to it, keep the meter at ${TARGET_DB} dB, then press Capture.`;
+      : `Stand by the sensor box in the ${place} (${nodeLabel(a.node_id)}). Hold the phone next to it, keep the meter at ${TARGET_DB} dB, then press Capture.`;
 
     const meter = $("#loud-meter");
     const pct = rms == null ? 0 : meterPct(rms);

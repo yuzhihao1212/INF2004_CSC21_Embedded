@@ -16,7 +16,7 @@ room and as a banner on top of every other page.
 
 | Page | Question it answers | Contents |
 |---|---|---|
-| Live room | Is the room OK, where, and should I do anything? | Kicker (All good / Heads up / Act now), headline + summary, class type, simulation strip; the live floor plan (front wall with whiteboard, lecturer's desk, door, windows, desks, sensor dots) with each area's look, switchable to air, temperature or movement; beside it the alert card, Loudness, Air, Comfort and the latest 4 changes; below it the last 10 minutes as one bar. Select an area for all its readings. On narrow screens the plan turns so the front is at the top and the side column stacks under it. |
+| Live room | Is the room OK, where, and should I do anything? | Kicker (All good / Heads up / Act now), headline + summary, class type, simulation strip; the live floor plan (front wall with whiteboard, lecturer's desk, door, windows, desks, sensor dots) with each area's look, switchable to air, temperature or movement; beside it the alert card, Loudness, Air, Comfort and the latest 4 changes; below it the last 10 minutes as one bar. Select an area for all its readings. On narrow screens the plan turns so the front is at the top, the side column stacks under it, and the alert card moves to the top of the page so it's seen first. |
 | History | What happened? | Full timeline incl. cleared alerts; CO₂ and temperature charts with a text summary |
 | Sensors | Is the equipment working? | Per-sensor readings, sound class, Wi-Fi signal, lost readings, response time |
 | Setup | How do I change it? | Class type, voice setup (guided), noise limit (guided), report interval, technical names, theme |
@@ -59,8 +59,9 @@ yellow haze rises inside an area as CO₂ climbs, from none at 800 ppm to strong
 `rms × 16 / level_x16 × 100 %`, from the node's latest window and the level captured in
 Setup › Noise limit. It's never shown in dB, because the microphone isn't calibrated. With
 no limit set, the card links to Setup instead. The **Air** card shows the highest CO₂
-reading and which area it's from, with the server's verdict for the room (so it always
-agrees with the headline). The **last 10 minutes** bar takes, for each stretch of time, the
+reading, and which area it's from only when that area is at least 100 ppm above the next
+("Similar in every area" otherwise, so the name doesn't hop around on sensor noise), with
+the server's verdict for the room (so it always agrees with the headline). The **last 10 minutes** bar takes, for each stretch of time, the
 worst level among the room's sound, air and comfort states and any open alert.
 
 ### Live room: 3D view
@@ -107,6 +108,11 @@ The engine's names stay in code, logs and the evaluator. The screen shows the wo
 on the right. A **Show technical names** switch on the *Setup* page adds the
 engine name in brackets, so we can map the screen to the statechart in the tribunal.
 
+**Headline:** the label of the most urgent of sound, air and comfort, by level, so it
+always matches the kicker above it ("Act now: The air is stuffy", not "Act now: Lecture in
+progress"). Sound wins ties, and its sentence moves into the summary. With fewer than half
+the sensors working and nothing more urgent, the headline is "Most sensors aren't working".
+
 | Engine state | Headline / label | Summary or "why" line (example) |
 |---|---|---|
 | Activity `UNKNOWN` | Checking the room… | "Waiting for enough readings (about 20 s)." Not "No data" when sensors are working. |
@@ -116,7 +122,7 @@ engine name in brackets, so we can map the screen to the statechart in the tribu
 | `NOISE_RISING` | Getting noisy | "Talking at the back right." |
 | `SUSTAINED_CHATTER` | Ongoing chatter | "Talking at the back right for 2 minutes." |
 | `DISCUSSION` | Group discussion | "Most groups are talking, as expected in group work." |
-| Air `NORMAL` / `POOR_VENTILATION` / `UNKNOWN` | Fresh / Stuffy / Sensor warming up | "Highest near the back left." / "Ready in about 3 minutes." |
+| Air `NORMAL` / `POOR_VENTILATION` / `UNKNOWN` | Fresh / Stuffy / Sensor warming up; **Clearing** while the engine still holds `POOR_VENTILATION` but every reading is already under its recovery line (`co2_recovered_ppm`, 1,000 ppm) | "Stuffiest in the back rows." only when that area is 100 ppm above the next, else "Stuffy across the room." / Clearing: "CO₂ is back down to 774 ppm. The stuffy warning ends once it stays down for about a minute." (no alert) / "Ready in about 3 minutes." |
 | Comfort `COMFORTABLE` / `OUT_OF_RANGE` / `UNKNOWN` | Comfortable / Too warm, Too cold, Too humid, Too dry / No reading | Direction comes from which limit was crossed. |
 | Zone `LECTURER` / `TALKING` / `LOUD` / `MOTION` / `STILL` / `NO_DATA` | Lecturer speaking / Talking / Excessive noise / Moving around / Settled / No signal | `LOUD`: "Louder than the set level for 3 minutes." The Sound tile and headline also say Excessive noise while any area is `LOUD`. |
 | Node `ONLINE` / `STALE` / `OFFLINE` | Working / Delayed / Not connected | — |
