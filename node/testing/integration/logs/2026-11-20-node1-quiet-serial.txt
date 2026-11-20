@@ -1,0 +1,81 @@
+
+
+microT-Kernel Version 3.00
+
+
+=== micro T-Kernel on Raspberry Pi Pico W (spec 0x6300, product 0x0003) ===
+dual-core (SMP) build, usermain on core 0
+MOSAIC node 1: subsystem 5 config and telemetry
+monitor: I am task 10
+all subsystems started
+
+wifi: cyw43_utk_task starting (proc 1)
+wifi: cyw43_init() ...
+wifi: cyw43_init() returned, bringing interface up ...
+audio capture: reference SDK ADC/DMA, kernel IRQ1
+audio ADC: cs=101 div=bb700 fcs=1000109 clk_ctrl=800 clk_div=100 pad=12 dma=0
+audio: GP26 16kHz 500ms integer DSP
+monitor: alarm -- no batch for 2000 ms
+monitor: t=3355771866 ms  samples=3  min=0 max=20 avg=10  free slots=0  free blocks=0
+monitor: alarm -- no batch for 2000 ms
+monitor: t=3355773876 ms  samples=3  min=0 max=20 avg=10  free slots=0  free blocks=0
+monitor: alarm -- no batch for 2000 ms
+monitor: t=3355775886 ms  samples=3  min=0 max=20 avg=10  free slots=0  free blocks=0
+wifi: joining "NKM" ...
+monitor: batch  n=5 last=40 from core 1
+monitor: t=3355776696 ms  samples=8  min=0 max=70 avg=35  free slots=4  free blocks=4
+wifi: link status -> joined AP, waiting for IP (1)
+audio seq=4 class=0 p=0/99/1 event=SPEECH_PENDING dsp_us=5575 ml_us=12
+audio input seq=4 min=1978 max=2153 mean_q8=528258 rms_q8=7680 clipped=0 threshold=60 capture_us=11720 features_q8=3058,662984,181,31,41,1729,3336,919,639,772,625,68459,34,21,23,814,1008,776,700,698
+monitor: batch  n=10 last=90 from core 1
+monitor: t=3355777316 ms  samples=10  min=0 max=90 avg=45  free slots=4  free blocks=4
+monitor: batch  n=15 last=60 from core 1
+monitor: t=3355778866 ms  samples=15  min=0 max=100 avg=56  free slots=4  free blocks=4
+monitor: LED task paused, state=WAIT+SUSPEND, pri=13
+audio seq=8 class=2 p=0/100/0 event=TALKING dsp_us=5551 ml_us=11
+audio input seq=8 min=1954 max=2138 mean_q8=528235 rms_q8=7548 clipped=0 threshold=60 capture_us=11718 features_q8=3459,487554,179,55,19,3706,1434,1869,-317,-215,743,67564,42,39,9,1086,920,560,1262,1153
+S5 health: reports accepted=4 dropped=6 control=0 config=0
+wifi: link status -> joined AP, no IP yet (2)
+monitor: batch  n=20 last=10 from core 1
+monitor: t=3355780416 ms  samples=20  min=0 max=100 avg=50  free slots=4  free blocks=4
+audio seq=12 class=2 p=0/100/0 event=TALKING dsp_us=5559 ml_us=10
+audio input seq=12 min=1985 max=2155 mean_q8=527994 rms_q8=6660 clipped=0 threshold=60 capture_us=11718 features_q8=3039,569991,154,69,30,2761,2559,1726,-1375,449,624,75293,51,53,17,1095,910,713,852,969
+wifi: link up, ip=172.20.10.12
+monitor: batch  n=25 last=40 from core 1
+monitor: t=3355782186 ms  samples=25  min=0 max=100 avg=44  free slots=4  free blocks=4
+audio seq=16 class=2 p=0/99/1 event=TALKING dsp_us=5555 ml_us=12
+audio input seq=16 min=1986 max=2154 mean_q8=527968 rms_q8=7095 clipped=0 threshold=60 capture_us=11719 features_q8=2819,697588,185,18,49,886,3259,1663,22,1160,610,55486,34,10,25,578,832,827,641,738
+monitor: batch  n=30 last=90 from core 1
+monitor: t=3355783696 ms  samples=30  min=0 max=100 avg=48  free slots=4  free blocks=4
+mqtt: node 1 connected
+mqtt: CONFIG subscription result=0
+audio seq=20 class=2 p=0/99/1 event=TALKING dsp_us=5582 ml_us=13
+monitor: batch  n=35 last=60 from core 1
+audio input seq=20 min=1992 max=2127 mean_q8=528327 rms_q8=5699 clipped=0 threshold=60 capture_us=11719 features_q8=monitor: t=3355785186 ms  samples=35  min=0 max=100 avg=52  free slots=4  free blocks=4
+2461,710580,189,17,47,1024,3576,1107,281,1019,590,66319,31,10,22,408,779,854,885,804
+monitor: batch  n=40 last=10 from core 1
+monitor: t=3355786686 ms  samples=40  min=0 max=100 avg=50  free slots=4  free blocks=4
+audio seq=24 class=2 p=0/99/1 event=TALKING dsp_us=5591 ml_us=14
+audio input seq=24 min=1956 max=2145 mean_q8=527892 rms_q8=7571 clipped=0 threshold=60 capture_us=11719 features_q8=4204,490226,115,126,12,4548,2212,-862,-750,8,861,49474,32,36,9,911,1000,1213,863,694
+monitor: batch  n=45 last=40 from core 1
+monitor: t=3355788186 ms  samples=45  min=0 max=100 avg=46  free slots=4  free blocks=4
+monitor: LED task resumed, state=RUN, pri=12
+audio seq=28 class=2 p=0/100/0 event=TALKING dsp_us=5581 ml_us=12
+audio input seq=28 min=1979 max=2144 mean_q8=527962 rms_q8=6819 clipped=0 threshold=60 capture_us=11719 features_q8=2884,670858,183,20,50,1289,2499,1776,212,570,569,65550,28,10,21,539,1164,1266,828,928
+monitor: batch  n=50 last=90 from core 1
+monitor: t=3355789716 ms  samples=50  min=0 max=100 avg=49  free slots=4  free blocks=4
+S5 health: reports accepted=10 dropped=10 control=2 config=0
+audio seq=32 class=2 p=0/99/1 event=TALKING dsp_us=5581 ml_us=12
+audio input seq=32 min=1986 max=2145 mean_q8=527847 rms_q8=6145 clipped=0 threshold=60 capture_us=11719 features_q8=2704,661217,186,21,46,1344,2708,1808,364,466,717,81253,36,15,22,707,1240,1240,901,1024
+monitor: batch  n=55 last=60 from core 1
+monitor: t=3355791266 ms  samples=55  min=0 max=100 avg=51  free slots=4  free blocks=4
+monitor: batch  n=60 last=10 from core 1
+monitor: t=3355792816 ms  samples=60  min=0 max=100 avg=50  free slots=4  free blocks=4
+audio seq=36 class=2 p=0/99/1 event=TALKING dsp_us=5576 ml_us=11
+audio input seq=36 min=1977 max=2150 mean_q8=527999 rms_q8=7539 clipped=0 threshold=60 capture_us=11719 features_q8=3226,698209,184,17,51,822,3278,1810,-186,1386,860,53023,35,11,23,520,933,866,629,634
+monitor: batch  n=65 last=40 from core 1
+monitor: t=3355794366 ms  samples=65  min=0 max=100 avg=47  free slots=4  free blocks=4
+audio seq=40 class=2 p=0/100/0 event=TALKING dsp_us=5585 ml_us=13
+audio input seq=40 min=1980 max=2132 mean_q8=528061 rms_q8=6630 clipped=0 threshold=60 capture_us=11719 features_q8=2694,699473,168,29,56,1132,3336,1579,-320,925,692,93338,42,26,29,1045,797,1022,793,645
+monitor: batch  n=70 last=90 from core 1
+monitor: t=3355795916 
