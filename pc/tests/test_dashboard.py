@@ -180,14 +180,23 @@ class SimulationApi(unittest.TestCase):
         self.assertEqual(self.post({"next": True})[0], 400)  # Already on the last phase
         self.assertEqual(self.post({"pause": False})[1]["paused"], False)
 
+    def test_ventilation_switch(self):
+        clock = scenarios.ScriptClock(scenarios.SCENARIOS["ventilation"])
+        clock.start(time.monotonic())
+        self.dashboard.simulating(4, "ventilation", clock)
+        status, sim = self.post({"ventilation": True})
+        self.assertEqual((status, sim["ventilation"], clock.ventilation), (200, True, True))
+        self.assertEqual(self.post({"ventilation": False})[1]["ventilation"], False)
+        self.assertEqual(self.post({"ventilation": "on"})[0], 400)
+
     def test_bad_requests(self):
         clock = scenarios.ScriptClock(scenarios.SCENARIOS["lecture"])
         self.dashboard.simulating(4, "lecture", clock)
         for body in [{"rate": 3}, {"rate": True}, {"rate": "2"}, {"pause": "yes"}, {"next": False},
-                     {"pause": True, "rate": 2}, {"speed": 2}, {}, [], b"{nope"]:
+                     {"pause": True, "rate": 2}, {"speed": 2}, {"ventilation": 1}, {}, [], b"{nope"]:
             with self.subTest(body=body):
                 self.assertEqual(self.post(body)[0], 400)
-        self.assertEqual((clock.paused, clock.rate, clock.jumps), (False, 1, 0))  # Nothing changed
+        self.assertEqual((clock.paused, clock.rate, clock.jumps, clock.ventilation), (False, 1, 0, False))  # Nothing changed
 
 
 class ConfigApi(unittest.TestCase):
