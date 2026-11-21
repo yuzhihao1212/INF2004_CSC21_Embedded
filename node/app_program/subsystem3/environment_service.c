@@ -45,6 +45,8 @@ void s3_service_step(s3_service_t *s, uint32_t now, bool pio_available)
             s->diag.dht_failed = false;
         } else {
             increment(&s->diag.dht_fail);
+            if (s->record.dht_status == SENSOR_CHECKSUM_ERROR)
+                increment(&s->diag.dht_checksums);
             s->diag.dht_failed = true;
         }
     }
@@ -110,6 +112,9 @@ void s3_service_step(s3_service_t *s, uint32_t now, bool pio_available)
         s->post_ms = now;
         s->environment_result = s5_post_environment(s->record.temperature_x10,
             s->record.humidity_x10, s->record.co2_ppm, s3_environment_wire_flags(&s->record));
+#if APP_TEST
+        if (s->environment_result == E_OK) increment(&s->diag.s5_environment_ok);
+#endif
         if (s->environment_result != E_OK) {
             increment(&s->s5_errors);
 #if APP_TEST

@@ -39,14 +39,14 @@ LOCAL void environment_observe(INT stacd, void *exinf)
             (int)__atomic_load_n(&tid_environment, __ATOMIC_ACQUIRE),
             (unsigned)d.record.validity_flags);
         if (tk_dly_tsk(10) != E_OK) break;
-        tm_printf((UB*)"[S3 DHT] ms=%u t10=%d h10=%u ds=%u dok=%u dfail=%u cap=%u dto=%u rec=%u da=%u stop=%u\n",
+        tm_printf((UB*)"[S3 DHT] ms=%u t10=%d h10=%u ds=%u dok=%u dfail=%u cap=%u dto=%u rec=%u da=%u stop=%u dsum=%u\n",
             (unsigned)d.record.timestamp_ms,
             (int)d.record.temperature_x10, (unsigned)d.record.humidity_x10,
             (unsigned)d.record.dht_status,
             (unsigned)d.counts.dht_ok, (unsigned)d.counts.dht_fail,
             (unsigned)d.counts.dht_captures, (unsigned)d.counts.dht_timeouts,
             (unsigned)d.counts.dht_recoveries, (unsigned)d.dht_active,
-            (unsigned)d.dht_stopping);
+            (unsigned)d.dht_stopping, (unsigned)d.counts.dht_checksums);
         if (tk_dly_tsk(10) != E_OK) break;
         tm_printf((UB*)"[S3 CO2] ms=%u co2=%u cs=%u warm=%u cok=%u cto=%u csum=%u cuart=%u\n",
             (unsigned)d.record.timestamp_ms, (unsigned)d.record.co2_ppm,
@@ -54,11 +54,11 @@ LOCAL void environment_observe(INT stacd, void *exinf)
             (unsigned)d.counts.co2_ok, (unsigned)d.counts.co2_timeouts,
             (unsigned)d.counts.co2_checksums, (unsigned)d.counts.co2_protocol_errors);
         if (tk_dly_tsk(10) != E_OK) break;
-        tm_printf((UB*)"[S3 PIR] ms=%u pir=%u ps=%u pact=%u s5post=%u s5all=%u\n",
+        tm_printf((UB*)"[S3 PIR] ms=%u pir=%u ps=%u pact=%u s5post=%u s5all=%u envok=%u\n",
             (unsigned)d.record.timestamp_ms,
             (unsigned)d.record.motion, (unsigned)d.counts.pir_valid_samples,
             (unsigned)d.counts.pir_motion_samples, (unsigned)d.counts.s5_post_errors,
-            (unsigned)d.s5_errors);
+            (unsigned)d.s5_errors, (unsigned)d.counts.s5_environment_ok);
     }
     tk_exd_tsk();
 }
