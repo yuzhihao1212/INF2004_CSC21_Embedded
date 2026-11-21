@@ -62,7 +62,10 @@ that in `decision-log.md`. Nobody takes over someone's part without that.
 ## 5. Write-ups
 
 - **Numeric representation rows** still marked To do: DSP Q-formats (Moe), int8 scales and
-  zero points (Darius), environmental and occupancy conversions (Kendrick).
+  zero points (Darius).
+- **Environmental and occupancy conversions (Kendrick):** documented in
+  `docs/environment_numeric_representation.md`; hardware comparison and integrated
+  evidence remain pending. See `node/testing/subsystem3/HARDWARE_EVIDENCE.md`.
 - **Microphone choice:** the brief lists an I²S MEMS microphone; we use an analog one on the
   ADC. One paragraph on why, with the B1 speech-vs-silence measurement as support (Darius).
 - **Sensor accuracy:** B4/N3 against a reference thermometer (Kendrick).
