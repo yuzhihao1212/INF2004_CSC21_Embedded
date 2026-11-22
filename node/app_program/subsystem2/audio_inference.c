@@ -9,7 +9,12 @@ classifier_event_t classify_audio(classifier_timing_state_t *state,
     int best=dsp_int8_predict(in->features,logits);
     classifier_probabilities(logits,p);
     int fault=in->timing_fault || now<in->captured_us || now-in->captured_us>500000;
-    classifier_event_t event=classifier_timing_step(state,(unsigned)best,p,
+    /* A speech window below the configured threshold cannot start/extend
+     * onset, but may use the timing gate's one-window hold. Keep raw scores. */
+    int timing_class=best;
+    if (best==1 && (uint32_t)p[1]*100<in->threshold_pct*32768)
+        timing_class=0;
+    classifier_event_t event=classifier_timing_step(state,(unsigned)timing_class,p,
         in->rms_q8,in->clipped,fault,in->captured_us);
     *out=(mosaic_audio_window_t){0};
     /* Wire RMS is mean filtered frame RMS, Q8 -> Q4; raw AC RMS gates quality. */
@@ -20,7 +25,9 @@ classifier_event_t classify_audio(classifier_timing_state_t *state,
     out->prob_pct[3]=(uint8_t)(100-out->prob_pct[0]-out->prob_pct[1]);
     static const uint8_t ids[]={MOSAIC_AUDIO_BACKGROUND_NOISE,
         MOSAIC_AUDIO_SPEECH,MOSAIC_AUDIO_TRANSIENT_NOISE};
-    if (best>=0 && best<3 && event!=CLASSIFIER_INVALID && event!=CLASSIFIER_CLIPPED
+    if (event==CLASSIFIER_TALKING)
+        out->audio_class=MOSAIC_AUDIO_SPEECH;
+    else if (best>=0 && best<3 && best!=1 && event!=CLASSIFIER_INVALID && event!=CLASSIFIER_CLIPPED
         && event!=CLASSIFIER_LOW_LEVEL && event!=CLASSIFIER_TIMING_FAULT
         && (uint32_t)p[best]*100>=in->threshold_pct*32768)
         out->audio_class=ids[best];

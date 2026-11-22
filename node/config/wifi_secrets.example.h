@@ -16,9 +16,9 @@
 #define WIFI_PASSWORD "your-network-password"
 
 /* Only used when built with MQTT=1 (also requires NET=lwip). */
-#define MQTT_BROKER_IP   "192.168.1.10"
+#define MQTT_BROKER_IP   "192.168.88.7"
 #define MQTT_BROKER_PORT 1883
-#define MQTT_CLIENT_ID   "mtk3smp-pico"
+#define MQTT_CLIENT_ID   "mosaic-node-1"
 #define MQTT_TOPIC       "mtk3smp-pico/heartbeat"
 
 #endif /* WIFI_SECRETS_H */

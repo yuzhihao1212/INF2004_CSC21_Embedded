@@ -49,7 +49,7 @@ import enum
 import json
 import warnings
 from collections import deque
-from dataclasses import dataclass, field, fields
+from dataclasses import dataclass, field, fields, replace
 from pathlib import Path
 from typing import Optional
 
@@ -107,6 +107,8 @@ class FusionConfig:
     reference_calibration_speech_pct: int = 60
     reference_student_speech_pct: int = 60
     reference_min_rms_x16: int = 64
+    # Optional per-node experimental noise floor for PC fusion only (Q12.4).
+    audio_noise_floor_x16: dict[str, int] = field(default_factory=dict)
     reference_min_pairs: int = 20
     reference_max_pairs: int = 64
     reference_relative_margin_pct: int = 25
@@ -165,7 +167,7 @@ class FusionConfig:
             raise ValueError("reference_zone must be a zone name or null")
         self.reference_settings()
         for name, value in vars(self).items():
-            if name in {'zones', 'front_zones', 'mode', 'reference_zone', 'zone_layout', 'loud_levels_x16'}:
+            if name in {'zones', 'front_zones', 'mode', 'reference_zone', 'zone_layout', 'loud_levels_x16', 'audio_noise_floor_x16'}:
                 continue
             if type(value) is not int:
                 raise ValueError(f"{name} must be an integer")
@@ -177,6 +179,11 @@ class FusionConfig:
                 raise ValueError(f"{name} must be in 0..65535")
         if not 1 <= self.reference_talking_pct <= 100 or self.reference_min_known_windows < 1:
             raise ValueError("reference TALKING percent/minimum must be positive")
+        if (not isinstance(self.audio_noise_floor_x16, dict) or any(
+                not isinstance(node, str) or node not in {str(n) for n in self.zones}
+                or type(level) is not int or not 0 <= level <= MAX_RMS_X16
+                for node, level in self.audio_noise_floor_x16.items())):
+            raise ValueError("audio_noise_floor_x16 maps node ID strings to Q12.4 levels")
         if not 0 <= self.loud_exit_pct <= self.loud_enter_pct or self.loud_capture_min_windows < 1:
             raise ValueError("loud_exit_pct must not exceed loud_enter_pct; capture needs a window")
         if (not isinstance(self.loud_levels_x16, dict)
@@ -357,6 +364,14 @@ class FusionEngine:
             return
         if type(report_interval_ms) is not int or not 200 <= report_interval_ms <= 10000:
             raise ValueError("report_interval_ms must be a protocol interval in 200..10000")
+        # Keep incoming telemetry untouched for logging and diagnostics. For
+        # fusion only, below-floor windows contribute no speech evidence.
+        floor = self.config.audio_noise_floor_x16.get(str(node_id), 0)
+        if floor:
+            t = replace(t, audio=tuple(
+                replace(w, prob_pct=(100, 0, 0, 0))
+                if w.rms_x16 < floor and not w.uses_reserved_class()
+                and 0 < sum(w.prob_pct) <= 100 else w for w in t.audio))
         self.reference.add_ms(node_id, t, now_ms, reboot=reboot)
         zone = self._zones[node_id]
         zone.received = True

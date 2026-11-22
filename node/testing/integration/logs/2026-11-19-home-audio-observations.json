@@ -1,0 +1,451 @@
+{
+  "date": "2026-11-19",
+  "kind": "exploratory observations, not formal acceptance test",
+  "source_base_commit": "6123d58",
+  "source_state": "uncommitted audio, MQTT and UI changes; firmware images included a temporary uncommitted early timer initialization patch",
+  "evidence_limits": [
+    "Speech intervals contain natural pauses; percentages are window-label counts, not ground-truth accuracy.",
+    "Quiet samples were recorded sequentially, and movement can change acoustic noise as well as electrical coupling.",
+    "Raw spectral peaks alone do not establish electromagnetic interference.",
+    "Offline standalone speech comparison used an earlier session with 263 near-rail samples; the node clipping gate would reject that window.",
+    "An 8 ADC-unit filtered RMS cutoff separates recorded quiet and speech levels in this small sample but is not validated for soft or distant speech."
+  ],
+  "active_settings": {
+    "report_interval_ms": 1000,
+    "audio_gain_x256": 256,
+    "audio_conf_threshold_pct": 60
+  },
+  "image_sha256": {
+    "node1": "fbae16f5c73c6ae70db00d165217ba5a269e04f8f844024d44943e52d03e149d",
+    "node2": "f7c2d8512b0f36cb6a6e3b766ed9a7362a4ba823d6ade941228f368689d33680"
+  },
+  "observations": {
+    "quiet_1": {
+      "results": {
+        "1": {
+          "windows": 42,
+          "labels": {
+            "BACKGROUND_NOISE": 32,
+            "UNKNOWN": 8,
+            "TRANSIENT_NOISE": 2
+          },
+          "speech_ge_60": 0,
+          "speech_ge_90": 0,
+          "rms_min": 3.8125,
+          "rms_max": 4.9375,
+          "rms_mean": 4.36
+        },
+        "2": {
+          "windows": 40,
+          "labels": {
+            "BACKGROUND_NOISE": 13,
+            "UNKNOWN": 10,
+            "SPEECH": 17
+          },
+          "speech_ge_60": 20,
+          "speech_ge_90": 8,
+          "rms_min": 4.125,
+          "rms_max": 5.1875,
+          "rms_mean": 4.5
+        }
+      }
+    },
+    "quiet_moved": {
+      "results": {
+        "1": {
+          "windows": 40,
+          "unique_windows": 40,
+          "labels": {
+            "UNKNOWN": 5,
+            "BACKGROUND_NOISE": 31,
+            "TRANSIENT_NOISE": 4
+          },
+          "speech_ge_60": 1,
+          "rms_mean": 4.42,
+          "rms_range": [
+            4.1875,
+            4.9375
+          ],
+          "raw_rms_mean": 10.89,
+          "serial_samples": 10,
+          "clipped_max": 0
+        },
+        "2": {
+          "windows": 40,
+          "unique_windows": 40,
+          "labels": {
+            "SPEECH": 35,
+            "TRANSIENT_NOISE": 2,
+            "UNKNOWN": 3
+          },
+          "speech_ge_60": 34,
+          "rms_mean": 3.8,
+          "rms_range": [
+            3.375,
+            5.0
+          ],
+          "raw_rms_mean": null,
+          "serial_samples": 0,
+          "clipped_max": null
+        }
+      }
+    },
+    "speech_close": {
+      "results": {
+        "1": {
+          "windows": 20,
+          "labels": {
+            "UNKNOWN": 3,
+            "SPEECH": 11,
+            "TRANSIENT_NOISE": 6
+          },
+          "speech_ge_60": 13,
+          "speech_ge_90": 11,
+          "rms_mean": 18.33,
+          "rms_range": [
+            11.5,
+            25.625
+          ],
+          "raw_rms_mean": 24.65,
+          "serial_samples": 5,
+          "clipped_max": 0
+        },
+        "2": {
+          "windows": 20,
+          "labels": {
+            "UNKNOWN": 5,
+            "SPEECH": 2,
+            "TRANSIENT_NOISE": 13
+          },
+          "speech_ge_60": 6,
+          "speech_ge_90": 4,
+          "rms_mean": 71.19,
+          "rms_range": [
+            37.1875,
+            100.25
+          ],
+          "raw_rms_mean": 83.68,
+          "serial_samples": 5,
+          "clipped_max": 0
+        }
+      }
+    },
+    "speech_arm_length": {
+      "results": {
+        "1": {
+          "windows": 20,
+          "unique_windows": 20,
+          "labels": {
+            "TRANSIENT_NOISE": 8,
+            "UNKNOWN": 6,
+            "SPEECH": 6
+          },
+          "speech_ge_60": 11,
+          "rms_mean": 16.15,
+          "rms_range": [
+            11.625,
+            22.375
+          ],
+          "raw_rms_mean": 20.37,
+          "serial_samples": 5,
+          "clipped_max": 0
+        },
+        "2": {
+          "windows": 20,
+          "unique_windows": 20,
+          "labels": {
+            "UNKNOWN": 4,
+            "SPEECH": 10,
+            "TRANSIENT_NOISE": 6
+          },
+          "speech_ge_60": 13,
+          "rms_mean": 17.59,
+          "rms_range": [
+            12.9375,
+            27.9375
+          ],
+          "raw_rms_mean": 21.15,
+          "serial_samples": 5,
+          "clipped_max": 0
+        }
+      }
+    },
+    "offline_gain": {
+      "quiet false-speech": [
+        {
+          "gain_x256": 256,
+          "raw_rms": 10.93,
+          "filtered_rms": 4.03,
+          "class": "speech",
+          "speech_pct": 100.0,
+          "low_level_gate": false
+        },
+        {
+          "gain_x256": 192,
+          "raw_rms": 7.88,
+          "filtered_rms": 2.95,
+          "class": "speech",
+          "speech_pct": 100.0,
+          "low_level_gate": false
+        },
+        {
+          "gain_x256": 128,
+          "raw_rms": 5.25,
+          "filtered_rms": 2.03,
+          "class": "speech",
+          "speech_pct": 100.0,
+          "low_level_gate": false
+        },
+        {
+          "gain_x256": 96,
+          "raw_rms": 3.78,
+          "filtered_rms": 1.55,
+          "class": "speech",
+          "speech_pct": 100.0,
+          "low_level_gate": true
+        },
+        {
+          "gain_x256": 77,
+          "raw_rms": 2.94,
+          "filtered_rms": 1.32,
+          "class": "speech",
+          "speech_pct": 100.0,
+          "low_level_gate": true
+        }
+      ],
+      "quiet background": [
+        {
+          "gain_x256": 256,
+          "raw_rms": 21.45,
+          "filtered_rms": 4.92,
+          "class": "background",
+          "speech_pct": 10.7,
+          "low_level_gate": false
+        },
+        {
+          "gain_x256": 192,
+          "raw_rms": 15.75,
+          "filtered_rms": 3.64,
+          "class": "background",
+          "speech_pct": 9.5,
+          "low_level_gate": false
+        },
+        {
+          "gain_x256": 128,
+          "raw_rms": 10.5,
+          "filtered_rms": 2.48,
+          "class": "background",
+          "speech_pct": 7.2,
+          "low_level_gate": false
+        },
+        {
+          "gain_x256": 96,
+          "raw_rms": 7.7,
+          "filtered_rms": 1.88,
+          "class": "background",
+          "speech_pct": 1.6,
+          "low_level_gate": false
+        },
+        {
+          "gain_x256": 77,
+          "raw_rms": 6.08,
+          "filtered_rms": 1.57,
+          "class": "background",
+          "speech_pct": 0.3,
+          "low_level_gate": false
+        }
+      ],
+      "standalone speech other session": [
+        {
+          "gain_x256": 256,
+          "raw_rms": 818.24,
+          "filtered_rms": 102.77,
+          "class": "speech",
+          "speech_pct": 93.2,
+          "low_level_gate": false
+        },
+        {
+          "gain_x256": 192,
+          "raw_rms": 613.41,
+          "filtered_rms": 77.03,
+          "class": "speech",
+          "speech_pct": 93.2,
+          "low_level_gate": false
+        },
+        {
+          "gain_x256": 128,
+          "raw_rms": 408.93,
+          "filtered_rms": 51.34,
+          "class": "speech",
+          "speech_pct": 95.8,
+          "low_level_gate": false
+        },
+        {
+          "gain_x256": 96,
+          "raw_rms": 306.51,
+          "filtered_rms": 38.48,
+          "class": "transient",
+          "speech_pct": 3.7,
+          "low_level_gate": false
+        },
+        {
+          "gain_x256": 77,
+          "raw_rms": 245.76,
+          "filtered_rms": 30.84,
+          "class": "transient",
+          "speech_pct": 0.2,
+          "low_level_gate": false
+        }
+      ]
+    },
+    "raw_spectrum_1": {
+      "node": 2,
+      "sequence": 60,
+      "sample_rate_hz": 16000,
+      "duration_s": 0.5,
+      "frequency_resolution_hz": 2.0,
+      "mean_adc": 2059.41,
+      "raw_rms_adc": 10.93,
+      "range_adc": [
+        2020,
+        2086
+      ],
+      "peaks": [
+        {
+          "hz": 64.0,
+          "relative_power_pct": 12.036
+        },
+        {
+          "hz": 28.0,
+          "relative_power_pct": 9.96
+        },
+        {
+          "hz": 14.0,
+          "relative_power_pct": 4.139
+        },
+        {
+          "hz": 42.0,
+          "relative_power_pct": 4.013
+        },
+        {
+          "hz": 72.0,
+          "relative_power_pct": 1.291
+        },
+        {
+          "hz": 56.0,
+          "relative_power_pct": 0.901
+        },
+        {
+          "hz": 128.0,
+          "relative_power_pct": 0.742
+        },
+        {
+          "hz": 82.0,
+          "relative_power_pct": 0.656
+        },
+        {
+          "hz": 90.0,
+          "relative_power_pct": 0.206
+        },
+        {
+          "hz": 98.0,
+          "relative_power_pct": 0.201
+        }
+      ],
+      "band_power_pct": {
+        "10-100": 87.41,
+        "100-500": 6.26,
+        "500-2000": 3.2,
+        "2000-7500": 3.03
+      },
+      "mains_candidates": {
+        "50": {
+          "bin_hz": 48.0,
+          "peak_vs_local_median": 2.3,
+          "power_pct": 2.416
+        },
+        "100": {
+          "bin_hz": 98.0,
+          "peak_vs_local_median": 1.1,
+          "power_pct": 0.374
+        },
+        "150": {
+          "bin_hz": 150.0,
+          "peak_vs_local_median": 3.0,
+          "power_pct": 0.281
+        },
+        "200": {
+          "bin_hz": 198.0,
+          "peak_vs_local_median": 5.9,
+          "power_pct": 0.146
+        },
+        "60": {
+          "bin_hz": 62.0,
+          "peak_vs_local_median": 18.0,
+          "power_pct": 11.23
+        },
+        "120": {
+          "bin_hz": 120.0,
+          "peak_vs_local_median": 0.9,
+          "power_pct": 0.184
+        },
+        "180": {
+          "bin_hz": 182.0,
+          "peak_vs_local_median": 0.9,
+          "power_pct": 0.033
+        }
+      },
+      "note": "Frequency peaks do not identify source; compare repeated quiet samples and controlled changes."
+    },
+    "raw_spectrum_2": {
+      "sequence": 120,
+      "rms_adc": 21.45,
+      "peaks_hz_power_pct": [
+        [
+          16.0,
+          26.93
+        ],
+        [
+          24.0,
+          15.44
+        ],
+        [
+          42.0,
+          1.58
+        ],
+        [
+          50.0,
+          1.27
+        ],
+        [
+          68.0,
+          0.79
+        ],
+        [
+          34.0,
+          0.39
+        ],
+        [
+          76.0,
+          0.3
+        ],
+        [
+          84.0,
+          0.18
+        ]
+      ],
+      "power_10_100_pct": 97.06,
+      "model": [
+        89.25,
+        10.66,
+        0.09
+      ]
+    }
+  },
+  "timer_diagnostic": {
+    "observed": "Both hardware captures measured approximately 500 ms after candidate startup initialization; Node 2 reported current timer tick of 12 cycles and enabled.",
+    "limitation": "Original before/after boot debug globals printed zero and are not reliable evidence; the live register read and capture durations are the evidence.",
+    "candidate_patch": "node/testing/integration/patches/2026-11-19_timer-startup.patch",
+    "status": "candidate for team/instructor review; not applied to checked-out kernel source"
+  }
+}

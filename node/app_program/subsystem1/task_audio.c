@@ -22,6 +22,7 @@ void audio_task(INT stacd,void *exinf)
         ++msg.sequence;
         er=audio_capture_wait(&adc,&msg.captured_us);
         if (er<0) { tm_printf((UB*)"audio wait failed: %d\n",er); continue; }
+        msg.capture_us=audio_capture_duration_us();
         mosaic_config_t updated;
         if (s5_get_config(&updated)==E_OK) config=updated;
         if (config.audio_gain_x256!=256) {
@@ -39,6 +40,7 @@ void audio_task(INT stacd,void *exinf)
         uint64_t end=audio_clock_us();
         msg.dsp_us=(uint32_t)(end-start);
         msg.rms_q8=q.ac_rms_q8; msg.clipped=q.clipped_samples;
+        msg.adc_mean_q8=q.mean_q8; msg.adc_min=q.minimum; msg.adc_max=q.maximum;
         msg.timing_fault=end-msg.captured_us>500000;
         msg.threshold_pct=config.audio_conf_threshold_pct;
         /* Full queue drops the new observation. S2 sees the sequence gap

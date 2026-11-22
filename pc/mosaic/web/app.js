@@ -1716,7 +1716,8 @@
   function showStep(step) {
     $$("[data-step]", dialog).forEach((s) => { s.hidden = s.dataset.step !== step; });
     $("#dialog-start").hidden = step !== "intro";
-    $("#dialog-close").hidden = step !== "done";
+    $("#dialog-close").hidden = step === "intro";
+    $("#dialog-close").textContent = step === "listening" ? "Close and keep progress" : "Close";
     $("#dialog-cancel").textContent = step === "listening" ? "Stop and discard" : "Cancel";
     $("#dialog-cancel").hidden = step === "done";
     if (step === "done") { listening = false; $("#dialog-close").focus(); announcer.textContent = "Voice setup done."; }
