@@ -1,6 +1,6 @@
 # Subsystem 3 — test log
 
-**Subsystem:** Consumer (example)  ·  **Student ID:** <student ID>  ·  **Code:** `app_program/subsystem3/`
+**Subsystem:** Environmental sensing (Kendrick)  ·  **Student ID:** <student ID>  ·  **Code:** `app_program/subsystem3/`
 
 See `testing/README.md` for how to run tests and record results.
 
@@ -120,3 +120,17 @@ Base `c6a33c85c016d3625919f935f2e6c6e04423f953` plus the reviewed working tree; 
 S3-U13–U16: UART/no-Wi-Fi cross-builds passed for SMP 0/1 and TEST 0/1; logs `logs/20261118_163220_uart_smp0_test0.txt`, `logs/20261118_163220_uart_smp0_test1.txt`, `logs/20261118_163220_uart_smp1_test0.txt`, and `logs/20261118_163220_uart_smp1_test1.txt`. S3-U17: strict Arm compilation of S3 with TEST 0/1, UART/no Wi-Fi, passed; `logs/2026-11-18_review_strict.txt`.
 
 SMP 1 USB/Wi-Fi/lwIP/MQTT cross-builds passed with Pico SDK 2.2.0 and TEST 0/1 using temporary example credentials; `logs/2026-11-18_review_wifi_test0.txt` and `logs/2026-11-18_review_wifi_test1.txt`. These builds do not establish radio, sensor, scheduler or stack behavior. All on-target cases remain unperformed; repeat against a committed revision for formal evidence.
+
+## 2026-11-21 assessment review (uncommitted, provisional)
+
+Base `3a8f6ef5260fe7892ca1331495b12d5f19b90380` plus the S3 diagnostic changes; tester: Codex. Source hashes for the changed S3 and test files: `logs/2026-11-21_source_manifest.txt`. These checks do not replace a run of a committed revision. No hardware was connected or tested.
+
+- S3-U02–U04, U06–U09, U12, U19–U23 and U32: PASS in host logic and doubles, including the new checksum and accepted-post counters; `logs/2026-11-21_assessment_host.txt`.
+- S3-U10: PASS, installed pioasm 1.5.1; `logs/2026-11-21_assessment_pio.txt`.
+- S3-U13–U16: PASS cross-build, UART/no Wi-Fi, SMP 0/1 and TEST 0/1 respectively; `logs/20261121_083959_uart_smp0_test0.txt`, `logs/20261121_083959_uart_smp0_test1.txt`, `logs/20261121_083959_uart_smp1_test0.txt`, `logs/20261121_083959_uart_smp1_test1.txt`. These profiles explicitly do not provide DHT acquisition.
+- S3-U18: BLOCKED on this machine, supported SDK not configured; `logs/2026-11-21_wifi_prerequisite.txt`. The integrated Wi-Fi/MQTT profile has not been rebuilt in this review.
+- S3-U01, U05, U11, U24–U31 and concurrent hardware operation: NOT RUN. See `HARDWARE_EVIDENCE.md` for the remaining measurements.
+
+Static review: the environmental task delays each iteration and polls DMA retirement without spinning. The retained example `consumer_task` blocks on its mailbox in normal operation, but immediately retries and prints if `tk_rcv_mbx` repeatedly fails; that exceptional path can loop without a delay. It is separate from the environmental task and remains unresolved. S3 objects from the SMP=1 TEST=1 no-Wi-Fi build had no undefined soft-float arithmetic helpers; that does not audit the SDK-dependent Wi-Fi branch or prove target execution.
+
+The earlier S3 results above cite historical logs that are not present in this checkout. They remain unchanged as historical records; locate those original logs or repeat the tests before relying on them as assessment evidence.

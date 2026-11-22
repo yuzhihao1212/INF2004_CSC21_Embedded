@@ -5,9 +5,9 @@
 #include "../../../firmware/common/include/mosaic_protocol.h"
 #if APP_TEST
 typedef struct {
-    uint32_t dht_captures, dht_ok, dht_fail, dht_timeouts, dht_recoveries;
+    uint32_t dht_captures, dht_ok, dht_fail, dht_timeouts, dht_recoveries, dht_checksums;
     uint32_t co2_ok, co2_timeouts, co2_checksums, co2_protocol_errors;
-    uint32_t pir_valid_samples, pir_motion_samples, s5_post_errors;
+    uint32_t pir_valid_samples, pir_motion_samples, s5_post_errors, s5_environment_ok;
     bool dht_failed;
 } s3_diagnostic_counts_t;
 #endif

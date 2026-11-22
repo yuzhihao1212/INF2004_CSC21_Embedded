@@ -45,7 +45,7 @@ document so the team can check work against it. The evidence tracker below is ou
 | Numeric representation table | Wire formats | Arif, ZhiHao | Done: `docs/protocol.md` (`_x10`, Q12.4, Q8.8) |
 | | Acoustic DSP Q-formats | Moe | To do |
 | | int8 model scales and zero points | Darius | To do |
-| | Environmental and occupancy conversions | Kendrick | To do (`environment.h` documents the units) |
+| | Environmental and occupancy conversions | Kendrick | Representation, scaling, limits and invalid handling documented in `docs/environment_numeric_representation.md`; host checks cover the conversions. B4/N3 hardware measurements and integrated evidence remain pending. |
 | | Node-health calculations | Arif | Representation and limits recorded in `node_health_numeric_representation.md`; host tests cover watchdog gating and audio handoff. CPU load remains unmeasured; linked-firmware float audit and end-to-end timing remain pending. |
 | | Sensor-fusion mathematics | ZhiHao | Done: `docs/fusion_numeric_representation.md` (ranges, scaling, rounding, overflow for every fusion and reference quantity) |
 | DSP timing with headroom (500 ms budget) | Complete DSP path on the Pico | Moe | To do (Week 10 test B2) |

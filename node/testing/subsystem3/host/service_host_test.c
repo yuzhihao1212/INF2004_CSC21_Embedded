@@ -231,6 +231,18 @@ static void diagnostic_accounting(void)
     step(&s,19000); assert(s.diag.co2_protocol_errors==2);
     s.diag.pir_valid_samples=UINT32_MAX; step(&s,19200);
     assert(s.diag.pir_valid_samples==UINT32_MAX);
+    reset(); s3_service_init(&s,0);
+    step(&s,0); assert(s.diag.s5_environment_ok==1);
+    env_error=E_OBJ; step(&s,100);
+    assert(s.diag.s5_environment_ok==1 && s.diag.s5_post_errors>0);
+    env_error=E_OK; step(&s,2000);
+    pulses(&s.dht); capture_result=1;
+    s.dht.pulses[81]=s.dht.pulses[81]==25 ? 68 : 25;
+    step(&s,2010);
+    assert(s.diag.dht_checksums==1 && s.diag.dht_fail==1);
+    assert(!(s.record.validity_flags & ENV_DHT_VALID));
+    step(&s,4500); pulses(&s.dht); step(&s,4510);
+    assert(s.diag.dht_checksums==1 && s.diag.dht_recoveries==1);
     puts("PASS S3-U23: test-only diagnostic accounting (simulated hardware)");
 }
 #endif
