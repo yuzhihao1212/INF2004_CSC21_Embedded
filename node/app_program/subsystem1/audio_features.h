@@ -6,5 +6,7 @@ typedef struct {
     uint64_t captured_us;
     uint32_t sequence, dsp_us, rms_q8, clipped, timing_fault, threshold_pct;
     int32_t features[20];
+    uint32_t adc_mean_q8, capture_us;
+    uint16_t adc_min, adc_max;
 } audio_features_t;
 #endif

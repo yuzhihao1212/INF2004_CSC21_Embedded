@@ -1,0 +1,14 @@
+--- a/node/kernel/sysdepend/pico_rp2040/cpu_clock.c
++++ b/node/kernel/sysdepend/pico_rp2040/cpu_clock.c
+@@ -104,6 +104,11 @@
+ 
+ 	out_w(CLK_REF+CLK_x_DIV, div);
+ 
++	/* RP2040 TIMER and watchdog tick generator need a 1 MHz reference.
++	 * CLK_REF is now the 12 MHz crystal; the SDK configures 12 cycles/tick.
++	 * Set this during startup, before tasks and the Wi-Fi service can run. */
++	out_w(0x4005802c, (1u << 9) | XOSC_MHz);
++
+ 	/* CLK SYS settings */
+ 	div = (TMCLK_MHz << 8) / TMCLK_MHz;
+ 	if (div > in_w(CLK_SYS+CLK_x_DIV)) out_w(CLK_SYS+CLK_x_DIV, div);
