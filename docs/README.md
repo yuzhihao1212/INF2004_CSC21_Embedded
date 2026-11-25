@@ -10,6 +10,7 @@ CMake/UDP design or work that was pending when written. The current node uses
 - [Project brief](INF2004_Embedded%20System%20Project%20%28Revised%29.pdf)
 - [CSC21 change requirement and evidence tracker](change_requirement_csc21.md)
 - [Audio and classifier number formats](audio_numeric_representation.md)
+- [How MOSAIC decides what the room is doing](room-states.md)
 - [Decision log](decision-log.md)
 - [Wire protocol v2](protocol.md) — the MQTT subsection is the active transport;
   the UDP sections describe the earlier firmware. The older S4 README
