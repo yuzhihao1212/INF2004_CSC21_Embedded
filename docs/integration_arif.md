@@ -1,5 +1,7 @@
 # Arif integration handoff — 11 November 2026
 
+> **Historical record (status at hand-in, 25 Nov 2026).** A handoff note from 11 Nov, written for the earlier CMake/FreeRTOS firmware that sent UDP. The submitted node runs µT-Kernel 3.0 and sends MQTT (`node/`). For the system as submitted, start at the [main README](../README.md) and the [evidence index](README.md).
+
 ## What is ready
 
 - Protocol-v2 UDP telemetry, CONFIG/PING filtering, background Wi-Fi servicing.

@@ -1,5 +1,7 @@
 # Telemetry retry work: validation status
 
+> **Historical record (status at hand-in, 25 Nov 2026).** Describes telemetry retries added to the earlier UDP firmware. The submitted node sends over MQTT, and the gateway's duplicate and gap handling described here still applies on the PC. For the system as submitted, start at the [main README](../README.md) and the [evidence index](README.md).
+
 This branch adds two bounded retries for each successfully submitted telemetry
 message. Copies retain their sequence, timestamp and payload. The gateway ignores
 duplicates and repairs tracked sequence gaps when late messages arrive. This is
