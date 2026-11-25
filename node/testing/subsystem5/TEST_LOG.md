@@ -43,6 +43,7 @@ new row for every host run. Never edit or delete old rows.
 | Date | Test ID | Commit | Tester | Result | Log / evidence | Notes |
 |---|---|---|---|---|---|---|
 | 2026-11-18 | S5-U01…U11 + edge cases | `bf3c7f9` | ZhiHao (run by Claude Code) | PASS (host) | `logs/2026-11-18_host.txt` | `host/s5_protocol_host_test.c` built with Apple clang 17, `-Wall -Wextra -Werror`, exit 0; 84 bytes out; `pc/tests/test_node_s5.py` decodes them: OK. U12, U13 not run. |
+| 2026-11-25 | S5-U01…U11 + edge cases | `62e0e5a` | ZhiHao (run by Claude Code) | PASS (host) | `logs/2026-11-25_host_62e0e5a.txt` | Run with `node/testing/run_host_tests.sh`: Apple clang 17, `-Wall -Wextra -Werror`, exit 0; 84 bytes out; all 305 PC unit tests pass, including `pc/tests/test_node_s5.py`. U12, U13 not run: the hardware was returned after the final demo. |
 
 ## Results
 

@@ -72,3 +72,17 @@ the test's result row. `videos/README.md` explains how.
 - **A FAIL needs a note** saying what went wrong and, later, which commit fixed it.
 - Before merging a change into `main`, re-run your subsystem's unit tests.
   Before a demo or hand-in, run every test and record the full set.
+
+## Host tests (no hardware needed)
+
+Some tests compile the real sources from `app_program/` for the PC and check
+their logic and arithmetic there. One command reruns all of them and saves a
+log per subsystem, named `<date>_host_<commit>.txt`:
+
+```sh
+node/testing/run_host_tests.sh
+```
+
+It needs only `cc` and `python3`. Commit first, then run it, then add a result
+row that cites the new log. A host PASS says nothing about timing or hardware:
+record it as "PASS (host)" and leave the on-target test's own row for a board run.

@@ -68,3 +68,15 @@ are 42.67 times too small and the 500 ms deadline checks cannot trip. See
 `../integration/logs/2026-11-20-audio-investigation.md` and the note above the
 function in `drv_audio.c`. S1-U06, S1-U07 and S1-U09 are NOT RUN: there is no
 hardware to run them on.
+
+## Final host run on the hand-in code (25 Nov 2026)
+
+Run with `node/testing/run_host_tests.sh` on a clean checkout of `62e0e5a`: the
+tidied sources merged with the code that ran in the final demo.
+
+| Date | ID | Commit | Result | Evidence |
+|---|---|---|---|---|
+| 2026-11-25 | S1-U04 replay | `62e0e5a` | PASS | `logs/2026-11-25_host_62e0e5a.txt`: all 20 features identical across 32 windows |
+
+Host only. The hardware was returned after the final demo on 25 Nov 2026, so on-target and
+manual tests can no longer be run. S1-U06 and S1-U07 stay NOT RUN.

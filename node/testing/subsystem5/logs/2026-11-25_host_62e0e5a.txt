@@ -1,0 +1,346 @@
+S5 host run (S5-U01..U11 plus edge cases), then all PC unit tests. Host only.
+Date: 2026-11-25 21:42 +0800
+Commit: 62e0e5a (tracked files clean)
+Machine: Darwin arm64
+Compiler: Apple clang version 17.0.0 (clang-1700.0.13.5)
+Python: Python 3.14.0
+
+$ cc -std=c11 -Wall -Wextra -Werror -I node/app_program/subsystem5 node/testing/subsystem5/host/s5_protocol_host_test.c node/app_program/subsystem5/s5_protocol.c -o /var/folders/4p/85h90jj9327_cwwm4489hdcr0000gn/T/tmp.UXSyiYbGyW/s5host
+exit: 0
+
+$ s5host | xxd   (the asserts run first; the bytes are the packets it built)
+00000000: 4d53 0201 0101 3000 0000 0000 e803 0000  MS....0.........
+00000010: 7b00 0000 1500 0000 40e2 0100 fb00 9102  {.......@.......
+00000020: 5203 0700 0000 0200 a000 0205 5a00 0500  R...........Z...
+00000030: 4001 0405 0500 5a00 021e 0b2a bf00 0000  @.....Z....*....
+00000040: 4d53 0203 0100 0400 0100 0000 2a00 0000  MS..........*...
+00000050: 0700 0000                                ....
+exit: 0
+
+$ (cd pc && python3 -m unittest -v)
+test_applied_report_interval_is_forwarded_to_fusion (tests.test_dashboard.CalibrationApi.test_applied_report_interval_is_forwarded_to_fusion) ... ok
+test_calibrate_all_restart_one_and_reset (tests.test_dashboard.CalibrationApi.test_calibrate_all_restart_one_and_reset) ... ok
+test_disabled_or_absent_fusion (tests.test_dashboard.CalibrationApi.test_disabled_or_absent_fusion) ... ok
+test_invalid_requests_and_unknown_zone (tests.test_dashboard.CalibrationApi.test_invalid_requests_and_unknown_zone) ... ok
+test_state_contains_per_zone_reference_status_and_levels (tests.test_dashboard.CalibrationApi.test_state_contains_per_zone_reference_status_and_levels) ... ok
+test_bad_requests (tests.test_dashboard.ConfigApi.test_bad_requests) ... ok
+test_post_starts_delivery (tests.test_dashboard.ConfigApi.test_post_starts_delivery) ... ok
+test_history_keeps_sound_level (tests.test_dashboard.DashboardState.test_history_keeps_sound_level) ... ok
+test_history_keeps_window (tests.test_dashboard.DashboardState.test_history_keeps_window) ... ok
+test_latest_audio_window_shown (tests.test_dashboard.DashboardState.test_latest_audio_window_shown) ... ok
+test_node_vitals_reach_the_page (tests.test_dashboard.DashboardState.test_node_vitals_reach_the_page) ... ok
+test_simulated_source (tests.test_dashboard.DashboardState.test_simulated_source) ... ok
+test_simulation_phase (tests.test_dashboard.DashboardState.test_simulation_phase) ... ok
+test_state_is_json (tests.test_dashboard.DashboardState.test_state_is_json) ... ok
+test_valid_and_invalid_fields (tests.test_dashboard.DashboardState.test_valid_and_invalid_fields) ... ok
+test_api_state (tests.test_dashboard.Http.test_api_state) ... ok
+test_no_files_outside_web (tests.test_dashboard.Http.test_no_files_outside_web) ... ok
+test_page_and_assets (tests.test_dashboard.Http.test_page_and_assets) ... ok
+test_bad_requests (tests.test_dashboard.LoudnessApi.test_bad_requests) ... ok
+test_capture_saves_and_clear_removes (tests.test_dashboard.LoudnessApi.test_capture_saves_and_clear_removes) ... ok
+test_loads_saved_levels_for_student_zones_only (tests.test_dashboard.LoudnessApi.test_loads_saved_levels_for_student_zones_only) ... ok
+test_state_has_loudness_setup (tests.test_dashboard.LoudnessApi.test_state_has_loudness_setup) ... ok
+test_bad_mode (tests.test_dashboard.ModeApi.test_bad_mode) ... ok
+test_mode_switches_fusion_and_configures_nodes (tests.test_dashboard.ModeApi.test_mode_switches_fusion_and_configures_nodes) ... ok
+test_zone_map_api_shape_and_decimal_display_boundary (tests.test_dashboard.ModeApi.test_zone_map_api_shape_and_decimal_display_boundary) ... ok
+test_bad_requests (tests.test_dashboard.SimulationApi.test_bad_requests) ... ok
+test_no_script_is_a_conflict (tests.test_dashboard.SimulationApi.test_no_script_is_a_conflict) ... ok
+test_pause_speed_and_skip (tests.test_dashboard.SimulationApi.test_pause_speed_and_skip) ... ok
+test_ventilation_switch (tests.test_dashboard.SimulationApi.test_ventilation_switch) ... ok
+test_simulator_udp_csv_events_evaluate (tests.test_evaluate.EndToEnd.test_simulator_udp_csv_events_evaluate) ... ok
+test_all_event_envelopes_csv_compatibility_pong_drop_status (tests.test_evaluate.EventCapture.test_all_event_envelopes_csv_compatibility_pong_drop_status) ... ok
+test_config_confirmed_by_telemetry_has_no_ack_time (tests.test_evaluate.EventCapture.test_config_confirmed_by_telemetry_has_no_ack_time) ... ok
+test_config_rejected_failed_superseded_and_unfinished (tests.test_evaluate.EventCapture.test_config_rejected_failed_superseded_and_unfinished) ... ok
+test_config_round_trip_in_summary_and_report (tests.test_evaluate.EventCapture.test_config_round_trip_in_summary_and_report) ... ok
+test_config_round_trip_reads_logs_without_via (tests.test_evaluate.EventCapture.test_config_round_trip_reads_logs_without_via) ... ok
+test_config_round_trip_through_ack_after_one_retry (tests.test_evaluate.EventCapture.test_config_round_trip_through_ack_after_one_retry) ... ok
+test_config_sending_stale_applied_rejected_failed (tests.test_evaluate.EventCapture.test_config_sending_stale_applied_rejected_failed) ... ok
+test_config_stale_version_is_followed_to_the_resend (tests.test_evaluate.EventCapture.test_config_stale_version_is_followed_to_the_resend) ... ok
+test_pairing_recovery_does_not_log_an_operator_calibration_restart (tests.test_evaluate.EventCapture.test_pairing_recovery_does_not_log_an_operator_calibration_restart) ... ok
+test_reference_start_ready_restart_reset_and_zone_changes (tests.test_evaluate.EventCapture.test_reference_start_ready_restart_reset_and_zone_changes) ... ok
+test_retry_events_and_csv_replay_match_live_counts (tests.test_evaluate.EventCapture.test_retry_events_and_csv_replay_match_live_counts) ... ok
+test_all_message_sequence_tracking_avoids_phantom_pong_ack_loss (tests.test_evaluate.Fixtures.test_all_message_sequence_tracking_avoids_phantom_pong_ack_loss) ... ok
+test_appended_sessions_do_not_count_between_run_gaps (tests.test_evaluate.Fixtures.test_appended_sessions_do_not_count_between_run_gaps) ... ok
+test_availability_recovery_and_rtt (tests.test_evaluate.Fixtures.test_availability_recovery_and_rtt) ... ok
+test_bad_cells_events_and_mismatched_capture (tests.test_evaluate.Fixtures.test_bad_cells_events_and_mismatched_capture) ... ok
+test_cli_writes_markdown_and_json (tests.test_evaluate.Fixtures.test_cli_writes_markdown_and_json) ... ok
+test_completed_and_censored_co2_warmup (tests.test_evaluate.Fixtures.test_completed_and_censored_co2_warmup) ... ok
+test_empty_and_missing_columns (tests.test_evaluate.Fixtures.test_empty_and_missing_columns) ... ok
+test_expected_clips_outside_capture_and_rejects_overlap (tests.test_evaluate.Fixtures.test_expected_clips_outside_capture_and_rejects_overlap) ... ok
+test_fusion_zone_times_transitions_and_expected_scoring (tests.test_evaluate.Fixtures.test_fusion_zone_times_transitions_and_expected_scoring) ... ok
+test_initial_discovery_is_not_a_network_recovery (tests.test_evaluate.Fixtures.test_initial_discovery_is_not_a_network_recovery) ... ok
+test_large_audio_sequence_delta_uses_protocol_modulo_formula (tests.test_evaluate.Fixtures.test_large_audio_sequence_delta_uses_protocol_modulo_formula) ... ok
+test_missing_state_fields_and_negative_rtt (tests.test_evaluate.Fixtures.test_missing_state_fields_and_negative_rtt) ... ok
+test_monotonic_events_survive_wall_clock_steps (tests.test_evaluate.Fixtures.test_monotonic_events_survive_wall_clock_steps) ... ok
+test_outputs_cannot_overwrite_capture (tests.test_evaluate.Fixtures.test_outputs_cannot_overwrite_capture) ... ok
+test_packet_wrap_and_reboot_match_live_gateway (tests.test_evaluate.Fixtures.test_packet_wrap_and_reboot_match_live_gateway) ... ok
+test_percentile_method_small_samples (tests.test_evaluate.Fixtures.test_percentile_method_small_samples) ... ok
+test_sequence_loss_duplicate_reboot_and_audio_wrap (tests.test_evaluate.Fixtures.test_sequence_loss_duplicate_reboot_and_audio_wrap) ... ok
+test_a_new_or_worse_alert_shows_while_another_is_hidden (tests.test_feedback.Alerts.test_a_new_or_worse_alert_shows_while_another_is_hidden) ... ok
+test_hide_for_ten_minutes_then_show_again (tests.test_feedback.Alerts.test_hide_for_ten_minutes_then_show_again) ... ok
+test_sensor_coverage_waits_before_alerting (tests.test_feedback.Alerts.test_sensor_coverage_waits_before_alerting) ... ok
+test_start_update_end (tests.test_feedback.Alerts.test_start_update_end) ... ok
+test_vague_update_keeps_the_specific_message (tests.test_feedback.Alerts.test_vague_update_keeps_the_specific_message) ... ok
+test_hide_alert (tests.test_feedback.Api.test_hide_alert) ... ok
+test_state_has_feedback_and_alerts (tests.test_feedback.Api.test_state_has_feedback_and_alerts) ... ok
+test_chatter_and_stuffy_air_is_one_alert (tests.test_feedback.CombinedRules.test_chatter_and_stuffy_air_is_one_alert) ... ok
+test_chatter_in_group_work_does_not_alert (tests.test_feedback.CombinedRules.test_chatter_in_group_work_does_not_alert) ... ok
+test_clearing_once_readings_are_back_down (tests.test_feedback.CombinedRules.test_clearing_once_readings_are_back_down) ... ok
+test_headline_names_the_most_urgent_thing (tests.test_feedback.CombinedRules.test_headline_names_the_most_urgent_thing) ... ok
+test_low_sensor_coverage (tests.test_feedback.CombinedRules.test_low_sensor_coverage) ... ok
+test_stuffiest_area_only_when_it_stands_out (tests.test_feedback.CombinedRules.test_stuffiest_area_only_when_it_stands_out) ... ok
+test_stuffy_empty_room_is_only_a_heads_up (tests.test_feedback.CombinedRules.test_stuffy_empty_room_is_only_a_heads_up) ... ok
+test_stuffy_occupied_room_alerts (tests.test_feedback.CombinedRules.test_stuffy_occupied_room_alerts) ... ok
+test_warm_and_restless (tests.test_feedback.CombinedRules.test_warm_and_restless) ... ok
+test_both_themes (tests.test_feedback.Contrast.test_both_themes) ... ok
+test_dark_tokens_match_the_system_dark_block (tests.test_feedback.Contrast.test_dark_tokens_match_the_system_dark_block) ... ok
+test_act_now_with_an_alert_outside_group_work (tests.test_feedback.ExcessiveNoise.test_act_now_with_an_alert_outside_group_work) ... ok
+test_heads_up_without_alert_in_group_work (tests.test_feedback.ExcessiveNoise.test_heads_up_without_alert_in_group_work) ... ok
+test_loud_areas_count_as_talking_areas (tests.test_feedback.ExcessiveNoise.test_loud_areas_count_as_talking_areas) ... ok
+test_setup_summary (tests.test_feedback.ExcessiveNoise.test_setup_summary) ... ok
+test_checking_instead_of_no_data_while_sensors_work (tests.test_feedback.Labels.test_checking_instead_of_no_data_while_sensors_work) ... ok
+test_every_engine_state_has_a_plain_label (tests.test_feedback.Labels.test_every_engine_state_has_a_plain_label) ... ok
+test_no_engine_name_reaches_the_main_view (tests.test_feedback.Labels.test_no_engine_name_reaches_the_main_view) ... ok
+test_room_areas (tests.test_feedback.Labels.test_room_areas) ... ok
+test_comfort_direction (tests.test_feedback.Severity.test_comfort_direction) ... ok
+test_depends_on_class_type (tests.test_feedback.Severity.test_depends_on_class_type) ... ok
+test_talking_areas_and_duration (tests.test_feedback.Severity.test_talking_areas_and_duration) ... ok
+test_json_overrides (tests.test_fusion.Configuration.test_json_overrides) ... ok
+test_legacy_lecture_threshold_loads_with_deprecation_warning (tests.test_fusion.Configuration.test_legacy_lecture_threshold_loads_with_deprecation_warning) ... ok
+test_unknown_key_rejected (tests.test_fusion.Configuration.test_unknown_key_rejected) ... ok
+test_unmapped_node_ignored (tests.test_fusion.Configuration.test_unmapped_node_ignored) ... ok
+test_discussion_mode (tests.test_fusion.Discussion.test_discussion_mode) ... ok
+test_one_group_talking_is_neither_discussion_nor_focused_lecture (tests.test_fusion.Discussion.test_one_group_talking_is_neither_discussion_nor_focused_lecture) ... ok
+test_same_room_in_lecture_mode_is_noise (tests.test_fusion.Discussion.test_same_room_in_lecture_mode_is_noise) ... ok
+test_humidity_out_of_range (tests.test_fusion.Environment.test_humidity_out_of_range) ... ok
+test_poor_ventilation_and_recovery (tests.test_fusion.Environment.test_poor_ventilation_and_recovery) ... ok
+test_regions_are_independent (tests.test_fusion.Environment.test_regions_are_independent) ... ok
+test_temperature_out_of_range_and_back (tests.test_fusion.Environment.test_temperature_out_of_range_and_back) ... ok
+test_warming_up_is_unknown (tests.test_fusion.Environment.test_warming_up_is_unknown) ... ok
+test_a_short_bang_is_not_loud (tests.test_fusion.ExcessiveNoise.test_a_short_bang_is_not_loud) ... ok
+test_any_sound_class_counts (tests.test_fusion.ExcessiveNoise.test_any_sound_class_counts) ... ok
+test_capture_fails_when_quiet_or_offline (tests.test_fusion.ExcessiveNoise.test_capture_fails_when_quiet_or_offline) ... ok
+test_capture_sets_the_mean_level (tests.test_fusion.ExcessiveNoise.test_capture_sets_the_mean_level) ... ok
+test_clear (tests.test_fusion.ExcessiveNoise.test_clear) ... ok
+test_lecturer_zone_is_never_loud (tests.test_fusion.ExcessiveNoise.test_lecturer_zone_is_never_loud) ... ok
+test_needs_the_enter_share_then_leaves_below_the_exit_share (tests.test_fusion.ExcessiveNoise.test_needs_the_enter_share_then_leaves_below_the_exit_share) ... ok
+test_no_level_keeps_today_behaviour (tests.test_fusion.ExcessiveNoise.test_no_level_keeps_today_behaviour) ... ok
+test_sustained_noise_over_the_level_is_loud (tests.test_fusion.ExcessiveNoise.test_sustained_noise_over_the_level_is_loud) ... ok
+test_talking_below_the_level_stays_talking (tests.test_fusion.ExcessiveNoise.test_talking_below_the_level_stays_talking) ... ok
+test_waits_the_zone_dwell (tests.test_fusion.ExcessiveNoise.test_waits_the_zone_dwell) ... ok
+test_murmur_alone_does_not_start_noise_rising (tests.test_fusion.Lecture.test_murmur_alone_does_not_start_noise_rising) ... ok
+test_quiet_work_mode_is_stricter (tests.test_fusion.Lecture.test_quiet_work_mode_is_stricter) ... ok
+test_rear_chatter_rises_then_sustains_then_settles (tests.test_fusion.Lecture.test_rear_chatter_rises_then_sustains_then_settles) ... ok
+test_same_speech_moves_from_lecturer_to_student_zone (tests.test_fusion.Lecture.test_same_speech_moves_from_lecturer_to_student_zone) ... ok
+test_transient_noise_ignored (tests.test_fusion.Lecture.test_transient_noise_ignored)
+One loud bang (a dropped book) in every zone changes nothing. ... ok
+test_empty_needs_long_quiet (tests.test_fusion.Occupancy.test_empty_needs_long_quiet) ... ok
+test_motion_makes_occupied (tests.test_fusion.Occupancy.test_motion_makes_occupied) ... ok
+test_offline_zones (tests.test_fusion.Occupancy.test_offline_zones) ... ok
+test_starts_unknown_then_empty (tests.test_fusion.Occupancy.test_starts_unknown_then_empty) ... ok
+test_still_class_stays_occupied (tests.test_fusion.Occupancy.test_still_class_stays_occupied)
+PIR is motion, not presence: no motion at all, but a lecture. ... ok
+test_lecturer_heard_everywhere_is_a_lecture (tests.test_fusion.UncalibratedLoudnessFallback.test_lecturer_heard_everywhere_is_a_lecture) ... ok
+test_louder_local_speech_is_student_talk (tests.test_fusion.UncalibratedLoudnessFallback.test_louder_local_speech_is_student_talk) ... ok
+test_without_the_fallback_the_lecture_looks_like_chatter (tests.test_fusion.UncalibratedLoudnessFallback.test_without_the_fallback_the_lecture_looks_like_chatter) ... ok
+test_breakdown_by_component (tests.test_fw_budget.FwBudgetTest.test_breakdown_by_component) ... ok
+test_find_map_accepts_both_sdk_names (tests.test_fw_budget.FwBudgetTest.test_find_map_accepts_both_sdk_names) ... ok
+test_float_helper_pattern (tests.test_fw_budget.FwBudgetTest.test_float_helper_pattern) ... ok
+test_parse_keeps_placed_sections_only (tests.test_fw_budget.FwBudgetTest.test_parse_keeps_placed_sections_only) ... ok
+test_source_file_only_resolves_our_code (tests.test_fw_budget.FwBudgetTest.test_source_file_only_resolves_our_code) ... ok
+test_components (tests.test_fw_budget.TemplateLayoutTest.test_components) ... ok
+test_images_found_in_build_make (tests.test_fw_budget.TemplateLayoutTest.test_images_found_in_build_make) ... ok
+test_memory_from_tron_linker_symbols (tests.test_fw_budget.TemplateLayoutTest.test_memory_from_tron_linker_symbols) ... ok
+test_only_app_program_is_our_code (tests.test_fw_budget.TemplateLayoutTest.test_only_app_program_is_our_code) ... ok
+test_failed_retries_after_wait (tests.test_gateway.ConfigDelivery.test_failed_retries_after_wait) ... ok
+test_lost_ack_but_telemetry_shows_version (tests.test_gateway.ConfigDelivery.test_lost_ack_but_telemetry_shows_version) ... ok
+test_next_version_above_reported (tests.test_gateway.ConfigDelivery.test_next_version_above_reported) ... ok
+test_rejected_is_not_retried (tests.test_gateway.ConfigDelivery.test_rejected_is_not_retried) ... ok
+test_resends_after_reboot (tests.test_gateway.ConfigDelivery.test_resends_after_reboot) ... ok
+test_retries_then_fails (tests.test_gateway.ConfigDelivery.test_retries_then_fails) ... ok
+test_sends_to_node_and_applies_on_ack (tests.test_gateway.ConfigDelivery.test_sends_to_node_and_applies_on_ack) ... ok
+test_set_config_keeps_earlier_fields (tests.test_gateway.ConfigDelivery.test_set_config_keeps_earlier_fields) ... ok
+test_set_config_rejects_bad_requests (tests.test_gateway.ConfigDelivery.test_set_config_rejects_bad_requests) ... ok
+test_stale_version_jumps_past_node (tests.test_gateway.ConfigDelivery.test_stale_version_jumps_past_node) ... ok
+test_telemetry_sent_before_ack_does_not_resend (tests.test_gateway.ConfigDelivery.test_telemetry_sent_before_ack_does_not_resend) ... ok
+test_one_ping_per_node_and_none_to_offline (tests.test_gateway.Latency.test_one_ping_per_node_and_none_to_offline) ... ok
+test_pc_seq_increments (tests.test_gateway.Latency.test_pc_seq_increments) ... ok
+test_pong_gives_rtt (tests.test_gateway.Latency.test_pong_gives_rtt) ... ok
+test_online_stale_offline (tests.test_gateway.Liveness.test_online_stale_offline) ... ok
+test_stale_follows_report_interval (tests.test_gateway.Liveness.test_stale_follows_report_interval) ... ok
+test_status_changes_reported_once (tests.test_gateway.Liveness.test_status_changes_reported_once) ... ok
+test_config_ack_recorded (tests.test_gateway.Receiving.test_config_ack_recorded) ... ok
+test_malformed_dropped_per_source (tests.test_gateway.Receiving.test_malformed_dropped_per_source) ... ok
+test_pc_messages_and_bad_node_ids_dropped (tests.test_gateway.Receiving.test_pc_messages_and_bad_node_ids_dropped) ... ok
+test_telemetry_registers_node (tests.test_gateway.Receiving.test_telemetry_registers_node) ... ok
+test_backwards_seq_is_reboot (tests.test_gateway.SequenceTracking.test_backwards_seq_is_reboot) ... ok
+test_boot_retry_arrives_after_next_telemetry (tests.test_gateway.SequenceTracking.test_boot_retry_arrives_after_next_telemetry) ... ok
+test_burst_loss_and_two_retries_deliver_once (tests.test_gateway.SequenceTracking.test_burst_loss_and_two_retries_deliver_once) ... ok
+test_delayed_first_telemetry_after_pong_does_not_reboot (tests.test_gateway.SequenceTracking.test_delayed_first_telemetry_after_pong_does_not_reboot) ... ok
+test_duplicate_does_not_refresh_reading_or_inflate_delivery (tests.test_gateway.SequenceTracking.test_duplicate_does_not_refresh_reading_or_inflate_delivery) ... ok
+test_duplicate_not_loss (tests.test_gateway.SequenceTracking.test_duplicate_not_loss) ... ok
+test_expired_history_does_not_fake_a_reboot (tests.test_gateway.SequenceTracking.test_expired_history_does_not_fake_a_reboot) ... ok
+test_first_packet_with_flag_is_not_reboot (tests.test_gateway.SequenceTracking.test_first_packet_with_flag_is_not_reboot) ... ok
+test_first_since_boot_flag_is_reboot (tests.test_gateway.SequenceTracking.test_first_since_boot_flag_is_reboot) ... ok
+test_gap_counts_loss (tests.test_gateway.SequenceTracking.test_gap_counts_loss) ... ok
+test_gap_tracking_storage_is_bounded (tests.test_gateway.SequenceTracking.test_gap_tracking_storage_is_bounded) ... ok
+test_loss_right_after_reboot_counted (tests.test_gateway.SequenceTracking.test_loss_right_after_reboot_counted) ... ok
+test_pong_before_flagged_telemetry_is_one_reboot (tests.test_gateway.SequenceTracking.test_pong_before_flagged_telemetry_is_one_reboot) ... ok
+test_reordering_across_sequence_wrap (tests.test_gateway.SequenceTracking.test_reordering_across_sequence_wrap) ... ok
+test_repair_after_intervening_pong (tests.test_gateway.SequenceTracking.test_repair_after_intervening_pong) ... ok
+test_retried_boot_packet_after_pong_is_not_a_reboot (tests.test_gateway.SequenceTracking.test_retried_boot_packet_after_pong_is_not_a_reboot) ... ok
+test_retry_repairs_gap_without_rewinding_live_reading (tests.test_gateway.SequenceTracking.test_retry_repairs_gap_without_rewinding_live_reading) ... ok
+test_seq_shared_across_message_types (tests.test_gateway.SequenceTracking.test_seq_shared_across_message_types) ... ok
+test_seq_wraps (tests.test_gateway.SequenceTracking.test_seq_wraps) ... ok
+test_end_to_end_over_udp (tests.test_gateway.Simulated.test_end_to_end_over_udp) ... ok
+test_simulated_node_checks_config (tests.test_gateway.Simulated.test_simulated_node_checks_config) ... ok
+test_simulator_loss_consumes_seq (tests.test_gateway.Simulated.test_simulator_loss_consumes_seq) ... ok
+test_simulator_reports_both_audio_windows (tests.test_gateway.Simulated.test_simulator_reports_both_audio_windows) ... ok
+test_simulator_telemetry_decodes (tests.test_gateway.Simulated.test_simulator_telemetry_decodes) ... ok
+test_every_scenario_sequence_and_transition_time (tests.test_integer_accuracy.IntegerAccuracy.test_every_scenario_sequence_and_transition_time) ... ok
+test_float_oracle_is_frozen (tests.test_integer_accuracy.IntegerAccuracy.test_float_oracle_is_frozen) ... ok
+test_audit_rejects_float_shortcuts (tests.test_integer_enforcement.IntegerEnforcement.test_audit_rejects_float_shortcuts) ... ok
+test_processing_sources_have_no_floating_operations (tests.test_integer_enforcement.IntegerEnforcement.test_processing_sources_have_no_floating_operations) ... ok
+test_absent_audio_and_invalid_sensors_fail_only_requested_checks (tests.test_integration_check.IntegrationCheck.test_absent_audio_and_invalid_sensors_fail_only_requested_checks) ... ok
+test_missing_second_node_and_simulator_are_not_hardware_pass (tests.test_integration_check.IntegrationCheck.test_missing_second_node_and_simulator_are_not_hardware_pass) ... ok
+test_offline_is_failure_even_with_old_telemetry (tests.test_integration_check.IntegrationCheck.test_offline_is_failure_even_with_old_telemetry) ... ok
+test_queued_config_is_not_success (tests.test_integration_check.IntegrationCheck.test_queued_config_is_not_success) ... ok
+test_real_node_config_confirmed (tests.test_integration_check.IntegrationCheck.test_real_node_config_confirmed) ... ok
+test_keepalive_pings_and_unacknowledged_resend (tests.test_mqtt.ClientWithBroker.test_keepalive_pings_and_unacknowledged_resend) ... ok
+test_last_will_on_abrupt_loss_but_not_on_disconnect (tests.test_mqtt.ClientWithBroker.test_last_will_on_abrupt_loss_but_not_on_disconnect) ... ok
+test_qos1_is_acknowledged_and_retained_messages_reach_late_subscribers (tests.test_mqtt.ClientWithBroker.test_qos1_is_acknowledged_and_retained_messages_reach_late_subscribers) ... ok
+test_refused_connection (tests.test_mqtt.ClientWithBroker.test_refused_connection) ... ok
+test_silent_broker_is_detected (tests.test_mqtt.ClientWithBroker.test_silent_broker_is_detected) ... ok
+test_connect_bytes_follow_the_spec (tests.test_mqtt.Codec.test_connect_bytes_follow_the_spec) ... ok
+test_malformed_data_drops_the_link_instead_of_raising (tests.test_mqtt.Codec.test_malformed_data_drops_the_link_instead_of_raising) ... ok
+test_publish_round_trip_and_partial_reads (tests.test_mqtt.Codec.test_publish_round_trip_and_partial_reads) ... ok
+test_remaining_length (tests.test_mqtt.Codec.test_remaining_length) ... ok
+test_topics (tests.test_mqtt.Codec.test_topics) ... ok
+test_gateway_reconnects_after_the_broker_restarts (tests.test_mqtt.GatewayOverMqtt.test_gateway_reconnects_after_the_broker_restarts) ... ok
+test_last_will_is_logged (tests.test_mqtt.GatewayOverMqtt.test_last_will_is_logged) ... ok
+test_node_may_not_speak_for_another (tests.test_mqtt.GatewayOverMqtt.test_node_may_not_speak_for_another) ... ok
+test_reconnect_waits_for_fresh_telemetry (tests.test_mqtt.GatewayOverMqtt.test_reconnect_waits_for_fresh_telemetry) ... ok
+test_telemetry_config_ack_and_ping (tests.test_mqtt.GatewayOverMqtt.test_telemetry_config_ack_and_ping) ... ok
+test_simulated_nodes_reach_the_gateway_and_answer_config (tests.test_mqtt.SimulatedNodesOverMqtt.test_simulated_nodes_reach_the_gateway_and_answer_config) ... ok
+test_queue_gaps_bounds_and_c_wire_packet (tests.test_node_audio_handoff.AudioHandoff.test_queue_gaps_bounds_and_c_wire_packet) ... ok
+test_progress_from_every_task_required_in_each_epoch (tests.test_node_health.NodeHealth.test_progress_from_every_task_required_in_each_epoch) ... ok
+test_c_scheduler_bounds_expiry_and_owned_payloads (tests.test_node_retries.NodeRetries.test_c_scheduler_bounds_expiry_and_owned_payloads) ... ok
+test_logic_cases_and_c_python_wire_agreement (tests.test_node_s5.Subsystem5Protocol.test_logic_cases_and_c_python_wire_agreement) ... ok
+test_bounds_inclusive (tests.test_protocol.ConfigRanges.test_bounds_inclusive) ... ok
+test_defaults_valid (tests.test_protocol.ConfigRanges.test_defaults_valid) ... ok
+test_out_of_range (tests.test_protocol.ConfigRanges.test_out_of_range) ... ok
+test_version_ordering (tests.test_protocol.ConfigRanges.test_version_ordering) ... ok
+test_bad_magic (tests.test_protocol.Malformed.test_bad_magic) ... ok
+test_too_short (tests.test_protocol.Malformed.test_too_short) ... ok
+test_trailing_bytes (tests.test_protocol.Malformed.test_trailing_bytes) ... ok
+test_truncated_payload (tests.test_protocol.Malformed.test_truncated_payload) ... ok
+test_unknown_type (tests.test_protocol.Malformed.test_unknown_type) ... ok
+test_wrong_version (tests.test_protocol.Malformed.test_wrong_version) ... ok
+test_config (tests.test_protocol.MatchesCHeader.test_config) ... ok
+test_config_ack (tests.test_protocol.MatchesCHeader.test_config_ack) ... ok
+test_pong (tests.test_protocol.MatchesCHeader.test_pong) ... ok
+test_python_encodes_identical_bytes (tests.test_protocol.MatchesCHeader.test_python_encodes_identical_bytes) ... ok
+test_telemetry (tests.test_protocol.MatchesCHeader.test_telemetry) ... ok
+test_config_ack_ping (tests.test_protocol.RoundTrip.test_config_ack_ping) ... ok
+test_no_audio_windows (tests.test_protocol.RoundTrip.test_no_audio_windows) ... ok
+test_reserved_slot_and_class_rejected (tests.test_protocol.RoundTrip.test_reserved_slot_and_class_rejected) ... ok
+test_telemetry (tests.test_protocol.RoundTrip.test_telemetry) ... ok
+test_too_many_audio_windows (tests.test_protocol.RoundTrip.test_too_many_audio_windows) ... ok
+test_wrong_payload_type_rejected (tests.test_protocol.RoundTrip.test_wrong_payload_type_rejected) ... ok
+test_disabled_and_uncalibrated_use_student_speech_probability (tests.test_reference.FusionReference.test_disabled_and_uncalibrated_use_student_speech_probability) ... ok
+test_discussion_requires_widespread_student_talking (tests.test_reference.FusionReference.test_discussion_requires_widespread_student_talking) ... ok
+test_gateway_stale_set_expires_reference (tests.test_reference.FusionReference.test_gateway_stale_set_expires_reference) ... ok
+test_level_not_classifier_drives_conversation_and_sustained_chatter (tests.test_reference.FusionReference.test_level_not_classifier_drives_conversation_and_sustained_chatter) ... ok
+test_reference_offline_falls_back_then_returns_to_known_reference (tests.test_reference.FusionReference.test_reference_offline_falls_back_then_returns_to_known_reference) ... ok
+test_background_recovered_from_quantised_rms (tests.test_reference.Reference.test_background_recovered_from_quantised_rms) ... ok
+test_calibration_requires_reference_speech_and_level (tests.test_reference.Reference.test_calibration_requires_reference_speech_and_level) ... ok
+test_constant_reference_requires_level_variation_and_caps_pairs (tests.test_reference.Reference.test_constant_reference_requires_level_variation_and_caps_pairs) ... ok
+test_duplicate_and_out_of_order_do_not_collect_or_latch (tests.test_reference.Reference.test_duplicate_and_out_of_order_do_not_collect_or_latch) ... ok
+test_empty_audio_is_unknown (tests.test_reference.Reference.test_empty_audio_is_unknown) ... ok
+test_expired_unmatched_windows_are_not_calibration_pairs (tests.test_reference.Reference.test_expired_unmatched_windows_are_not_calibration_pairs) ... ok
+test_invalid_audio_and_new_overrun_reset (tests.test_reference.Reference.test_invalid_audio_and_new_overrun_reset) ... ok
+test_invalid_json_is_atomic (tests.test_reference.Reference.test_invalid_json_is_atomic) ... ok
+test_invalid_reference_settings (tests.test_reference.Reference.test_invalid_reference_settings) ... ok
+test_json_config_exposes_reference_thresholds (tests.test_reference.Reference.test_json_config_exposes_reference_thresholds) ... ok
+test_json_round_trip_restores_only_baseline (tests.test_reference.Reference.test_json_round_trip_restores_only_baseline) ... ok
+test_low_level_resets_immediately_like_c (tests.test_reference.Reference.test_low_level_resets_immediately_like_c) ... ok
+test_nearest_rank_positive_residual_percentile (tests.test_reference.Reference.test_nearest_rank_positive_residual_percentile) ... ok
+test_negative_gain_clamped (tests.test_reference.Reference.test_negative_gain_clamped) ... ok
+test_negative_intercept_refits_through_origin (tests.test_reference.Reference.test_negative_intercept_refits_through_origin) ... ok
+test_offline_and_stale_audio_reset_persistence (tests.test_reference.Reference.test_offline_and_stale_audio_reset_persistence) ... ok
+test_operator_start_does_not_reuse_pre_start_window (tests.test_reference.Reference.test_operator_start_does_not_reuse_pre_start_window) ... ok
+test_operator_starts_and_resets_calibration (tests.test_reference.Reference.test_operator_starts_and_resets_calibration) ... ok
+test_overlapping_reports_only_collect_new_windows (tests.test_reference.Reference.test_overlapping_reports_only_collect_new_windows) ... ok
+test_pairing_inclusive_tolerance_and_reverse_arrival (tests.test_reference.Reference.test_pairing_inclusive_tolerance_and_reverse_arrival) ... ok
+test_pairing_outside_tolerance (tests.test_reference.Reference.test_pairing_outside_tolerance) ... ok
+test_pairing_tolerance_configurable (tests.test_reference.Reference.test_pairing_tolerance_configurable) ... ok
+test_reboot_restarts_sequence_tracking_without_restoring_alert (tests.test_reference.Reference.test_reboot_restarts_sequence_tracking_without_restoring_alert) ... ok
+test_receive_time_gap_resets (tests.test_reference.Reference.test_receive_time_gap_resets) ... ok
+test_sequence_gap_resets_and_does_not_fall_back (tests.test_reference.Reference.test_sequence_gap_resets_and_does_not_fall_back) ... ok
+test_speech_evidence_with_different_probability_mixes (tests.test_reference.Reference.test_speech_evidence_with_different_probability_mixes) ... ok
+test_threshold_formula (tests.test_reference.Reference.test_threshold_formula) ... ok
+test_threshold_is_strictly_greater (tests.test_reference.Reference.test_threshold_is_strictly_greater) ... ok
+test_twenty_pair_minimum_and_known_power_fit (tests.test_reference.Reference.test_twenty_pair_minimum_and_known_power_fit) ... ok
+test_two_second_reports_reset_persistence_but_process_received_windows (tests.test_reference.Reference.test_two_second_reports_reset_persistence_but_process_received_windows) ... ok
+test_two_window_batch_timing_and_onset (tests.test_reference.Reference.test_two_window_batch_timing_and_onset) ... ok
+test_two_window_onset_hold_resume_and_release (tests.test_reference.Reference.test_two_window_onset_hold_resume_and_release) ... ok
+test_valid_silent_reference_does_not_disable_local_speech (tests.test_reference.Reference.test_valid_silent_reference_does_not_disable_local_speech) ... ok
+test_weak_window_interrupts_pending_and_loud_noise_is_not_speech (tests.test_reference.Reference.test_weak_window_interrupts_pending_and_loud_noise_is_not_speech) ... ok
+test_wraparound_is_contiguous (tests.test_reference.Reference.test_wraparound_is_contiguous) ... ok
+test_batches_count_each_result_and_evaluation_does_not_invent_windows (tests.test_reference.RollingReference.test_batches_count_each_result_and_evaluation_does_not_invent_windows) ... ok
+test_calibrate_reset_and_load_clear_old_smoothing_history (tests.test_reference.RollingReference.test_calibrate_reset_and_load_clear_old_smoothing_history) ... ok
+test_fraction_is_configurable (tests.test_reference.RollingReference.test_fraction_is_configurable) ... ok
+test_offline_or_stale_node_forces_fallback_despite_recent_history (tests.test_reference.RollingReference.test_offline_or_stale_node_forces_fallback_despite_recent_history) ... ok
+test_pending_alone_is_positive_and_survives_two_second_report_spacing (tests.test_reference.RollingReference.test_pending_alone_is_positive_and_survives_two_second_report_spacing) ... ok
+test_smoothing_config_validation (tests.test_reference.RollingReference.test_smoothing_config_validation) ... ok
+test_unknown_samples_excluded_then_old_evidence_expires_to_fallback (tests.test_reference.RollingReference.test_unknown_samples_excluded_then_old_evidence_expires_to_fallback) ... ok
+test_aligned_control (tests.test_reference_timing.RealisticReference.test_aligned_control) ... ok
+test_independent_clocks_do_not_reset_classroom_dwell (tests.test_reference_timing.RealisticReference.test_independent_clocks_do_not_reset_classroom_dwell) ... ok
+test_realistic_two_second_reports (tests.test_reference_timing.RealisticReference.test_realistic_two_second_reports) ... ok
+test_coarse_and_fine_polling_have_identical_deliveries (tests.test_reference_timing.SimulatorTiming.test_coarse_and_fine_polling_have_identical_deliveries) ... ok
+test_phase_slips_and_two_window_wire_cap (tests.test_reference_timing.SimulatorTiming.test_phase_slips_and_two_window_wire_cap) ... ok
+test_rms_uses_true_audio_time_not_report_or_receive_time (tests.test_reference_timing.SimulatorTiming.test_rms_uses_true_audio_time_not_report_or_receive_time) ... ok
+test_seeded_independent_phases_and_receive_jitter (tests.test_reference_timing.SimulatorTiming.test_seeded_independent_phases_and_receive_jitter) ... ok
+test_aligned_reference_fixture_still_available (tests.test_scenarios.Scenarios.test_aligned_reference_fixture_still_available) ... ok
+test_clock_pause_speed_and_skip (tests.test_scenarios.Scenarios.test_clock_pause_speed_and_skip) ... ok
+test_each_phase_reaches_its_state (tests.test_scenarios.Scenarios.test_each_phase_reaches_its_state) ... ok
+test_every_phase_with_voice_setup (tests.test_scenarios.Scenarios.test_every_phase_with_voice_setup) ... ok
+test_every_phase_without_voice_setup (tests.test_scenarios.Scenarios.test_every_phase_without_voice_setup) ... ok
+test_every_scenario_is_checked (tests.test_scenarios.Scenarios.test_every_scenario_is_checked) ... ok
+test_fresh_air_fan_clears_co2 (tests.test_scenarios.Scenarios.test_fresh_air_fan_clears_co2) ... ok
+test_last_phase_holds (tests.test_scenarios.Scenarios.test_last_phase_holds) ... ok
+test_skip_moves_the_room_and_speed_keeps_pace (tests.test_scenarios.Scenarios.test_skip_moves_the_room_and_speed_keeps_pace) ... ok
+test_q16_power_extremes_and_strict_threshold (tests.test_zones.IntegerBoundaries.test_q16_power_extremes_and_strict_threshold) ... ok
+test_rounding_half_away_and_clock (tests.test_zones.IntegerBoundaries.test_rounding_half_away_and_clock) ... ok
+test_runtime_state_and_histories_contain_no_floats (tests.test_zones.IntegerBoundaries.test_runtime_state_and_histories_contain_no_floats) ... ok
+test_sums_compare_without_rounding_the_mean (tests.test_zones.IntegerBoundaries.test_sums_compare_without_rounding_the_mean) ... ok
+test_wire_bounds_clamp_environment_and_reject_decimal_config (tests.test_zones.IntegerBoundaries.test_wire_bounds_clamp_environment_and_reject_decimal_config) ... ok
+test_default_and_explicit_custom_map (tests.test_zones.Layout.test_default_and_explicit_custom_map) ... ok
+test_invalid_layouts (tests.test_zones.Layout.test_invalid_layouts) ... ok
+test_unit_suffixed_json_configuration (tests.test_zones.Layout.test_unit_suffixed_json_configuration) ... ok
+test_air_boundaries_and_invalid_reading (tests.test_zones.ZoneStates.test_air_boundaries_and_invalid_reading) ... ok
+test_calibrated_reference_overrides_misleading_class_probabilities (tests.test_zones.ZoneStates.test_calibrated_reference_overrides_misleading_class_probabilities) ... ok
+test_comfort_boundaries_and_hysteresis (tests.test_zones.ZoneStates.test_comfort_boundaries_and_hysteresis) ... ok
+test_dwell_and_interrupted_candidate (tests.test_zones.ZoneStates.test_dwell_and_interrupted_candidate) ... ok
+test_every_activity_rule (tests.test_zones.ZoneStates.test_every_activity_rule) ... ok
+test_lecturer_must_be_dominant_and_in_reference_zone (tests.test_zones.ZoneStates.test_lecturer_must_be_dominant_and_in_reference_zone) ... ok
+test_no_audio_offline_and_stale (tests.test_zones.ZoneStates.test_no_audio_offline_and_stale) ... ok
+
+----------------------------------------------------------------------
+Ran 305 tests in 62.569s
+
+OK
+FLOAT VS INTEGER activity: same sequence; transitions=93; max_delta_ms=500.000
+FLOAT VS INTEGER air: same sequence; transitions=36; max_delta_ms=0.490
+FLOAT VS INTEGER comfort: same sequence; transitions=36; max_delta_ms=0.417
+INTEGER BOUNDARY ALLOW-LIST: {'reference.py': ['seconds_to_ms'], 'fusion.py': []}
+TIMING reported: {"lecture_noise_entries": [], "lecture_positive_window_share": 0.0026, "lecture_talking_share": 0.0238, "lecture_window_talking_share": 0.0, "noise_after_s": 25.75, "raw_talking_share": 0.6323, "sustained": true, "talking_share": 0.9617}
+TIMING near_boundary: {"lecture_noise_entries": [], "lecture_positive_window_share": 0.0044, "lecture_talking_share": 0.0254, "lecture_window_talking_share": 0.0044, "noise_after_s": 25.6, "raw_talking_share": 0.9897, "sustained": true, "talking_share": 0.9627}
+TIMING seed_2: {"lecture_noise_entries": [], "lecture_positive_window_share": 0.0044, "lecture_talking_share": 0.0265, "lecture_window_talking_share": 0.0044, "noise_after_s": 25.876, "raw_talking_share": 0.9867, "sustained": true, "talking_share": 0.9607}
+TIMING seed_7: {"lecture_noise_entries": [], "lecture_positive_window_share": 0.0022, "lecture_talking_share": 0.0233, "lecture_window_talking_share": 0.0022, "noise_after_s": 25.55, "raw_talking_share": 0.985, "sustained": true, "talking_share": 0.963}
+TIMING seed_19: {"lecture_noise_entries": [], "lecture_positive_window_share": 0.0022, "lecture_talking_share": 0.0244, "lecture_window_talking_share": 0.0022, "noise_after_s": 25.191, "raw_talking_share": 0.992, "sustained": true, "talking_share": 0.9653}
+TIMING seed_42: {"lecture_noise_entries": [], "lecture_positive_window_share": 0.0044, "lecture_talking_share": 0.0256, "lecture_window_talking_share": 0.0044, "noise_after_s": 25.2, "raw_talking_share": 0.9923, "sustained": true, "talking_share": 0.9653}
+TIMING two_second_seed_1: {"lecture_noise_entries": [], "lecture_positive_window_share": 0.0061, "lecture_talking_share": 0.0279, "lecture_window_talking_share": 0.0, "noise_after_s": 26.25, "raw_talking_share": 0.3203, "sustained": true, "talking_share": 0.9583}
+TIMING two_second_seed_2: {"lecture_noise_entries": [], "lecture_positive_window_share": 0.0063, "lecture_talking_share": 0.0258, "lecture_window_talking_share": 0.0, "noise_after_s": 26.25, "raw_talking_share": 0.3143, "sustained": true, "talking_share": 0.9583}
+TIMING two_second_seed_7: {"lecture_noise_entries": [], "lecture_positive_window_share": 0.0063, "lecture_talking_share": 0.026, "lecture_window_talking_share": 0.0, "noise_after_s": 24.7, "raw_talking_share": 0.3563, "sustained": true, "talking_share": 0.9687}
+exit: 0

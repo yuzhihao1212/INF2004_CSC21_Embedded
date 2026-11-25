@@ -1,0 +1,18 @@
+S1/S2 host replay (S1-U04, S2-U03, S2-U04, S2-U05). Host only.
+Date: 2026-11-25 21:42 +0800
+Commit: 62e0e5a (tracked files clean)
+Machine: Darwin arm64
+Compiler: Apple clang version 17.0.0 (clang-1700.0.13.5)
+Python: Python 3.14.0
+
+$ python3 node/testing/subsystem1/test_audio_port.py
+/var/folders/4p/85h90jj9327_cwwm4489hdcr0000gn/T/tmpxzlns2b5/reference.c:72:17: warning: unused variable 'raw_audio' [-Wunused-variable]
+   72 | static uint16_t raw_audio[2][AUDIO_SAMPLES];
+      |                 ^~~~~~~~~
+1 warning generated.
+S1-U04 PASS: 32 windows, all 20 DSP features identical
+S2-U03 PASS: original/ported logits, classes and Q15 probabilities identical
+S2-U04 PASS: protocol class IDs, Q4 RMS, reserved slot, probability sum
+S2-U05 PASS: clipping, low level, stale/threshold gates and persistence
+exit: 0
+
