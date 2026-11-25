@@ -1,8 +1,9 @@
 /*
  *	subsystem4.c
  *	Subsystem 4 -- Networking and node health: creates its objects and
- *	starts the template's monitor example.  The network functions run
- *	inside the kernel's cyw43_utk_task, so they need no task of their own.
+ *	starts its tasks (s4_health_task, plus the template's monitor
+ *	example).  The network functions run inside the kernel's
+ *	cyw43_utk_task, so they need no task of their own.
  *
  *	APIs shown: tk_cre_flg, tk_cre_mbf, tk_cre_alm
  */

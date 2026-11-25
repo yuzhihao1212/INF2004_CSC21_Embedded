@@ -8,6 +8,7 @@ typedef int32_t ID;
 typedef int32_t BOOL;
 typedef int32_t INT, W;
 typedef uint32_t UW;
+typedef uint32_t UINT;  /* s4_health.h, included by task_environment.c */
 typedef struct { uint32_t lo; int32_t hi; } SYSTIM;
 #define IMPORT extern
 #define TMO_POL 0

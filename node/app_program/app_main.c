@@ -21,8 +21,9 @@
  *	  subsystem1/  audio_task        pri 13  core 0  microphone capture, DSP
  *	  subsystem2/  classifier_task   pri 15  core 1  int8 network and gates
  *	  subsystem3/  environment_task  pri 17  core 0  DHT22, CO2 and PIR
- *	  subsystem4/  (no task of its own)             MQTT handoff, called
- *	               from the kernel's cyw43_utk_task; task progress flags
+ *	  subsystem4/  s4_health_task    pri 19  any     checks that the four
+ *	               tasks above and below keep making progress; its MQTT
+ *	               handoff is called from the kernel's cyw43_utk_task
  *	  subsystem5/  report_task       pri 20  any     CONFIG and telemetry
  *
  *	How they talk to each other (the interfaces, see TEAM.md section 5):

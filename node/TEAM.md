@@ -20,7 +20,7 @@ subsystem, ask its owner or open a pull request for them to review.
 | 1 | Audio capture and fixed-point DSP: samples the microphone, produces the feature windows (Moe) | | mmmmm0e | `app_program/subsystem1/` | `testing/subsystem1/` |
 | 2 | int8 classifier: classifies audio windows as speech, background or transient noise; output may be UNKNOWN for invalid, low-level, clipped, pending or timing-fault conditions (Darius) | | Dkkan-dev | `app_program/subsystem2/` | `testing/subsystem2/` |
 | 3 | Environment sensors: DHT22, CO₂ (ACD1100), PIR (Kendrick) | | kthgoat | `app_program/subsystem3/` | `testing/subsystem3/` |
-| 4 | Networking and node health: Wi-Fi and the MQTT link to the PC; watchdog supervision remains to be implemented (Arif) | | arifkareem | `app_program/subsystem4/` | `testing/subsystem4/` |
+| 4 | Networking and node health: Wi-Fi and the MQTT link to the PC; a supervisor task checks that the audio, classifier, environment and report tasks keep making progress. The hardware watchdog it feeds is built but switched off (timeout 0): its timing tests S4-U04 to U06 were not run (Arif) | | arifkareem | `app_program/subsystem4/` | `testing/subsystem4/` |
 | 5 | Node config and telemetry: applies CONFIG from the PC, builds each report (ZhiHao) | | yuzhihao1212 | `app_program/subsystem5/` | `testing/subsystem5/` |
 
 The production audio, classifier, environment, networking and telemetry paths are
