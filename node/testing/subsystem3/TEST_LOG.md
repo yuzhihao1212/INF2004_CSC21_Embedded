@@ -134,3 +134,28 @@ Base `3a8f6ef5260fe7892ca1331495b12d5f19b90380` plus the S3 diagnostic changes; 
 Static review: the environmental task delays each iteration and polls DMA retirement without spinning. The retained example `consumer_task` blocks on its mailbox in normal operation, but immediately retries and prints if `tk_rcv_mbx` repeatedly fails; that exceptional path can loop without a delay. It is separate from the environmental task and remains unresolved. S3 objects from the SMP=1 TEST=1 no-Wi-Fi build had no undefined soft-float arithmetic helpers; that does not audit the SDK-dependent Wi-Fi branch or prove target execution.
 
 The earlier S3 results above cite historical logs that are not present in this checkout. They remain unchanged as historical records; locate those original logs or repeat the tests before relying on them as assessment evidence.
+
+## 2026-11-25 host results on a committed revision
+
+Commit: `62e0e5a`, tracked files clean. Tester: ZhiHao (run by Claude Code).
+Run with `node/testing/run_host_tests.sh` on macOS (Apple clang 17, `-Wall -Wextra -Werror`).
+Log: `logs/2026-11-25_host_62e0e5a.txt`. This is the repeat on a committed revision that the
+provisional results above ask for; it does not replace their missing logs.
+
+- S3-U02: PASS (host). DHT/CO2 decode, pulse validation, validity and rollover.
+- S3-U03: PASS (host). ACD1100 warm-up, cadence, checksum, timeout and rollover.
+- S3-U04: PASS (host). S3 flags and fixed-point values through S5 telemetry.
+- S3-U06 to S3-U09: PASS (host). Scheduling, config and S5 errors, UART transport, DHT recovery.
+- S3-U12: PASS (host). UART driver register accesses against a register double.
+- S3-U19: PASS (host). Start-up retry and exit, five scenarios, simulated kernel.
+- S3-U20, S3-U22, S3-U23: PASS (host). Task loop through a sensor error, stuck DMA isolation and diagnostic accounting, simulated hardware.
+- S3-U21: PASS (host). Hardware boundary waits for BUSY after ABORT, register double.
+- S3-U32: PASS (host). Observer start-up, schedule and self-delete, simulated.
+
+The host mock needed one change first: commit `b4008ec` made `task_environment.c`
+include `s4_health.h`, so `host/utk_mock.h` gained the `UINT` type and
+`host/service_host_test.c` a stub for `s4_health_mark()` (commit `62e0e5a`).
+
+The hardware was returned after the final demo on 25 Nov 2026, so on-target and
+manual tests can no longer be run. S3-U01, U05, U11, U24 to U31 and
+concurrent hardware operation stay NOT RUN.

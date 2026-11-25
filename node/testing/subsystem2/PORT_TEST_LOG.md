@@ -36,3 +36,17 @@ transient, and raw scores are preserved. Evidence:
 `logs/2026-11-18_speech-gate.txt`. Controlled model outputs exercise the real
 adapter and timing gate; this does not establish model accuracy or hardware
 behaviour. No regression suite run.
+
+## Final host run on the hand-in code (25 Nov 2026)
+
+Run with `node/testing/run_host_tests.sh` on a clean checkout of `62e0e5a`: the
+tidied sources merged with the code that ran in the final demo.
+
+| Date | ID | Commit | Result | Evidence |
+|---|---|---|---|---|
+| 2026-11-25 | S2-U03..05 combined replay | `62e0e5a` | PASS | `../subsystem1/logs/2026-11-25_host_62e0e5a.txt`: original and ported logits, classes and probabilities match; adapter and gates pass |
+| 2026-11-25 | S2-U07 speech gate | `62e0e5a` | PASS | `logs/2026-11-25_host_62e0e5a.txt`: pending, onset, hold, release, threshold, transient, raw scores |
+| 2026-11-25 | S2-U06 protocol/S5 regression | `62e0e5a` | PASS | `../subsystem5/logs/2026-11-25_host_62e0e5a.txt`: all 305 PC unit tests pass, including the C/Python protocol cross-check |
+
+Host only. The hardware was returned after the final demo on 25 Nov 2026, so on-target and
+manual tests can no longer be run. INT-05 stays NOT RUN.
