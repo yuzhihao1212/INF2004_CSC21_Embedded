@@ -1,6 +1,6 @@
 # Subsystem 1 — test log
 
-**Subsystem:** LED heartbeat (example)  ·  **Student ID:** <student ID>  ·  **Code:** `app_program/subsystem1/`
+**Subsystem:** Audio capture and fixed-point DSP (Moe)  ·  **Student ID:** 2500112  ·  **Code:** `app_program/subsystem1/`
 
 See `testing/README.md` for how to run tests and record results.
 

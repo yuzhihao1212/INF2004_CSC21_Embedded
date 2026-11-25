@@ -1,6 +1,6 @@
 # Subsystem 3 — test log
 
-**Subsystem:** Environmental sensing (Kendrick)  ·  **Student ID:** <student ID>  ·  **Code:** `app_program/subsystem3/`
+**Subsystem:** Environmental sensing (Kendrick)  ·  **Student ID:** 2500144  ·  **Code:** `app_program/subsystem3/`
 
 See `testing/README.md` for how to run tests and record results.
 
