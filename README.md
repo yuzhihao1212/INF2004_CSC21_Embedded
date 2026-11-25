@@ -121,9 +121,9 @@ classification, sensor readings, validity and timing information.
 | Kendrick (S3) | [task_environment.c](node/app_program/subsystem3/task_environment.c), [environment_service.c](node/app_program/subsystem3/environment_service.c) | DHT22, ACD1100 CO₂, PIR, validity and recovery |
 | Arif (S4) | [s4_network.c](node/app_program/subsystem4/s4_network.c), [mqtt_utk.c](node/lib/liblwip/sysdepend/pico_rp2040/mqtt_utk.c), [s4_health.c](node/app_program/subsystem4/s4_health.c) | Non-blocking queue bridge to MQTT inside the kernel Wi-Fi task; supervisor task that checks the other tasks keep making progress. The hardware watchdog it can feed is built but switched off |
 | ZhiHao (S5) | [task_report.c](node/app_program/subsystem5/task_report.c), [s5_protocol.c](node/app_program/subsystem5/s5_protocol.c) | CONFIG validation, telemetry and control messages |
-| PC gateway | [gateway.py](pc/mosaic/gateway.py), [mqtt.py](pc/mosaic/mqtt.py) | Packet reception, node tracking and configuration delivery |
-| PC fusion | [fusion.py](pc/mosaic/fusion.py), [reference.py](pc/mosaic/reference.py) | Classroom and zone states; lecturer-reference comparison |
-| Dashboard | [dashboard.py](pc/mosaic/dashboard.py), [app.js](pc/mosaic/web/app.js) | HTTP API, live room, history, sensors and setup |
+| ZhiHao (PC gateway) | [gateway.py](pc/mosaic/gateway.py), [mqtt.py](pc/mosaic/mqtt.py) | Packet reception, node tracking and configuration delivery |
+| ZhiHao (PC fusion) | [fusion.py](pc/mosaic/fusion.py), [reference.py](pc/mosaic/reference.py) | Classroom and zone states; lecturer-reference comparison |
+| ZhiHao (dashboard) | [dashboard.py](pc/mosaic/dashboard.py), [app.js](pc/mosaic/web/app.js) | HTTP API, live room, history, sensors and setup |
 
 Node startup is in [app_main.c](node/app_program/app_main.c). The C and Python wire
 definitions are [mosaic_protocol.h](firmware/common/include/mosaic_protocol.h) and

@@ -5,6 +5,11 @@ ideas we dropped. Status lines get updated in place; a reversed decision gets a 
 that links back. Entries dated before 14 Nov 2026 were backfilled on 14 Nov from the chat
 where they were decided and the commits that built them.
 
+## 2026-11-25 · README code map names ZhiHao for the PC side
+- **From → to:** the code map's PC gateway, PC fusion and dashboard rows had no owner. They now read "ZhiHao (PC gateway)", "ZhiHao (PC fusion)" and "ZhiHao (dashboard)", matching the S1 to S5 rows.
+- **Why:** ZhiHao (chat, 25 Nov): he built those three as well as S5.
+- **Status:** built, not committed.
+
 ## 2026-11-25 · README opens with a showcase and a no-hardware quick start
 - **From → to:** the README opened with the architecture diagram, a code map and a three-step hardware build. Now it opens with what MOSAIC is, an animated recording of the dashboard, "Try it in two minutes, no hardware" (three commands, what each demo phase should show, keyboard controls), five "What's inside" points, and three real-node screenshots. Everything below is unchanged.
 - **Why:** ZhiHao (chat, 25 Nov) wanted the repo to read as a presentable project, with easy onboarding if the professor wants to try the system; he asked for a GIF too.
