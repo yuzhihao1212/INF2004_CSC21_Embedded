@@ -5,6 +5,16 @@ ideas we dropped. Status lines get updated in place; a reversed decision gets a 
 that links back. Entries dated before 14 Nov 2026 were backfilled on 14 Nov from the chat
 where they were decided and the commits that built them.
 
+## 2026-11-25 · The hand-in includes the demo branch
+- **From → to:** `main` did not have Arif's commit `b4008ec` (task-progress supervisor, watchdog driver, MQTT reconnect handling, gateway "awaiting a fresh report"); it lived only on `demo`. Now `demo` goes into `main` through PR #61, and PR #60 is merged with it so the tidy-up sits on top.
+- **Why:** ZhiHao (chat, 25 Nov): the four Picos ran the `demo` branch in the final demo, and the hardware has since been returned.
+- **Problem it solves:** `main`'s firmware without that commit has no recorded hardware run, and its docs said the watchdog was not implemented while the slides said it was built and switched off. Handing in `demo`'s code makes the hand-in the code that was demonstrated.
+- **Why this way:** handing in `demo` alone would drop `main`'s newer docs. Since `demo` was cut, `main` only gained docs (PR #58), and the two merge without conflicts, so nothing is lost either way.
+- **Also changed:** `task_audio.c` and `task_classifier.c` conflicted between the tidy-up and Arif's commit; they keep his logic inside the tidied layout. `TEAM.md`, `app_main.c` and the S4 headers now describe the supervisor task. Arif's commit made `task_environment.c` include `s4_health.h`, which stopped Kendrick's S3 host test from building; the host mock gained the missing type and a stub.
+- **Risks to watch:** the watchdog stays off (`S4_WATCHDOG_TIMEOUT_MS` is 0) and its tests S4-U04 to U06 can no longer be run. Before PR #61, `b4008ec` had not been through CI or review.
+- **Verified:** every firmware file on the merged branch has the same C tokens as on `demo`; 305 PC tests pass; host tests pass on macOS: S1-U04, S2-U03 to U05, S2-U07, S5 host and the S3 host suite. Not verified: an Arm build of the merged branch, until CI runs.
+- **Status:** built, not committed. PR #61 (demo into main), PR #60 (this branch).
+
 ## 2026-11-25 · Audio clock scale documented, not corrected
 - **From → to:** the clock fix built earlier today (entry "Node audio clock now reads real microseconds", commit `c78f27b` in PR #60) is taken out again by a follow-up commit, before the PR merges. `audio_clock_us()` is back to the code that ran in the final demo. The 42.67 µs scale is now written up as a known limitation above the function, in `drv_audio.h`, beside each deadline check and in `node/testing/subsystem1/PORT_TEST_LOG.md`.
 - **Why:** ZhiHao (chat, 25 Nov): the final demo is done and the hardware has gone back to the professor, so nothing can be tested on a board any more.
@@ -12,7 +22,7 @@ where they were decided and the commits that built them.
 - **Why this way:** keeping the fix behind a build flag was considered and dropped: it would still be untested code in the hand-in. Saying nothing was not an option, because the telemetry field is called `dsp_time_us` and reads 42.67 times too small.
 - **Risks to watch:** a marker may ask why a known bug wasn't fixed. The answer is in the comment: the correction is one line (`count * 512 / 12`), the arithmetic was checked on the host against the logged counts, and it could not be validated on hardware.
 - **Verified:** `drv_audio.c` now has the same C tokens as `main`, like every other edited `.c` file; host replay and 304 PC tests pass.
-- **Status:** built, not committed.
+- **Status:** committed `ba7d028`, in PR #60.
 
 ## 2026-11-25 · Gateway drops the MQTT link on malformed broker data
 - **From → to:** `MqttClient.read()` let two errors escape: `MqttError` for a bad packet length and `UnicodeDecodeError` for a topic that isn't UTF-8. Now both close the connection and raise `ConnectionError`, which the transport already handles by reconnecting after 2 s.
