@@ -112,6 +112,67 @@ Zone A (node 1) is the lecturer reference. Nodes 2–4 cover the student zones B
 Microphone samples stay on the node during normal operation. Telemetry carries
 classification, sensor readings, validity and timing information.
 
+### Why fusion runs on the PC, not on a Pico
+
+The work is split by what each decision needs. Anything that needs only one
+zone's sensors runs **on that zone's Pico**: sampling, DSP, the int8 classifier,
+the clipping and low-level gates, the two-window speech rule and sensor
+validity. Anything that compares zones runs **on the PC**: telling students
+talking from the lecturer's voice carrying, the room-level state, the class-type
+rules and the dwell timers.
+
+Fusion could run on a Pico; its arithmetic is already integer-only and small.
+We kept the cross-zone part on the PC for these reasons:
+
+1. **It needs every node's data.** Whether Node 3 is "students talking" or "the
+   lecturer heard from the back" depends on the reference node at the lecturer's
+   desk. No single Pico has the other nodes' readings.
+2. **MQTT is a star.** Nodes never talk to each other; every message goes through
+   the broker on the PC. A Pico doing fusion would get its data from the PC and
+   send results back to it: an extra hop, with the dashboard still on the PC.
+3. **One failure would take the whole room.** With fusion on the PC, a failed
+   node only blanks its own zone. A Pico doing fusion for everyone would blank
+   all four zones whenever it failed.
+4. **One clock.** The lecturer comparison pairs windows from two nodes to within
+   250 ms. The Picos' clocks aren't synchronised; the PC stamps every report with
+   its own clock on arrival.
+5. **It stays inside the course template's rules.** Application tasks may not
+   call MQTT. A Pico doing fusion would have to subscribe to the other nodes'
+   topics inside the kernel's shared Wi-Fi task, which needs the instructor's
+   agreement to change.
+6. **It can be tuned and tested without reflashing.** Thresholds, the class type,
+   calibration and loud levels change from the dashboard, and the fusion engine
+   runs against the simulator and 305 tests with no hardware.
+
+What we would move to the node with more time: each zone's own smoothing over
+10 seconds, which needs no other zone and would cut the PC's work per report.
+
+### How the room's state is decided
+
+In short, the dashboard is the end of a three-step chain:
+
+1. **Each Pico labels its own sound** every 500 ms as background, speech or a
+   transient noise, and leaves it UNKNOWN when the window is too quiet, clipped,
+   late or not confident. Speech needs two windows in a row.
+2. **The PC decides each zone's state** from its last 10 seconds, first rule
+   wins: *No signal* → *Excessive noise* (above the limit set in Setup) →
+   *Lecturer's voice* (the reference zone) → *Talking* → *Moving around* (PIR) →
+   *Settled*. A student zone counts as *Talking* only when it is louder than the
+   lecturer's voice is expected to be at that desk, learned during voice set-up.
+3. **The PC decides the room's state** from all the zones and the class type:
+   *Lecture in progress* when only the lecturer speaks, *Getting noisy* and then
+   *Ongoing chatter* when students talk during a lecture, *Group discussion* when
+   at least half the groups talk in group work, and *Room is empty* after 10
+   minutes with no movement or voices. Air and comfort follow CO₂, temperature
+   and humidity thresholds.
+
+Every state has to hold for a set time (10 s per zone, 20 s for the room, 60 s
+for air and comfort) before the dashboard changes, so a single cough or reading
+doesn't flip it. Missing data shows as missing, never as the last value.
+[How MOSAIC decides what the room is doing](docs/room-states.md) starts from the
+64-byte report (what each field is for, and why the packet is shaped that way),
+then gives every rule and threshold, and how urgent each state is in each class type.
+
 ## Important code
 
 | Owner / component | Start here | Responsibility |
@@ -121,9 +182,9 @@ classification, sensor readings, validity and timing information.
 | Kendrick (S3) | [task_environment.c](node/app_program/subsystem3/task_environment.c), [environment_service.c](node/app_program/subsystem3/environment_service.c) | DHT22, ACD1100 CO₂, PIR, validity and recovery |
 | Arif (S4) | [s4_network.c](node/app_program/subsystem4/s4_network.c), [mqtt_utk.c](node/lib/liblwip/sysdepend/pico_rp2040/mqtt_utk.c), [s4_health.c](node/app_program/subsystem4/s4_health.c) | Non-blocking queue bridge to MQTT inside the kernel Wi-Fi task; supervisor task that checks the other tasks keep making progress. The hardware watchdog it can feed is built but switched off |
 | ZhiHao (S5) | [task_report.c](node/app_program/subsystem5/task_report.c), [s5_protocol.c](node/app_program/subsystem5/s5_protocol.c) | CONFIG validation, telemetry and control messages |
-| PC gateway | [gateway.py](pc/mosaic/gateway.py), [mqtt.py](pc/mosaic/mqtt.py) | Packet reception, node tracking and configuration delivery |
-| PC fusion | [fusion.py](pc/mosaic/fusion.py), [reference.py](pc/mosaic/reference.py) | Classroom and zone states; lecturer-reference comparison |
-| Dashboard | [dashboard.py](pc/mosaic/dashboard.py), [app.js](pc/mosaic/web/app.js) | HTTP API, live room, history, sensors and setup |
+| ZhiHao (PC gateway) | [gateway.py](pc/mosaic/gateway.py), [mqtt.py](pc/mosaic/mqtt.py) | Packet reception, node tracking and configuration delivery |
+| ZhiHao (PC fusion) | [fusion.py](pc/mosaic/fusion.py), [reference.py](pc/mosaic/reference.py) | Classroom and zone states; lecturer-reference comparison |
+| ZhiHao (dashboard) | [dashboard.py](pc/mosaic/dashboard.py), [app.js](pc/mosaic/web/app.js) | HTTP API, live room, history, sensors and setup |
 
 Node startup is in [app_main.c](node/app_program/app_main.c). The C and Python wire
 definitions are [mosaic_protocol.h](firmware/common/include/mosaic_protocol.h) and

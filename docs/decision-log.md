@@ -5,6 +5,28 @@ ideas we dropped. Status lines get updated in place; a reversed decision gets a 
 that links back. Entries dated before 14 Nov 2026 were backfilled on 14 Nov from the chat
 where they were decided and the commits that built them.
 
+## 2026-11-25 · Room-states page starts from the 64-byte report
+- **From → to:** `docs/room-states.md` began at the node's gates. It now opens with what fusion receives: each field of the 64-byte TELEMETRY packet and what fusion uses it for, why the packet is shaped that way (probabilities and loudness per window, two windows per report, valid flags, counters instead of clocks, integers only), and the four steps the PC takes with each report. `docs/protocol.md` no longer says free heap comes from FreeRTOS, and notes that free heap, CPU load and Wi-Fi signal are sent as 0.
+- **Why:** ZhiHao (chat, 25 Nov) asked for his data fusion to be explained from the 64-byte payload.
+- **Status:** built, not committed.
+
+## 2026-11-25 · How the room's state is decided, in one place
+- **From → to:** the rules were spread over a dense paragraph in `pc/README.md`, the `fusion.py` docstring and `feedback.py`. Now the README has a three-step summary under Architecture, and `docs/room-states.md` follows a reading from the sensor to the dashboard: node gates, data checks, zone rules, room rules, air and comfort, hold times, and urgency per class type.
+- **Why:** ZhiHao (chat, 25 Nov) asked whether the repo explains how the room's state is decided; it didn't, clearly.
+- **Why this way:** written as tables in the dashboard's own words, with each threshold taken from `FusionConfig`, `gateway.py` and `feedback.py` and checked against the code; the code paths and tests to check it against are listed at the end.
+- **Status:** built, not committed.
+
+## 2026-11-25 · README explains why fusion runs on the PC
+- **From → to:** the README described where fusion runs but not why. A new section under Architecture gives the split (one-zone decisions on the Pico, cross-zone decisions on the PC), six reasons, and what could move to the node.
+- **Why:** the professor asked why fusion wasn't done on the Pico and said it could have been (ZhiHao, chat, 25 Nov).
+- **Why this way:** the section agrees that it was possible, then gives the reasons that come from the design: data from every node, MQTT's star topology, failure containment, one clock for pairing, the template's rule against application tasks calling MQTT, and tuning without reflashing. CPU and RAM limits were left out as a reason: fusion's state and arithmetic are small, so they would not stand up.
+- **Status:** built, not committed.
+
+## 2026-11-25 · README code map names ZhiHao for the PC side
+- **From → to:** the code map's PC gateway, PC fusion and dashboard rows had no owner. They now read "ZhiHao (PC gateway)", "ZhiHao (PC fusion)" and "ZhiHao (dashboard)", matching the S1 to S5 rows.
+- **Why:** ZhiHao (chat, 25 Nov): he built those three as well as S5.
+- **Status:** committed `097d4b4`, in PR #65.
+
 ## 2026-11-25 · README opens with a showcase and a no-hardware quick start
 - **From → to:** the README opened with the architecture diagram, a code map and a three-step hardware build. Now it opens with what MOSAIC is, an animated recording of the dashboard, "Try it in two minutes, no hardware" (three commands, what each demo phase should show, keyboard controls), five "What's inside" points, and three real-node screenshots. Everything below is unchanged.
 - **Why:** ZhiHao (chat, 25 Nov) wanted the repo to read as a presentable project, with easy onboarding if the professor wants to try the system; he asked for a GIF too.

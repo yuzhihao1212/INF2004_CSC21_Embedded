@@ -109,7 +109,7 @@ equal 16 + the payload size for its type. The PC counts drops per node.
 |-------:|-------|------|-------------|
 | 0 | `dsp_time_us` | u32 | **Longest** feature-extraction time of the windows in this interval |
 | 4 | `inference_time_us` | u32 | **Longest** ML inference time of the windows in this interval |
-| 8 | `free_heap_bytes` | u32 | Free heap (FreeRTOS `xPortGetFreeHeapSize()` once on RTOS) |
+| 8 | `free_heap_bytes` | u32 | Free heap. Sent as 0 by the µT-Kernel node: no task fills it |
 | 12 | `temperature_x10` | i16 | DHT22, 0.1 °C (`-55` = −5.5 °C) |
 | 14 | `humidity_x10` | u16 | DHT22, 0.1 %RH |
 | 16 | `co2_ppm` | u16 | ACD1100 reading |
@@ -120,8 +120,8 @@ equal 16 + the payload size for its type. The PC counts drops per node.
 | 40 | `audio_window_count` | u8 | Valid entries in `audio[]`, 0–2. Unused entries are all 0 |
 | 41 | `pir_active_pct` | u8 | % of PIR samples showing motion during this interval |
 | 42 | `valid_flags` | u8 | See below |
-| 43 | `cpu_load_pct` | u8 | |
-| 44 | `wifi_rssi_dbm` | i8 | Wi-Fi signal strength |
+| 43 | `cpu_load_pct` | u8 | Sent as 0 by the µT-Kernel node: no task fills it |
+| 44 | `wifi_rssi_dbm` | i8 | Wi-Fi signal strength. Sent as 0 by the µT-Kernel node: no task fills it |
 | 45 | `reserved[3]` | u8 ×3 | Send 0 |
 
 **Audio window** (8 bytes, `mosaic_audio_window_t`):
