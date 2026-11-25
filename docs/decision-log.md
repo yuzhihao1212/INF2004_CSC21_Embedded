@@ -5,6 +5,15 @@ ideas we dropped. Status lines get updated in place; a reversed decision gets a 
 that links back. Entries dated before 14 Nov 2026 were backfilled on 14 Nov from the chat
 where they were decided and the commits that built them.
 
+## 2026-11-25 · Guides and CSC21 tracker closed out; Student IDs added
+- **From → to:** after PR #59, the ML guide said its scripts train the deployed model, the README and docs index ended by asking for more hardware evidence, and the CSC21 tracker showed "To do" on six rows. Now the ML guide says the scripts train the earlier random forest and that the int8 network's training code is not in the repo; the README has a "what was and was not tested" section; `docs/audio_numeric_representation.md` gives the DSP Q-formats and the int8 model's scales; the tracker has no "To do" rows (two Done, four Not done with what exists in their place). Student IDs are filled in.
+- **Why:** hand-in is 23:59 on 25 Nov and the team gave ZhiHao permission to review and merge for everyone (chat, 25 Nov).
+- **Problem it solves:** a marker following the evidence index landed on unfinished rows for the Tribunal 1 change requirement, and would have traced the TinyML model to a random-forest script.
+- **Why this way:** rows that need a board are marked Not done; writing them as done was not an option. PR #60 showed as conflicting on GitHub after #61 and #59 went in; Moe resolved it there and merged it at 22:07. His resolution kept the older S4 row in `TEAM.md` ("watchdog supervision remains to be implemented"), so this change puts the corrected row back along with the Student IDs.
+- **Risks to watch:** the number-format doc was written from the code by reading it, on the last evening. It was spot-checked against the constants in the source, not reviewed by Moe or Darius.
+- **Verified:** every constant quoted in the new doc was found in the source; relative links resolve; host tests and PC tests pass on this branch. Not verified: the deployed model's provenance beyond `SOURCE.json`.
+- **Status:** committed on `docs/final-status`, in PR #62.
+
 ## 2026-11-25 · Final demo recorded as the only system test run
 - **From → to:** `node/testing/system/TEST_LOG.md` was the blank template with an example row. Now it defines SYS-01 to SYS-06 from the demo plan and records the final demo as one run: SYS-01 to 04 and SYS-06 "mostly as expected, with some inconsistent results", SYS-05 not run.
 - **Why:** ZhiHao (chat, 25 Nov) gave the facts: five of the six planned scenarios were shown, they mostly worked with some inconsistent results from the room and other factors outside the team's control, the class-type scenario was dropped before the demo started, and nobody recorded it.
@@ -12,7 +21,7 @@ where they were decided and the commits that built them.
 - **Why this way:** one combined row, not five PASS rows, because nobody wrote down which scenarios were inconsistent. The log says the cases were written after the run, that no evidence was saved, and what no scenario covers (environment sensors end to end, excessive noise, outage recovery).
 - **Risks to watch:** the row is a report from memory. If a teammate remembers which scenario misbehaved, add a new row with that detail; do not edit this one.
 - **Verified:** nothing new was run. The scenario texts match the demo deck's six demo slides.
-- **Status:** built, not committed.
+- **Status:** committed `433dfeb`, in PR #60.
 
 ## 2026-11-25 · Host tests rerun on the hand-in commit; unrecorded board tests say so
 - **From → to:** host results were spread over several dates, all on uncommitted code, and S3's rows cited logs that aren't in the repo. The S1, S2 and S4 result tables held only the template's placeholder row. Now `node/testing/run_host_tests.sh` reruns every host test in one go; it was run on the clean commit `62e0e5a` and each subsystem's log has a row citing that commit and a saved log. The S1, S2 and S4 logs state that no on-target result was recorded.
@@ -77,7 +86,7 @@ where they were decided and the commits that built them.
 - **Why this way:** `app.js` now decides portrait from the width of `.map-stage`, the space around the plan, so the plan's own proportions can't feed back into the choice. The small-text style hangs off a `data-narrow` flag that only changes text, never the plan's shape. Rejected: B (bigger map by trimming the headline or sim strip) changes PR #55's layout and needs a mockup; reusing the existing `compact` option also turns off zone selection.
 - **Risks to watch:** at 1280 × 720 the node tags under the plan touch ("Reference node" is partly covered by "Node 2"), and the page is still 7 px taller than the window, as PR #55 noted. If a future layout makes the stage narrow but the plan wide, the rule needs another look.
 - **Verified:** browser preview (simulated demo), fresh loads: 1280 × 720, 1366 × 768 (light and dark), 1440 × 900 (unchanged, 619 × 371, page fits the window) and 375 × 812 (still portrait, view switch hidden, no sideways scroll); a live resize from 375 to 1440 to 1366 lands in the wide layout each time. 58 tests in `test_dashboard` and `test_feedback` pass. Not checked: Safari, Firefox, presenter mode, the projector.
-- **Status:** built, not committed.
+- **Status:** committed `8a3a866`, merged in PR #57.
 
 ## 2026-11-20 · Room view controls become quiet segmented tracks
 - **From → to:** above the room, Sound/Air/Temperature/Movement and Flat/3D/People were seven separate outlined pills, with the two chosen ones in solid purple. Now each question is one soft grey track; the chosen option is a raised white thumb (a lighter grey in dark mode) with dark text, and it still glides. No purple. On a phone the four-option track becomes a 2 × 2 grid.

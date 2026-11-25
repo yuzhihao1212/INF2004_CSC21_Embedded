@@ -9,6 +9,7 @@ CMake/UDP design or work that was pending when written. The current node uses
 
 - [Project brief](INF2004_Embedded%20System%20Project%20%28Revised%29.pdf)
 - [CSC21 change requirement and evidence tracker](change_requirement_csc21.md)
+- [Audio and classifier number formats](audio_numeric_representation.md)
 - [Decision log](decision-log.md)
 - [Wire protocol v2](protocol.md) — the MQTT subsection is the active transport;
   the UDP sections describe the earlier firmware. The older S4 README
@@ -46,8 +47,14 @@ with uncommitted changes. Its logs report a timing scale issue and no valid
 temperature, humidity or CO₂ readings at the dashboard; it is an integration
 observation rather than complete hardware acceptance.
 
-Before claiming the final system passes, retain a clean build revision, actual
-DSP/ML wall-clock measurements with headroom, sensor reference comparisons,
-fault injection/recovery results and a linked test ID and log. Keep original
-test results intact. The [test guide](../node/testing/README.md) describes the
-required recording workflow.
+The final demo on 25 November is recorded in the
+[system test log](../node/testing/system/TEST_LOG.md): five scenarios shown on
+four Picos, mostly as expected with some inconsistent results, and no recording.
+The host tests were rerun on the hand-in code with
+`node/testing/run_host_tests.sh`; each subsystem's log cites that commit.
+
+The hardware was returned after the demo. These were never measured and cannot
+be now: DSP and inference wall-clock time with headroom on a board, sensor
+readings against a reference instrument, fault injection and recovery, and the
+watchdog's timing tests. Original test results are kept as they were. The
+[test guide](../node/testing/README.md) describes the recording workflow.

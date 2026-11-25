@@ -1,4 +1,5 @@
-/* Subsystem 5 — Node config and telemetry. Owner: ZhiHao */
+/* Subsystem 5 — Node config and telemetry. Owner: ZhiHao (yuzhihao1212).
+ * Student ID: 2503001. */
 #ifndef SUBSYSTEM5_H
 #define SUBSYSTEM5_H
 #include "../../../firmware/common/include/mosaic_protocol.h"
