@@ -40,9 +40,10 @@ and rate-limited in S2, away from capture.
 The existing LED and producer examples remain active for compatibility with
 S3/S4's existing references and tests. S4 can still suspend the LED, never the
 new audio task. Their eventual cleanup belongs to their respective owners.
-S1/S2 make no networking calls and do not launch cores manually. S5 already
-accepts audio results; the network owner must connect its TX queue to MQTT
-inside `cyw43_utk_task` for end-to-end delivery.
+S1/S2 make no networking calls and do not launch cores manually. S5 accepts
+audio results and the merged networking bridge connects its TX queue to MQTT inside `cyw43_utk_task`. The 20 November four-node session
+recorded real audio reports. See the [integration notes](../../testing/integration/logs/2026-11-20-four-node-session.md)
+for the evidence and its limitations.
 
 Build with the template's Pico SDK 2.2.0/2.3.0 setup:
 
