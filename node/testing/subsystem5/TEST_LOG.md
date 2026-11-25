@@ -1,6 +1,6 @@
 # Subsystem 5 — test log
 
-**Subsystem:** Node config and telemetry  ·  **Student ID:**  ·  **Code:** `app_program/subsystem5/`
+**Subsystem:** Node config and telemetry (ZhiHao)  ·  **Student ID:** 2503001  ·  **Code:** `app_program/subsystem5/`
 
 See `testing/README.md` for recording on-target results. No Pico has been flashed
 or tested for this port. Results stay empty until hardware evidence is saved.

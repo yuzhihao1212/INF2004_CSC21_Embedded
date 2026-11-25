@@ -1,6 +1,6 @@
 # Subsystem 2 — test log
 
-**Subsystem:** Producer (example)  ·  **Student ID:** <student ID>  ·  **Code:** `app_program/subsystem2/`
+**Subsystem:** int8 audio classifier (Darius)  ·  **Student ID:** 2501046  ·  **Code:** `app_program/subsystem2/`
 
 See `testing/README.md` for how to run tests and record results.
 
