@@ -707,7 +707,7 @@ class FusionEngine:
     # ---- Outputs -------------------------------------------------------------
 
     def drain_events(self) -> list[Event]:
-        """State changes since_ms the last call, for the console."""
+        """State changes since the last call, for the console."""
         events, self._pending = self._pending, []
         return events
 

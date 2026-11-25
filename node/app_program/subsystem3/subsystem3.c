@@ -1,6 +1,7 @@
 /*
  *	subsystem3.c
- *	Subsystem 3 -- Consumer: creates its objects and starts its task.
+ *	Subsystem 3 -- Environment sensors: creates its objects and starts its
+ *	tasks (environment_task, plus the template's consumer example).
  *
  *	APIs shown: tk_cre_mbx, tk_cre_mtx
  */

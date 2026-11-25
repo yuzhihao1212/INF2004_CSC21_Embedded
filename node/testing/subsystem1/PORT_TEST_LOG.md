@@ -41,3 +41,42 @@ S1-U06/U07 are NOT RUN until real-board evidence is saved.
 
 Hardware remains NOT RUN. The historical float-initialisation implementation is
 loaded by Git blob only into a temporary host test executable, never a Pico target.
+
+## Comment clean-up for hand-in (25 Nov 2026)
+
+The S1 and S2 sources were tidied for hand-in (headers, comments, named
+constants). Every edited `.c` file has the same C tokens as before, so the
+firmware is unchanged.
+
+Commit `c78f27b` on this branch also changed `audio_clock_us()` in
+`drv_audio.c` to convert the raw timer count to real microseconds, and defined
+S1-U09 to check it on a board. The hardware was returned after the final demo
+on 25 Nov, so that change was taken out again before merging and S1-U09 was
+never run. The ID stays here and is not reused.
+
+| ID | Method | Expected result |
+|---|---|---|
+| S1-U09 (dropped) | Hardware, manual: flash the `NET=lwip MQTT=1` image and save 60 s of console output | With the clock correction applied: every `audio input` line shows `capture_us` between 495000 and 505000 (it reads 11719 without it); `dsp_us` stays under 400000; no `event=TIMING_FAULT` while the node runs normally |
+
+| Date | ID | Commit | Result | Evidence |
+|---|---|---|---|---|
+| 2026-11-25 | S1-U04 / S2-U03..05 replay | working tree on `c36c37e` (not yet committed) | PASS | `logs/2026-11-25_cleanup-replay.txt`: features, logits, probabilities and gates unchanged after the clean-up |
+
+Known limitation, not corrected: `audio_clock_us()` counts once per 42.67 us,
+not once per microsecond, so logged `capture_us`, `dsp_us` and `ml_us` values
+are 42.67 times too small and the 500 ms deadline checks cannot trip. See
+`../integration/logs/2026-11-20-audio-investigation.md` and the note above the
+function in `drv_audio.c`. S1-U06, S1-U07 and S1-U09 are NOT RUN: there is no
+hardware to run them on.
+
+## Final host run on the hand-in code (25 Nov 2026)
+
+Run with `node/testing/run_host_tests.sh` on a clean checkout of `62e0e5a`: the
+tidied sources merged with the code that ran in the final demo.
+
+| Date | ID | Commit | Result | Evidence |
+|---|---|---|---|---|
+| 2026-11-25 | S1-U04 replay | `62e0e5a` | PASS | `logs/2026-11-25_host_62e0e5a.txt`: all 20 features identical across 32 windows |
+
+Host only. The hardware was returned after the final demo on 25 Nov 2026, so on-target and
+manual tests can no longer be run. S1-U06 and S1-U07 stay NOT RUN.
