@@ -271,6 +271,24 @@ main.wrap { padding-top: var(--space-6); padding-bottom: var(--space-10); }  /* 
 .map-title { font-size: 16px; display: flex; align-items: baseline; gap: var(--space-3); flex-wrap: wrap; }
 .map-front { font-size: 13px; font-weight: 500; color: var(--muted); letter-spacing: 0; }
 .segmented.small span { padding: 0 14px; font-size: 14px; }
+/* Room view controls: one quiet segmented track per question. The chosen
+ * option is a raised thumb, not a purple fill, so the room's own colours lead.
+ * Same weight on every option, so choosing one never shifts the others. */
+.map-bar .segmented {
+  gap: 0; padding: 3px; border-radius: 999px; border: 1px solid var(--border);
+  background: color-mix(in srgb, var(--text) 7%, var(--panel));
+  --thumb: var(--bg);
+  --thumb: light-dark(var(--bg), color-mix(in srgb, var(--text) 16%, var(--panel)));
+  --thumb-edge: 0 1px 2px rgba(0, 0, 0, .14), 0 0 0 1px var(--border);
+}
+.map-bar .segmented span { min-height: 36px; padding: 0 14px; border: 0; background: transparent; color: var(--muted); font-weight: 500; font-size: 14px; }
+.map-bar .segmented label:hover span { color: var(--text); }
+.map-bar .segmented input:checked + span { background: var(--thumb); border-color: transparent; color: var(--text); box-shadow: var(--thumb-edge); }
+.map-bar .segmented input:focus-visible + span { outline-offset: 1px; }
+@media (max-width: 480px) {   /* Four options don't fit one line on a phone: a 2 × 2 track */
+  .map-bar .segmented { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); width: 100%; border-radius: 22px; }
+  .map-bar .segmented span { display: flex; justify-content: center; }
+}
 .metric-num .unit { font-size: 15px; font-weight: 600; margin-left: 5px; letter-spacing: 0; }
 .live-side { grid-area: side; align-self: stretch; min-height: 0; min-width: 0; display: flex; flex-direction: column; gap: var(--space-3); }
 .live-side > .card { border-radius: 20px; }
