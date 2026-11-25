@@ -4,6 +4,7 @@ the small broker in mqtt_broker.py)."""
 import io
 import json
 import select
+import socket
 import time
 import unittest
 
@@ -77,6 +78,19 @@ class Codec(unittest.TestCase):
         self.assertEqual(m.parse_broker("10.0.0.2:1884"), ("10.0.0.2", 1884))
         self.assertTrue(topic_matches("mosaic/node/+/telemetry", "mosaic/node/4/telemetry"))
         self.assertFalse(topic_matches("mosaic/node/+/telemetry", "mosaic/node/4/config"))
+
+    def test_malformed_data_drops_the_link_instead_of_raising(self):
+        bad_length = bytes([m.PUBLISH << 4, 0x80, 0x80, 0x80, 0x80, 0x01])
+        bad_topic = bytes([m.PUBLISH << 4, 4, 0, 2, 0xFF, 0xFE])   # Topic is not UTF-8
+        for data in (bad_length, bad_topic):
+            ours, theirs = socket.socketpair()
+            self.addCleanup(theirs.close)
+            client = m.MqttClient("unused")
+            client.sock = ours
+            theirs.sendall(data)
+            with self.assertRaises(ConnectionError):
+                client.read()
+            self.assertFalse(client.connected)
 
 
 class ClientWithBroker(unittest.TestCase):

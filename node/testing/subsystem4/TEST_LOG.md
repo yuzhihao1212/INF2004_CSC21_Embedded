@@ -27,3 +27,11 @@ Add a new row for every run. Never edit or delete old rows.
 | Date | Test ID | Commit | Tester | Result | Log / evidence | Notes |
 |---|---|---|---|---|---|---|
 | YYYY-MM-DD | S4-U01 | `abc1234` | | PASS / FAIL | `logs/YYYY-MM-DD_….txt` | |
+
+## Status at hand-in (25 Nov 2026)
+
+No result for the tests above is recorded in this repository. The hardware was
+returned after the final demo on 25 Nov 2026, so they cannot be run now. If you
+have a saved console log from an earlier run, add it to `logs/` and add a row.
+The watchdog stays switched off (`S4_WATCHDOG_TIMEOUT_MS` is 0) because S4-U04 to S4-U06 were never run.
+The gateway side of the MQTT recovery is covered by `pc/tests/test_mqtt.py`.

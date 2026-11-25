@@ -1,0 +1,14 @@
+S2 speech gate (S2-U07). Host only.
+Date: 2026-11-25 21:42 +0800
+Commit: 62e0e5a (tracked files clean)
+Machine: Darwin arm64
+Compiler: Apple clang version 17.0.0 (clang-1700.0.13.5)
+Python: Python 3.14.0
+
+$ cc -std=c11 -Wall -Wextra -Werror node/testing/subsystem2/speech_gate_check.c node/app_program/subsystem2/audio_inference.c node/app_program/subsystem2/classifier_timing.c -o /var/folders/4p/85h90jj9327_cwwm4489hdcr0000gn/T/tmp.UXSyiYbGyW/speech-gate
+exit: 0
+
+$ /var/folders/4p/85h90jj9327_cwwm4489hdcr0000gn/T/tmp.UXSyiYbGyW/speech-gate
+S2-U07 PASS: pending, onset, hold, release, threshold, transient, raw scores
+exit: 0
+

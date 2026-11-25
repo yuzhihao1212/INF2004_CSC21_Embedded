@@ -1,8 +1,9 @@
 /*
  *	subsystem1.c
- *	Subsystem 1 -- LED heartbeat: creates its objects and starts its task.
+ *	Subsystem 1 -- Audio capture and DSP: creates its objects and starts
+ *	its tasks (audio_task, plus the template's LED heartbeat example).
  *
- *	APIs shown: tk_cre_cyc, tk_sta_cyc
+ *	APIs shown: tk_cre_cyc, tk_sta_cyc, tk_cre_tsk, tk_sta_tsk
  */
 
 #include "subsystem1.h"
@@ -31,15 +32,21 @@ EXPORT ER subsystem1_start(void)
 	if (tid_led < E_OK) {
 		return tid_led;
 	}
-	ER er=tk_sta_cyc(cyc_led);
-	if (er<0) return er;
-	/* A separate ID keeps S4's example LED suspension away from audio. */
-	T_CTSK task={0};
-	task.task=(FP)audio_task; task.itskpri=S1_PRI_AUDIO;
-	task.stksz=4096; task.tskatr=TA_HLNG|TA_RNG3;
+	ER er = tk_sta_cyc(cyc_led);
+	if (er < 0) return er;
+
+	/* audio_task is created here rather than with app_start_task(): it
+	   needs a larger stack, and its ID stays private so subsystem 4's LED
+	   pause/resume example (IF-05) can never suspend audio capture. */
+	T_CTSK task = {0};
+	task.task    = (FP)audio_task;
+	task.itskpri = S1_PRI_AUDIO;
+	task.stksz   = S1_AUDIO_STACK_SIZE;
+	task.tskatr  = TA_HLNG | TA_RNG3;
 #if TK_SUPPORT_SMP
-	task.tskatr|=TA_ASSPRC; task.assprc=TP_PRC1;
+	task.tskatr |= TA_ASSPRC;	/* core 0, with the DMA interrupt */
+	task.assprc  = TP_PRC1;
 #endif
-	ID audio=tk_cre_tsk(&task);
-	return audio<0?audio:tk_sta_tsk(audio,0);
+	ID audio = tk_cre_tsk(&task);
+	return audio < 0 ? audio : tk_sta_tsk(audio, 0);
 }
