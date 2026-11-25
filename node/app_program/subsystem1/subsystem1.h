@@ -1,7 +1,7 @@
 /*
  *	subsystem1.h
  *	Subsystem 1 -- Audio capture and fixed-point DSP.
- *	Owner: Moe (mmmmm0e).  Student ID: <student ID>.
+ *	Owner: Moe (mmmmm0e).  Student ID: 2500112.
  *
  *	Samples the microphone on GP26/ADC0 at 16 kHz by DMA and turns each
  *	500 ms window into 20 Q8 features for subsystem 2 (IF-13).  The

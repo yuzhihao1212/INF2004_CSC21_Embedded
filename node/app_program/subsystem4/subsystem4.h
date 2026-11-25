@@ -1,7 +1,7 @@
 /*
  *	subsystem4.h
  *	Subsystem 4 -- Networking and node health.
- *	Owner: Arif (arifkareem).  Student ID: <student ID>.
+ *	Owner: Arif (arifkareem).  Student ID: 2500768.
  *
  *	The MQTT handoff is in s4_network.h (called only from the kernel's
  *	cyw43_utk_task).  The progress supervisor, s4_health_task, and the
