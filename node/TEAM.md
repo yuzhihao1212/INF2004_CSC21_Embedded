@@ -1,7 +1,7 @@
 # Team and subsystems
 
-The tables are pre-filled with the **example** in `app_program/` (marked
-*example*). Replace those rows with your own as you replace the example code.
+The tables describe the current subsystem claims and the retained template
+code, which is marked *example*. Keep the claims current as the code changes.
 
 Fill this in at the start of the project and keep it up to date. It is the
 single place that says **who owns what**, so that five people can work in
@@ -18,13 +18,14 @@ subsystem, ask its owner or open a pull request for them to review.
 | # | Subsystem (what it does) | Student ID | GitHub username | Code | Tests |
 |---|---|---|---|---|---|
 | 1 | Audio capture and fixed-point DSP: samples the microphone, produces the feature windows (Moe) | | mmmmm0e | `app_program/subsystem1/` | `testing/subsystem1/` |
-| 2 | int8 classifier: labels each audio window, e.g. lecturer, talking, noise (Darius) | | Dkkan-dev | `app_program/subsystem2/` | `testing/subsystem2/` |
+| 2 | int8 classifier: classifies audio windows as speech, background or transient noise; output may be UNKNOWN for invalid, low-level, clipped, pending or timing-fault conditions (Darius) | | Dkkan-dev | `app_program/subsystem2/` | `testing/subsystem2/` |
 | 3 | Environment sensors: DHT22, CO₂ (ACD1100), PIR (Kendrick) | | kthgoat | `app_program/subsystem3/` | `testing/subsystem3/` |
-| 4 | Networking and node health: Wi-Fi and the MQTT link to the PC, watchdog supervision (Arif) | | arifkareem | `app_program/subsystem4/` | `testing/subsystem4/` |
+| 4 | Networking and node health: Wi-Fi and the MQTT link to the PC; watchdog supervision remains to be implemented (Arif) | | arifkareem | `app_program/subsystem4/` | `testing/subsystem4/` |
 | 5 | Node config and telemetry: applies CONFIG from the PC, builds each report (ZhiHao) | | yuzhihao1212 | `app_program/subsystem5/` | `testing/subsystem5/` |
 
-Subsystems 1–4 still hold the template's example code (LED, producer,
-consumer, monitor) until each owner replaces it with their own.
+The production audio, classifier, environment, networking and telemetry paths are
+implemented alongside the retained template LED, producer, consumer and monitor
+examples. Implementation in source does not establish final hardware validation.
 
 Shared files (`app_program/app_main.c`, `app_program/app.h`, this file)
 are changed only by agreement of the team. The exception is claiming an empty
@@ -134,15 +135,15 @@ What students *can* do:
   T_CYW43_UTK_STATUS st;
   cyw43_utk_get_status(&st);   /* st.ready, st.link_status, st.ip_addr, ... */
   ```
-- **Send or receive data over the network** by adding code that *runs
-  inside the service task*. The MQTT client is in
-  `lib/liblwip/sysdepend/pico_rp2040/mqtt_utk.c`. It publishes a heartbeat
-  today. A "cloud / reporting" subsystem would add a kernel object
-  (e.g. a message buffer) that application tasks fill. The MQTT code then
-  reads it with `TMO_POL` (never blocking) and publishes it.
-  Because this changes shared library code, **agree it with the team and
-  the instructor first**, and record it as an interface in section 5.
-  It needs the `NET=lwip MQTT=1` build (README section 3).
+- **Send or receive data over the network** through the existing S4/S5 handoff.
+  S5 queues telemetry, CONFIG_ACK and PONG; S4's functions let the MQTT client in
+  `lib/liblwip/sysdepend/pico_rp2040/mqtt_utk.c` poll the queue with `TMO_POL`
+  inside `cyw43_utk_task`. It publishes those packets on `mosaic/node/<id>/telemetry`.
+  CONFIG and PING arrive on `mosaic/node/<id>/config` and are queued for S5.
+  The PC gateway subscribes to telemetry and status and feeds fusion and the dashboard.
+  This path needs `NET=lwip MQTT=1`; see the repository root README. Changes to shared
+  library code still require agreement from the team and instructor. Source wiring is
+  not evidence of a passed end-to-end or recovery test.
 
 ## 4. Task priorities
 
@@ -151,13 +152,14 @@ change it only by team agreement. Write down every task you create.
 
 | Subsystem | Priority band | Tasks (name – priority – core) |
 |---|---|---|
-| 1 | 12–13 | *example:* led_task – 12 – any |
-| 2 | 14–15 | *example:* producer_task – 14 – core 1 |
+| 1 | 12–13 | *example:* led_task – 12 – any; audio_task – 13 – core 0, 4096-byte stack |
+| 2 | 14–15 | *example:* producer_task – 14 – core 1; classifier_task – 15 – core 1, 4096-byte stack |
 | 3 | 16–17 | consumer_task – 16 – core 0 (example compatibility); environment_task – 17 – core 0; TEST=1 observer – 17 – core 0, 4096-byte stack, self-deletes |
 | 4 | 18–19 | *example:* monitor_task – 18 – any |
 | 5 | 20–21 | report_task – 20 – any |
 
-Core: `TP_PRC1` = core 0, `TP_PRC2` = core 1, or "any".
+For SMP=1, `TP_PRC1` = core 0, `TP_PRC2` = core 1, or "any". The
+single-core build does not apply these affinities.
 
 ## 5. Interfaces between subsystems
 
@@ -165,23 +167,25 @@ Every arrow between two subsystems is listed here. The **provider** creates
 the kernel object and publishes its ID in its own `subsystemN.h`; the **user** only
 sends to it or waits on it. Agree on the data format before coding.
 
-| ID | From → To | Mechanism | Object ID name | Data / meaning | Agreed by |
+| ID | From → To | Mechanism | Object ID name | Data / meaning | Source status / agreement |
 |---|---|---|---|---|---|
 | IF-01 | S2 → S3 | mailbox (owned by S3) | `mbx_samples` | `SAMPLE_MSG` in `subsystem2.h` | *example* |
 | IF-02 | S3 → S2 | semaphore + fixed memory pool (owned by S2) | `sem_slots`, `mpf_samples` | receiver returns the block, then 1 slot | *example* |
 | IF-03 | S3 → S4 | message buffer + event flag (owned by S4) | `mbf_summary`, `flg_events` | text line ≤ `S4_SUMMARY_MAX` bytes, then `FLG_BATCH` | *example* |
 | IF-04 | S4 → S3 | shared data under a mutex (owned by S3) | `app_stats`, `mtx_stats` | `APP_STATS`, read only while locked | *example* |
 | IF-05 | S4 → S1 | task control | `tid_led` | `tk_sus_tsk` / `tk_rsm_tsk` / `tk_chg_pri` | *example* |
-| IF-06 | S4 → S5 | message buffer (owned by S5) | `mbf_s5_rx` | One protocol v2 CONFIG/PING datagram, ≤128 bytes; S4 uses `TMO_POL` inside `cyw43_utk_task`, checks ID > 0 | proposed by S5, pending |
-| IF-07 | S5 → S4 | message buffer (owned by S5) | `mbf_s5_tx` | One protocol v2 TELEMETRY/CONFIG_ACK/PONG, ≤64 bytes; S4 receives with `TMO_POL` inside `cyw43_utk_task`, checks ID > 0 | proposed by S5, pending |
-| IF-08 | S3 → S5 | post function, S5 mutex | `mtx_s5` | `s5_post_environment(temp_x10, humidity_x10, co2_ppm, valid_bits)`; expires after 6000 ms | proposed by S5, pending |
-| IF-09 | S3 → S5 | post function, S5 mutex | `mtx_s5` | `s5_post_pir(samples, active)`; interval counters, one sample or a batch | proposed by S5, pending |
-| IF-10 | S1/S2 → S5 | post functions, S5 mutex | `mtx_s5` | `s5_post_audio_window(window, dsp_us, inference_us)`, `s5_audio_dropped(windows)`; two consecutive windows, loss count | proposed by S5, pending |
-| IF-11 | S4 → S5 | post function, S5 mutex | `mtx_s5` | `s5_post_health(rssi_dbm, cpu_load_pct, free_heap_bytes)`; cached values only | proposed by S5, pending |
-| IF-12 | S5 → S1/S3 | config getter, S5 mutex | `mtx_s5` | `s5_get_config(out)`; complete applied config snapshot for audio and sensor intervals | proposed by S5, pending |
+| IF-06 | S4 → S5 | message buffer (owned by S5) | `mbf_s5_rx` | One protocol v2 CONFIG/PING datagram, ≤128 bytes; S4 uses `TMO_POL` inside `cyw43_utk_task`, checks ID > 0 | wired in source; owners' review needed |
+| IF-07 | S5 → S4 | message buffer (owned by S5) | `mbf_s5_tx` | One protocol v2 TELEMETRY/CONFIG_ACK/PONG, ≤64 bytes; S4 receives with `TMO_POL` inside `cyw43_utk_task`, checks ID > 0 | wired in source; owners' review needed |
+| IF-08 | S3 → S5 | post function, S5 mutex | `mtx_s5` | `s5_post_environment(temp_x10, humidity_x10, co2_ppm, valid_bits)`; expires after 6000 ms | wired in source; owners' review needed |
+| IF-09 | S3 → S5 | post function, S5 mutex | `mtx_s5` | `s5_post_pir(samples, active)`; interval counters, one sample or a batch | wired in source; owners' review needed |
+| IF-10 | S2 → S5 | post functions, S5 mutex | `mtx_s5` | `s5_post_audio_window(window, dsp_us, inference_us)`, `s5_audio_dropped(windows)`; two consecutive windows, loss count | wired in source; owners' review needed |
+| IF-11 | S4 → S5 | post function, S5 mutex | `mtx_s5` | `s5_post_health(rssi_dbm, cpu_load_pct, free_heap_bytes)` | API exists; no production poster found |
+| IF-12 | S5 → S1/S3 | config getter, S5 mutex | `mtx_s5` | `s5_get_config(out)`; complete applied config snapshot for audio and sensor intervals | wired in source; owners' review needed |
 
-Each interface is tested by at least one integration test
-(`testing/integration/TEST_LOG.md`).
+Source status above describes implementation only. Validation requires recorded
+test results, and agreement requires the relevant owners' sign-off; neither is
+implied by source wiring. The integration log (`testing/integration/TEST_LOG.md`)
+does not yet document a completed final-revision test for each production interface.
 
 ## 6. Kernel object budget
 
