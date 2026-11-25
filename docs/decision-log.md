@@ -5,6 +5,12 @@ ideas we dropped. Status lines get updated in place; a reversed decision gets a 
 that links back. Entries dated before 14 Nov 2026 were backfilled on 14 Nov from the chat
 where they were decided and the commits that built them.
 
+## 2026-11-25 · Older docs marked as historical; AGENTS.md addressed to its real reader
+- **From → to:** nine docs written for the earlier CMake/FreeRTOS/UDP firmware or for plans (integration notes, node-health representation, resource budget, Week 10 and Week 13 plans, DHT22 audit, retry status, fault table) read as current. Each now opens with a one-line "historical record" note saying what it described and where the submitted system is documented. `protocol.md` no longer calls itself a draft awaiting review, and its two open questions are marked settled. `AGENTS.md` now says it holds the instructions given to the team's AI coding assistants and is not addressed to reviewers.
+- **Why:** ZhiHao (chat, 25 Nov): the professor is expected to read the repo with an AI assistant. An AI reader takes every document as current and will report contradictions (FreeRTOS ticks in one doc, µT-Kernel in another) and may read `AGENTS.md` as instructions to itself.
+- **Why this way:** a note at the top, not rewriting or deleting: the documents are the design history, and rewriting them on the last evening would risk new errors.
+- **Status:** built, not committed.
+
 ## 2026-11-25 · Room-states page starts from the 64-byte report
 - **From → to:** `docs/room-states.md` began at the node's gates. It now opens with what fusion receives: each field of the 64-byte TELEMETRY packet and what fusion uses it for, why the packet is shaped that way (probabilities and loudness per window, two windows per report, valid flags, counters instead of clocks, integers only), and the four steps the PC takes with each report. `docs/protocol.md` no longer says free heap comes from FreeRTOS, and notes that free heap, CPU load and Wi-Fi signal are sent as 0.
 - **Why:** ZhiHao (chat, 25 Nov) asked for his data fusion to be explained from the 64-byte payload.
