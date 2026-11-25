@@ -8,12 +8,14 @@
  *    3. measure signal quality: RMS, clipping, minimum and maximum
  *    4. extract 20 Q8 features with integer-only DSP (audio_dsp.c)
  *    5. send the features to subsystem 2 by value (IF-13)
+ *    6. tell subsystem 4's supervisor that this task made progress
  *  The driver is already capturing the next window into its other buffer
- *  while steps 2 to 5 run.
+ *  while steps 2 to 6 run.
  */
 
 #include "../subsystem5/subsystem5.h"
 #include "../subsystem2/subsystem2.h"
+#include "../subsystem4/s4_health.h"
 #include "subsystem1.h"
 #include "drv_audio.h"
 #include "audio_dsp.h"
@@ -80,5 +82,8 @@ void audio_task(INT stacd, void *exinf)
         /* Full queue drops the new observation. S2 sees the sequence gap
          * and accounts for drops in order, avoiding races with old results. */
         (void)tk_snd_mbf(mbf_audio_features, &msg, sizeof msg, TMO_POL);
+        /* Progress for the supervisor: only a window that got this far counts,
+         * so a stalled capture or a run of rejected windows shows as a gap. */
+        (void)s4_health_mark(S4_HEALTH_AUDIO);
     }
 }

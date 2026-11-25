@@ -1,4 +1,5 @@
 #include "s5_internal.h"
+#include "../subsystem4/s4_health.h"
 #include <string.h>
 
 /* Finish a pending packet even if a poster briefly owns the lock: an audio
@@ -52,6 +53,7 @@ void report_task(INT stacd, void *exinf)
         now = s5_now_ms();
         uint64_t wake = deadline < health_deadline ? deadline : health_deadline;
         TMO wait = now >= wake ? TMO_POL : (TMO)(wake - now);
+        if (wait > 250) wait = 250; /* Check liveness even at long report intervals. */
         INT len = tk_rcv_mbf(mbf_s5_rx, rx, wait);
         if (len > 0) {
             size_t reply_len;
@@ -116,6 +118,7 @@ void report_task(INT stacd, void *exinf)
                 (unsigned long)controls, (unsigned)config.config_version);
             health_deadline = now + 10000u;
         }
+        (void)s4_health_mark(S4_HEALTH_REPORT);
     }
 task_error:
     CHECK(er, "report_task");
