@@ -1,434 +1,171 @@
-# INF2004_CSC21_Embedded
+# MOSAIC — Classroom Monitoring System
 
-MOSAIC: Multimodal Observation and Sensor-fusion Architecture for Intelligent Classrooms.
-See [docs/](docs/) for the project brief and team workflow.
+**INF2004 Embedded Systems | CSC21**
 
-## Repository layout
+MOSAIC monitors classroom activity, ventilation and comfort using four Raspberry Pi
+Pico W sensing nodes. Each node runs dual-core µT-Kernel 3.0 and sends processed
+sensor readings and audio classifications to a central PC over MQTT. The PC combines
+the zone readings and presents them on a web dashboard.
 
+![Four real nodes on the dashboard](docs/evidence/four-real-nodes-online.png)
+
+## Architecture
+
+```mermaid
+flowchart TD
+    subgraph Pico["Pico W node — same architecture in all four zones"]
+        S1["S1 Audio capture and fixed-point DSP"] --> S2["S2 Int8 classifier"]
+        S2 --> S5["S5 Configuration and telemetry"]
+        S3["S3 Environment and motion sensing"] --> S5
+        S5 <-->|"RX/TX queues"| S4["S4 MQTT in kernel Wi-Fi task"]
+    end
+    S4 <-->|"Wi-Fi / MQTT"| B["Mosquitto broker"]
+    B <-->|"Protocol v2"| G["PC gateway"]
+    G --> F["Lecturer reference and sensor fusion"]
+    F --> D["Dashboard"]
+    D -.->|"Settings"| G
 ```
-node/              The sensing node: course template, micro T-Kernel 3.0 on both cores (make)
-  app_program/     Our code, one subsystemN/ folder per owner (see node/TEAM.md)
-  testing/         Test logs per subsystem, integration and system tests
-  kernel/ lib/ …   Template code shared with the instructor's repo: change only by agreement
-firmware/          Earlier CMake firmware (plain SDK and FreeRTOS); reference and bring-up
-                   code, not the submitted micro T-Kernel node
-  CMakeLists.txt   SDK import and project setup
-  tests/           Standalone sensor / DSP bring-up targets, one .uf2 each
-ml/                Audio dataset preparation, feature extraction and model training
-  scripts/         Run from the repository root, e.g. python ml/scripts/train_pico_model.py
-  data/            Feature datasets (raw audio folders are git-ignored)
-pc/                PC-side gateway, sensor fusion and dashboard
-  mosaic/          Protocol v2, gateway receiver and node simulator
-  tests/           Unit tests, run from pc/ with python -m unittest
-docs/              Project brief and team workflow
-```
 
-## Building the node (micro T-Kernel)
+Zone A (node 1) is the lecturer reference. Nodes 2–4 cover the student zones B–D.
+Microphone samples stay on the node during normal operation. Telemetry carries
+classification, sensor readings, validity and timing information.
 
-The node runs micro T-Kernel 3.0 and builds with `make` against Pico SDK 2.2.0 or 2.3.0;
-on Windows, use WSL. Install the Arm compiler and set `PICO_SDK_PATH` as described in
-[node/README.md](node/README.md). The MQTT profile also needs the SDK's lwIP submodule:
+## Important code
+
+| Owner / component | Start here | Responsibility |
+| --- | --- | --- |
+| Moe (S1) | [task_audio.c](node/app_program/subsystem1/task_audio.c), [drv_audio.c](node/app_program/subsystem1/drv_audio.c), [audio_dsp.c](node/app_program/subsystem1/audio_dsp.c) | ADC/DMA capture at 16 kHz, 500 ms windows, integer-only feature extraction |
+| Darius (S2) | [task_classifier.c](node/app_program/subsystem2/task_classifier.c), [audio_inference.c](node/app_program/subsystem2/audio_inference.c) | Int8 inference, confidence and speech persistence |
+| Kendrick (S3) | [task_environment.c](node/app_program/subsystem3/task_environment.c), [environment_service.c](node/app_program/subsystem3/environment_service.c) | DHT22, ACD1100 CO₂, PIR, validity and recovery |
+| Arif (S4) | [s4_network.c](node/app_program/subsystem4/s4_network.c), [mqtt_utk.c](node/lib/liblwip/sysdepend/pico_rp2040/mqtt_utk.c) | Non-blocking queue bridge to MQTT inside the kernel Wi-Fi task |
+| ZhiHao (S5) | [task_report.c](node/app_program/subsystem5/task_report.c), [s5_protocol.c](node/app_program/subsystem5/s5_protocol.c) | CONFIG validation, telemetry and control messages |
+| PC gateway | [gateway.py](pc/mosaic/gateway.py), [mqtt.py](pc/mosaic/mqtt.py) | Packet reception, node tracking and configuration delivery |
+| PC fusion | [fusion.py](pc/mosaic/fusion.py), [reference.py](pc/mosaic/reference.py) | Classroom and zone states; lecturer-reference comparison |
+| Dashboard | [dashboard.py](pc/mosaic/dashboard.py), [app.js](pc/mosaic/web/app.js) | HTTP API, live room, history, sensors and setup |
+
+Node startup is in [app_main.c](node/app_program/app_main.c). The C and Python wire
+definitions are [mosaic_protocol.h](firmware/common/include/mosaic_protocol.h) and
+[protocol.py](pc/mosaic/protocol.py). [TEAM.md](node/TEAM.md) lists pin assignments,
+resource ownership and inter-subsystem interfaces.
+
+## Build and run the real system
+
+### 1. Build the Pico W firmware
+
+Install the Arm GNU toolchain, make and Pico SDK 2.2.0 (2.3.0 also tested) using
+the [node setup guide](node/README.md). On Windows use WSL for this make build.
+In the SDK checkout initialise the required submodules:
 
 ```sh
-git -C "$PICO_SDK_PATH" submodule update --init lib/tinyusb lib/cyw43-driver lib/lwip
+git submodule update --init lib/tinyusb lib/cyw43-driver lib/lwip
 ```
 
-Copy `node/config/wifi_secrets.example.h` to the ignored `node/config/wifi_secrets.h`
-and set the Wi-Fi credentials, the PC broker's reachable IPv4 address in `MQTT_BROKER_IP`,
-and its port in `MQTT_BROKER_PORT`. Never commit credentials or credential-bearing images.
-For each Pico, copy `node/app_program/subsystem5/s5_node_id.example.h` to the ignored
-`s5_node_id.h` in the same folder and set a unique `MOSAIC_NODE_ID` from 1 to 8. The
-fallback is ID 1; duplicate IDs also share an MQTT client ID and topics.
+From the MOSAIC repository, create these files on first setup only (keep existing local settings):
 
-From the repository root, build the production MQTT image or the MQTT self-test image:
+```sh
+cp node/config/wifi_secrets.example.h node/config/wifi_secrets.h
+cp node/app_program/subsystem5/s5_node_id.example.h node/app_program/subsystem5/s5_node_id.h
+```
+
+Edit the local Wi-Fi header to set the network name/password and the PC's LAN
+address in MQTT_BROKER_IP. These local config files are ignored by Git.
+Set MOSAIC_NODE_ID in the identity header to 1, 2, 3 or 4, one value per Pico.
 
 ```sh
 cd node/build_make
 make NET=lwip MQTT=1 -j8
-# mtk3pico_smp1_usb_cdc_wifi_lwip_mqtt.uf2
-make NET=lwip MQTT=1 TEST=1 -j8
-# mtk3pico_smp1_usb_cdc_wifi_lwip_mqtt_test.uf2
 ```
 
-Plain `make` defaults to `NET=none MQTT=0` and does not enable the MQTT bridge. For a
-different board ID, force a complete rebuild with `make -B NET=lwip MQTT=1 -j8` (add
-`TEST=1` for the test image), then flash and label that board before building the next.
-The output filename does not encode the node ID. Confirm the printed node ID and MQTT
-topic on each board; an existing dependency file may not notice a newly created optional
-ID header. These commands describe the intended build; they do not establish a hardware pass.
+The image is `mtk3pico_smp1_usb_cdc_wifi_lwip_mqtt.uf2`. Save a copy for each
+node before changing the ID and rebuilding. If changing the ID does not trigger a
+recompile, use the build's clean target and rebuild that profile. Flash via BOOTSEL.
+Use the USB console at 115200 baud to observe startup and connection status.
 
-Who owns which folder, pins, task priorities and the interfaces between subsystems are in
-[node/TEAM.md](node/TEAM.md); how to record tests is in
-[node/testing/README.md](node/testing/README.md). CI builds the default, `TEST=1` and
-`NET=lwip` images on every pull request.
+For on-target self-tests, use the same network profile with `TEST=1`.
+Keep normal demo and test images separate.
 
-### Current node-to-PC path and validation status
+### 2. Start Mosquitto
 
-S1 captures audio and computes fixed-point features; S2 classifies them and posts audio
-windows to S5. S3 posts environmental readings and PIR counts to S5. S5 builds protocol v2
-telemetry and replies, which S4 hands to the MQTT service inside `cyw43_utk_task`. The
-service publishes them on `mosaic/node/<id>/telemetry` through Mosquitto; the PC gateway
-feeds received data to fusion and the dashboard. The PC sends retained QoS 1 CONFIG on
-`mosaic/node/<id>/config`; S4 passes it to S5, and S5's CONFIG_ACK returns via the
-telemetry topic. The status topic carries online/offline state and the broker last will.
+Run the MQTT broker on the PC and put the PC and Picos on the same local network.
+The Pico's broker address must be reachable from that network. Use the broker's
+local installation and a listener on the PC's LAN interface, port 1883, with
+access configured for the nodes and PC. For an isolated development hotspot the prototype uses a local Mosquitto
+configuration file such as the following, saved outside the repository:
 
-These paths are implemented in source. Hardware operation and recovery on the final
-revision still need recorded validation. The S4 progress primitives do not yet arm a
-hardware watchdog, and S5 health fields are not currently populated by a production
-health poster. See [node/testing/](node/testing/) for results and outstanding hardware
-work; historical host or four-node observations are not a final-revision system pass.
+~~~conf
+listener 1883 0.0.0.0
+allow_anonymous true
+~~~
 
-## Building the earlier CMake firmware (reference)
+Start it with `mosquitto -c <path-to-local-config> -v`. Restrict this setup to
+the trusted test network. See [wire protocol](docs/protocol.md) for topics and QoS.
 
-The code in `firmware/` is what ran before the move to micro T-Kernel. It still builds and
-CI still checks it, so each owner can compare while porting. The team built it with
-Raspberry Pi Pico SDK v1.5.1 and `PICO_BOARD=pico_w`.
+### 3. Run the dashboard
 
-- **VS Code:** open the repository root. `.vscode/settings.json` already points CMake at
-  `firmware/` and builds into `firmware/build/`.
-- **Command line:**
+Python's standard library is sufficient for the dashboard and gateway. From the
+repository root:
 
-  ```
-  cmake -S firmware -B firmware/build -G Ninja -DPICO_SDK_PATH=<path to pico-sdk>
-  ninja -C firmware/build
-  ```
-
-Each target in `firmware/tests/` produces its own `.uf2` in `firmware/build/tests/`.
-Never commit `build/` folders; they are git-ignored.
-
-## Python environment
-
-```
-python -m venv .venv
-pip install -r requirements.txt
+```sh
+cd pc
+python -m mosaic.dashboard --mqtt localhost --csv telemetry.csv --events events.jsonl
 ```
 
-## Running the PC gateway
+Open http://localhost:8050. Verify that each real node reports under its assigned
+ID, then calibrate Zone A with only the lecturer speaking. Check sensors and
+configuration delivery in the dashboard. See the [PC guide](pc/README.md) for
+configuration, reference calibration, logs and evaluation.
 
-From the `pc/` folder (the gateway itself needs only the Python standard library):
+To rehearse without hardware, stop the live dashboard and run:
 
-```
-python -m mosaic.gateway --csv telemetry.csv
-```
-
-It listens on UDP 5005, prints each node's readings, and every 10 s prints a table with
-each node's status (ONLINE/STALE/OFFLINE), packet loss, reboots and PING round-trip time.
-To test without hardware, run the simulated nodes in a second terminal:
-
-```
-python -m mosaic.simulator --nodes 3 --loss 0.1 --reboot-every 30
-```
-
-On Windows, allow Python through the firewall when asked so real nodes can reach port 5005.
-
-**Over MQTT** (the micro T-Kernel node in `node/` talks through a broker; topics in
-`docs/protocol.md` §2): install Mosquitto (macOS `brew install mosquitto`, Ubuntu/WSL
-`sudo apt install mosquitto`, Windows installer from mosquitto.org), start it with
-`mosquitto -v`, then add `--mqtt` to any of the commands:
-
-```
-python -m mosaic.gateway --mqtt localhost
-python -m mosaic.simulator --nodes 3 --mqtt localhost
-python -m mosaic.dashboard --simulate 3 --mqtt localhost
-```
-
-For real nodes, the broker must listen on an address reachable by the Pico W and the PC
-firewall must allow its port. For an isolated demonstration network, a Mosquitto config
-can contain `listener 1883 0.0.0.0` and `allow_anonymous true`; start it with
-`mosquitto -c <path-to-config> -v`. Use the broker host's address in the node's private
-configuration. From `pc/`, run `python -m mosaic.dashboard --mqtt localhost` on the
-broker host, then open `http://localhost:8050`. Omit `--simulate` for live nodes.
-
-### Live dashboard
-
-```
-python -m mosaic.dashboard                 # then open http://localhost:8050
-python -m mosaic.dashboard --simulate 3    # rehearse with simulated nodes, no second terminal
-```
-
-The dashboard runs the gateway and serves a plain-language web page with four pages
-(design and accessibility rationale: [docs/ui_design.md](docs/ui_design.md)):
-
-| Page | For | Shows |
-|---|---|---|
-| **Live room** | The lecturer, at a glance | One headline ("Lecture in progress") and summary, the class type, and a live floor plan of the room where each area shows what it's doing (sound rings for voices and noise, a haze for stuffy air). Beside it: the alert with one suggested action, loudness against the noise limit, air, comfort and the latest changes. Below: the last 10 minutes as one coloured bar. Select an area for all its readings. The map has a **Flat / 3D** switch (3D is an isometric diorama of the room). Press **P** for presenter mode |
-| **History** | What happened | A timeline of changes and cleared alerts, and CO₂/temperature charts with a text summary |
-| **Sensors** | The team | Each sensor's readings, sound class, Wi-Fi signal, lost readings and response time |
-| **Setup** | Changing things | Class type, voice setup (lecturer calibration), noise limit (excessive noise), how often sensors report, technical names, theme |
-
-When something needs action (ongoing chatter or excessive noise in a lecture, stuffy air in an
-occupied room, or fewer than half the sensors working), a card with one suggested action appears beside
-the map on the Live room, and as a banner on top of every other page. It clears by itself when the situation ends; **Hide** removes it for 10 minutes but keeps
-it in History. Alerts are also written to `--events`. **Setup › Show technical names** adds the
-engine's state names (`FOCUSED_LECTURE`, …) and raw numbers, for testing and assessment.
-A pill in the top bar says whether the data is **Simulated** (sent from this computer) or
-**Partly simulated**. The page loads nothing from the internet (its font, Plus Jakarta Sans
-under the SIL OFL, ships in `pc/mosaic/web/`), so it works on a hotspot. Add `--http-host 0.0.0.0` to open it from another device on the same
-network, `--csv FILE` to log readings, and `--verbose` to also print every packet.
-
-To change a node's settings, POST only the fields you want to change. The gateway then delivers
-them as a CONFIG, retrying until the node acknowledges, and resends after the node reboots:
-
-```
-curl -d '{"report_interval_ms": 500, "mode": "DISCUSSION"}' http://localhost:8050/api/nodes/1/config
-```
-
-Fields and ranges are listed under CONFIG in [docs/protocol.md](docs/protocol.md). The
-`config` entry for each node in `/api/state` shows the delivery's progress. The Setup page
-uses this for the class type and report interval.
-
-### Classroom states (fusion)
-
-The gateway and dashboard run the fusion engine (`pc/mosaic/fusion.py`, statechart 6.4). It
-combines every zone's audio probabilities, PIR motion, CO₂ and temperature/humidity into
-three parallel states: **activity** (empty, quiet, focused lecture, discussion, noise rising,
-sustained chatter), **air** (normal or poor ventilation) and **comfort**. The page shows them
-in plain words (`pc/mosaic/feedback.py`), with a class-type control (Lecture, Group work, Quiet
-work) that switches fusion and every node at once.
-
-Nodes report background, speech and transient noise. Protocol v2 keeps four probability
-slots, with slot 3 reserved and zero. Fusion assigns the lecturer role to
-`reference_zone` (default A). A focused lecture needs dominant speech there and no
-detected student talk. The other zones use calibrated reference comparison when its
-result is known, or their smoothed speech probability otherwise. Discussion mode
-requires talk in a configurable share of student zones with audio; Lecture and Quiet
-Work can raise an alert from one student zone. If the reference zone is null or unmapped,
-all zones use the student speech rule and `FOCUSED_LECTURE` is unavailable: without a
-lecturer location the model cannot tell a lecture from a student speaking.
-
-Thresholds, dwell times and the node → zone map are defaults in `FusionConfig`. To tune them
-without editing code, pass a JSON file containing only the values to change:
-
-```
-python -m mosaic.dashboard --fusion-config fusion.json
-```
-
-where `fusion.json` is, for example, `{"co2_poor_ppm": 1500, "zones": {"1": "A", "2": "C"}}`.
-Use `lecturer_zone_speech_pct` for the lecturer's speech gate. The old JSON key
-`lecture_speech_pct` still loads with a deprecation warning; the new key takes priority
-if both are present. The `conversation_*` and `quiet_work_conversation_*` thresholds
-now apply to the student zones' speech fallback. `front_zones` is accepted in older
-configs; it no longer assigns the lecturer role.
-`pc/tests/test_fusion.py` holds the scripted scenarios (lecture, chatter, discussion,
-ventilation and so on) that check the rules.
-
-**Excessive noise.** Each student area can have a noise limit. Under it, a noisy area
-shows *Talking*; at or above it for long enough, it shows *Excessive noise* (zone state
-`LOUD`). To set a limit, play a steady sound next to the area's sensor at a target level
-read on a phone sound-meter app, and capture it: **Setup › Noise limit** walks through each
-area with a live meter, or POST `{"zone": "C"}` to `/api/loudness/capture` (and
-`/api/loudness/clear` to remove it). The limit is the sensor's mean `rms_x16` over
-`loud_capture_ms` (5 s). An area is `LOUD` while at least `loud_enter_pct` (70%) of its
-audio windows in `audio_smooth_ms` (10 s) reach the limit, `loud_exit_pct` (50%) to leave,
-after the usual `zone_dwell_ms`. Any sound class counts; the lecturer's area is never
-checked, since the lecturer speaks right next to it. Without a limit an area keeps today's
-rules. Pass `--loud-levels FILE` to keep the limits across restarts, or put them in the
-fusion config as `loud_levels_x16`. It's *Act now* with a banner in Lecture and Quiet
-work and a heads-up in Group work. The node reports unweighted AC RMS in ADC counts, not
-dB(A): describe a limit as "about 70 dB at the sensor". The 70 dB target on the Setup page
-is a placeholder until we cite a classroom noise limit (to verify).
-
-To demonstrate the states without hardware, run a scripted classroom:
-
-```
+```sh
 python -m mosaic.dashboard --scenario demo
 ```
 
-Four simulated nodes play the scenario. The console announces each phase and the state it
-should produce, and prints every classroom state change. With a scenario and no saved limits,
-each student area gets a stand-in noise limit (`SIM_LOUD_RMS`, 150 ADC RMS) so the rowdy
-phase shows *Excessive noise* without a sound meter. Scenarios (defined in
-`pc/mosaic/scenarios.py`):
+This is explicitly simulated data.
 
-| Scenario | Shows | Length |
-|----------|-------|--------|
-| `lecture` | empty → lecture → rear chatter (noise rising → sustained chatter) → settles | 8 min |
-| `discussion` | group work: noise in Lecture mode, **Discussion** if you click that mode | 6 min |
-| `ventilation` | CO₂ builds up → poor ventilation → window opened → normal | 6 min |
-| `comfort` | air-conditioning fails → out of range → restored | 6 min |
-| `exam` | silent, motionless exam stays occupied (PIR is motion, not presence) | 6 min |
-| `demo` | all of the above in one run, plus the back rows getting rowdy (**Excessive noise**) | 20 min |
-| `reference` | lecturer-only calibration → attenuated lecture → local speech at node 3 → lecture | 7 min |
+## Repository guide
 
-`pc/tests/test_scenarios.py` plays each one through the fusion engine and fails if a phase no
-longer reaches its state, for example after a threshold is changed.
+| Directory | Role in final submission |
+| --- | --- |
+| [node/](node/README.md) | Deployed µT-Kernel firmware, course kernel and all five subsystems |
+| [pc/](pc/README.md) | Gateway, fusion, dashboard, simulator and evaluation tools |
+| [firmware/](firmware/README.md) | Earlier firmware, standalone tests, shared C protocol and model/DSP dependencies |
+| [ml/](ml/README.md) | Training datasets, preprocessing and model generation; training runs on the PC |
+| [docs/](docs/README.md) | Requirements, engineering decisions, test evidence and assessment index |
+| [node/testing/](node/testing/README.md) | Test definitions, logs and integration evidence |
 
-## Running a real node
+The course template contains example LED/producer/consumer/monitor tasks that
+remain referenced by the current build and tests. The earlier CMake code also
+contains shared data definitions, model headers, host baselines and CI targets.
+See the [reference firmware guide](firmware/README.md) before removing any of it.
 
-> **Earlier firmware.** These steps are for the CMake node in `firmware/`, which talks UDP.
-> The current micro T-Kernel node in `node/` uses the MQTT build and broker above. The
-> steps below are retained as historical instructions for the earlier firmware.
+### What is needed at runtime
 
-`firmware/node/` builds `mosaic_node.uf2`: DHT22, CO₂ and PIR readings sent as protocol v2
-TELEMETRY every second over Wi-Fi (audio not wired in yet).
+- Build and flash the firmware from `node/`, including the course kernel,
+  the five application subsystems and their shared `firmware/` dependencies.
+- Run `pc/mosaic/` and the Mosquitto broker on the PC.
+- Keep `node/testing/`, `docs/`, the standalone firmware targets and `ml/` in
+  the submission for reproducibility, assessment evidence and provenance.
+  The training tools and standalone demo binaries do not run in the deployed system.
+- Local build output, temporary logs, private Wi-Fi configuration, virtual
+  environments and Python bytecode can be regenerated. Do not commit these;
+  retain deliberate, dated test evidence in the test/evidence directories.
 
-1. Copy `firmware/node/node_config.example.cmake` to `firmware/node/node_config.cmake` and set
-   the node ID, Wi-Fi name and password, and the PC's IP address (`ipconfig` on Windows,
-   `ipconfig getifaddr en0` on macOS). This file is git-ignored; never commit it.
-2. Reconfigure and build (VS Code: **CMake: Delete Cache and Reconfigure**, then build), and
-   flash `firmware/build/node/mosaic_node.uf2`.
-3. Start `python -m mosaic.dashboard` (or `python -m mosaic.gateway`) on the PC. The Pico
-   and PC must be on the same network, and the network must allow devices to talk to each
-   other (many campus and guest Wi-Fi networks don't; a phone hotspot works).
-4. Check the PC can reconfigure the node: run the dashboard with `--verbose`, then send
-   `curl -d '{"report_interval_ms": 500}' http://localhost:8050/api/nodes/1/config`
-   (use your node ID). The console prints `CONFIG 1 applied` once the node acknowledges.
-   The node only accepts CONFIG from the PC IP it was built with.
+## Verification and submission
 
-The onboard LED blinks once per packet sent. Wi-Fi status and the node's IP are printed on
-the USB serial port. The node uses the SDK's interrupt-driven background Wi-Fi servicing
-(still no FreeRTOS). Receive callbacks validate and copy CONFIG/PING into a four-entry
-queue; the main loop applies configuration and sends replies. Foreground lwIP calls are
-locked. A full control queue drops the new packet without blocking, so CONFIG retries can
-recover. Serial health messages report telemetry send attempts and control-queue drops
-every 10 s; a successful send means lwIP accepted it, not that the PC received it.
+- [Assessment and evidence index](docs/README.md)
+- [CSC21 fixed-point / integer TinyML requirement](docs/change_requirement_csc21.md)
+- [Four-node hardware observations](node/testing/integration/logs/2026-11-20-four-node-session.md)
+- [Audio investigation and timing limitations](node/testing/integration/logs/2026-11-20-audio-investigation.md)
+- [Sensor hardware procedure](node/testing/subsystem3/HARDWARE_EVIDENCE.md)
+- [Test record rules](node/testing/README.md)
 
-After flashing, leave the dashboard and USB serial monitor open for a 10-minute run, then
-repeat the CONFIG check above while the node is ONLINE. Confirm both the node's
-`CONFIG ... applied` message and the gateway's acknowledgement; an HTTP
-`config_version` response alone only confirms that the PC queued the update. Record any
-CYW43 timeouts or OFFLINE periods. A join or DHCP attempt stuck for 30 s restarts station
-mode, and RSSI is queried only while connected, at most once every 5 s.
+Run the PC tests from `pc/` using `python -m unittest -v`.
+Build the actual MQTT firmware profile before the demonstration. The 20 November
+session recorded real-node audio telemetry from four Picos; environmental values
+were unavailable in that session, and the recorded timer scale issue prevents
+claiming a verified real-board DSP deadline from those logs alone. Additional
+fault-recovery and sensor acceptance evidence must be recorded against the exact
+tested revision.
 
-For unreliable Wi-Fi, each telemetry report has up to two short, bounded retry
-copies. The updated gateway deduplicates them and repairs tracked gaps without
-counting late copies as reboots or rewinding live readings. Flash and run the
-updated node and PC code together. The gateway summary/API exposes recovered
-messages, first-observed gaps and duplicates separately. Dashboard loss means
-**unrecovered unique messages**, not raw radio loss; raw packet-loss evidence
-and the N10 result must still be retained separately. There is no delivery
-guarantee during an outage: retry storage is fixed and expires after 600 ms.
-### Zone map and integer fusion
-
-The Classroom panel includes a floor-plan heatmap with Activity, CO₂, Temperature
-and Motion views. Buttons work with Tab and Enter/Space; icons and labels accompany
-colour. The front/lecturer's desk and reference zone are marked; stale cells dim,
-offline cells hatch. Each zone has its own 10-second dwell (configuration
-`zone_dwell_ms`), faster than the classroom activity dwell. Configure positions
-with `zone_layout`, for example `{"A":[0,0],"B":[0,1],"C":[1,0],"D":[1,1]}`;
-row 0 is at the front. Every configured zone must have a unique cell.
-
-Fusion decisions now use integer milliseconds, exact sums/counts, scaled wire
-values and Q16 reference gain. Configuration names use explicit units; old
-seconds/fraction/°C keys were renamed without a compatibility shim. See
-[the numeric representation and comparison evidence](docs/fusion_numeric_representation.md)
-for all ranges, rounding, renames and the AST enforcement allow-list. Saved
-reference baselines use integer JSON version 2: recalibrate old version 1 files.
-Dashboard decimal values are presentation only.
-
-### Lecturer-reference comparison
-
-Place reference node **1 / zone A** at the lecturer's desk. In *Classroom*, click
-**Calibrate** while only the lecturer speaks and student areas stay quiet. Vary the
-lecturer's level naturally: each student zone needs at least **20 usable paired
-500 ms windows** and enough level variation to fit its baseline. Recalibrate after
-moving microphones, changing gain or rebooting nodes. **Reset** discards the baseline
-without starting collection. The row shows each zone's progress/state; hover for RMS,
-expected lecturer level, threshold and gain. `/api/state` exposes the same values under
-`classroom.reference.zones` and each classroom zone's `reference` entry.
-
-The PC fits `student_power = gain * reference_power + background_power` and compares
-student RMS with `sqrt(expected_power + upper_residual) * 1.25 + 4`. The residual is
-the nearest-rank 95th percentile of nonnegative calibration errors. Speech evidence
-is `100 - background_probability - transient_probability`, independent of the reported
-lecturer/student class. Above-threshold speech needs two consecutive windows; one weak
-window is held, the second releases. As in Darius's C policy, RMS below 4 resets
-immediately. Missing, invalid or replayed audio and stale/offline nodes clear window
-persistence to **UNKNOWN**. Gaps reset onset/hold but the windows that did arrive are
-still processed; a 2-second report interval must not discard every report.
-
-For activity rules, fusion smooths each calibrated zone's actual paired-window results
-over `audio_smooth_ms` (10000 ms). PENDING and TALKING (including HOLD) both count as positive
-evidence: the 10-second smoother replaces the per-window onset gate. QUIET counts
-as a known negative window; UNKNOWN and calibration windows do not enter the denominator. At least
-`reference_min_known_windows` (default 4) are required, and the TALKING fraction must
-reach `reference_talking_pct` (default 50). A brief unknown window does not erase
-usable rolling evidence. When the rolling result is unknown, its evidence expires, or
-either node is stale/offline, fusion falls back to the existing conversation probability
-rule. It returns to reference comparison when usable known evidence returns.
-Fusion uses the applied CONFIG report intervals supplied by the gateway: rolling
-freshness is at least one report interval plus 500 ms batching age and pairing
-tolerance (2750 ms for 2-second reports at default tolerance). Strict per-window
-pairing/expiry stays unchanged. This allows asymmetric 2-second streams to use
-PENDING evidence without restarting classroom dwell between reports. Very sparse
-reports still need four known windows within the 10-second smoothing period;
-otherwise fusion falls back to probabilities. Direct Python integrations must
-pass the applied `report_interval_ms` keyword to `FusionEngine.add` (default 1000). Calibration,
-reset and JSON load clear old smoothing history. `/api/state` exposes `smoothed_state`,
-`talking_pct`, `known_windows` and `decision_source` beside the raw window `state`.
-
-All comparison runs on the PC, with no node-to-node relay or shared Pico clock. Window
-times are estimated from PC receive time, spacing the oldest-first windows by 0.5 s;
-pairs must be within 0.25 s. Small RTT alone is not enough: independent audio/report
-clocks can leave a window waiting about 0.5 s before transmission. Receive-time estimates
-therefore still misalign some pairs; smoothing stabilises the classroom decision without
-relaxing the per-window gates. Protocol v2 has no per-window clipping/quality flags, so the
-PC cannot reproduce the C service's clipping checks; empty/malformed audio, sequence
-gaps and changes to `audio_overruns` are used where observable. Invalid/overrun reports
-are discarded; skipped windows reset persistence while keeping the frozen baseline.
-
-Try from `pc/`:
-
-```
-python3 -m mosaic.dashboard --scenario reference
-python3 -m mosaic.dashboard --scenario reference --receive-jitter-ms 80
-```
-
-Click **Calibrate** during the first 60-second phase. Speech probabilities remain high
-in every zone during both lecture-only and student-speech phases; only node 3's higher
-RMS distinguishes them. Console announcements explain each phase. Tests start calibration
-explicitly and play all phases without sleeping; the application never auto-calibrates.
-Simulated nodes now have independent seeded audio/report phases and small audio-clock
-drift. RMS follows the true window completion time, before batching and optional receive
-jitter. Reports carry only the newest completed windows (0-2); skipped windows remain
-visible in `audio_window_seq`. Use `--aligned` for the old aligned fixture, or run the
-standalone simulator with `--seed N` for reproducibility. The timing regression includes
-reference phases 0.00/0.40 s, student phases 0.35/0.65 s and 0-80 ms receive jitter:
-
-```
-python3 -m unittest tests.test_reference_timing -v
-```
-
-`FusionConfig.reference_zone` defaults to `"A"`; JSON `{"reference_zone": null}` disables
-comparison. The `reference_*` settings in `pc/mosaic/fusion.py` configure pairing, age/gap
-limits, speech gates, margins and pair counts (20-64). An unmapped reference zone also
-disables comparison. Calibration requests accept `{}` for all student zones, or
-`{"zone": "C"}` for one:
-
-```
-curl -d '{}' http://localhost:8050/api/calibrate
-curl -d '{"zone":"C"}' http://localhost:8050/api/calibrate/reset
-```
-
-Python integrations can call `engine.reference.save("baseline.json")` and
-`engine.reference.load("baseline.json")`. Only frozen baselines are saved; load requires
-the same zone map/settings and waits for fresh pairs, never restoring a TALKING alert.
-These prototype margins are not validated classroom accuracy or speaker identification.
-
-## Evaluating a test run
-
-From `pc/`, record both telemetry and events, then stop with Ctrl+C:
-
-```sh
-python3 -m mosaic.dashboard --scenario lecture --csv /tmp/run.csv --events /tmp/run.jsonl
-# Hardware-only receiver: python3 -m mosaic.gateway --csv /tmp/run.csv --events /tmp/run.jsonl
-python3 -m mosaic.evaluate /tmp/run.csv --events /tmp/run.jsonl --out /tmp/report.md --json /tmp/summary.json --deadline-ms 400
-python3 -m mosaic.evaluate /tmp/run.csv --events /tmp/run.jsonl --expected ../docs/lecture_expected.csv --out /tmp/scored.md --json /tmp/scored.json
-```
-
-The lecture scenario lasts 450 s; shorter runs score only labels inside the
-capture. The example timeline labels stable scripted phases; replace it with
-human annotations for real accuracy measurements. Reports include delivery,
-receive jitter, processing percentiles, deadline bounds, audio skips/overruns,
-RTT, availability/recovery, warm-up, and classroom/zone state durations and
-transitions. Percentiles use `statistics.quantiles` with the inclusive method.
-Record events for accurate loss: telemetry CSV alone omits PONG/ACK sequence
-numbers. Exact positive per-window deadline misses cannot be inferred from the
-protocol's separate DSP/inference maxima. See [metric definitions and event
-schema](docs/evaluation.md) for units, scoring and limits. Existing CSVs remain
-readable; use separate file names for each labelled experiment.
-
-## Contributing
-
-`main` is protected: all changes go through a pull request with passing CI and one approval.
-Read **[CONTRIBUTING.md](CONTRIBUTING.md)** for the step-by-step workflow.
+Read [CONTRIBUTING.md](CONTRIBUTING.md) for the team PR workflow.
