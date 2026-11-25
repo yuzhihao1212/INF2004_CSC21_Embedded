@@ -1,7 +1,7 @@
 /*
  *	subsystem3.h
  *	Subsystem 3 -- Environment sensors: DHT22, ACD1100 CO2 and PIR.
- *	Owner: Kendrick (kthgoat).  Student ID: <student ID>.
+ *	Owner: Kendrick (kthgoat).  Student ID: 2500144.
  *
  *	One task, environment_task, owns GP2 (DHT22 by PIO and DMA), UART1
  *	(CO2) and GP16 (PIR), and posts validated readings to subsystem 5
