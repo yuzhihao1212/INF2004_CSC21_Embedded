@@ -42,23 +42,29 @@ S1-U06/U07 are NOT RUN until real-board evidence is saved.
 Hardware remains NOT RUN. The historical float-initialisation implementation is
 loaded by Git blob only into a temporary host test executable, never a Pico target.
 
-## Comment clean-up and timer scale correction (25 Nov 2026)
+## Comment clean-up for hand-in (25 Nov 2026)
 
 The S1 and S2 sources were tidied for hand-in (headers, comments, named
-constants). Each edited `.c` file has the same C tokens as before, apart from
-`audio_clock_us()` in `drv_audio.c`, which now converts the raw timer count
-to real microseconds. The kernel leaves the RP2040 tick generator at its
-reset setting, so the timer counts once every 512 cycles of the 12 MHz
-reference clock (42.67 us), not once per microsecond: see
-`../integration/logs/2026-11-20-audio-investigation.md`.
+constants). Every edited `.c` file has the same C tokens as before, so the
+firmware is unchanged.
+
+Commit `c78f27b` on this branch also changed `audio_clock_us()` in
+`drv_audio.c` to convert the raw timer count to real microseconds, and defined
+S1-U09 to check it on a board. The hardware was returned after the final demo
+on 25 Nov, so that change was taken out again before merging and S1-U09 was
+never run. The ID stays here and is not reused.
 
 | ID | Method | Expected result |
 |---|---|---|
-| S1-U09 | Hardware, manual: flash the `NET=lwip MQTT=1` image and save 60 s of console output | Every `audio input` line shows `capture_us` between 495000 and 505000 (it read 11719 before); `dsp_us` stays under 400000; no `event=TIMING_FAULT` while the node runs normally |
+| S1-U09 (dropped) | Hardware, manual: flash the `NET=lwip MQTT=1` image and save 60 s of console output | With the clock correction applied: every `audio input` line shows `capture_us` between 495000 and 505000 (it reads 11719 without it); `dsp_us` stays under 400000; no `event=TIMING_FAULT` while the node runs normally |
 
 | Date | ID | Commit | Result | Evidence |
 |---|---|---|---|---|
 | 2026-11-25 | S1-U04 / S2-U03..05 replay | working tree on `c36c37e` (not yet committed) | PASS | `logs/2026-11-25_cleanup-replay.txt`: features, logits, probabilities and gates unchanged after the clean-up |
 
-S1-U09 is NOT RUN: it needs a board. Until it passes, treat the corrected
-timing values and the now-active 500 ms deadline checks as untested on hardware.
+Known limitation, not corrected: `audio_clock_us()` counts once per 42.67 us,
+not once per microsecond, so logged `capture_us`, `dsp_us` and `ml_us` values
+are 42.67 times too small and the 500 ms deadline checks cannot trip. See
+`../integration/logs/2026-11-20-audio-investigation.md` and the note above the
+function in `drv_audio.c`. S1-U06, S1-U07 and S1-U09 are NOT RUN: there is no
+hardware to run them on.

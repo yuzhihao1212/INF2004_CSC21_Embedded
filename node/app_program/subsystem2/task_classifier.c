@@ -15,7 +15,8 @@
 #include "audio_inference.h"
 #include "../subsystem1/drv_audio.h"
 
-#define WINDOW_US       500000  /* a result older than one window is stale */
+#define WINDOW_US       500000  /* deadline, in audio_clock_us() counts: see the
+                                   scale note in subsystem1/drv_audio.c */
 #define FEATURE_COUNT   20
 #define LAST_FEATURE    19      /* FEATURE_COUNT - 1: ends the console line */
 #define LOG_EVERY       4       /* console line every 4th window = every 2 s */
@@ -44,7 +45,8 @@ void classifier_task(INT stacd, void *exinf)
         classifier_event_t event = classify_audio(&state, &in, start, &out);
         uint64_t end = audio_clock_us();
         /* Deadline: a result finished more than one window after its audio
-         * was captured is reported as UNKNOWN, never as a late label. */
+         * was captured is reported as UNKNOWN, never as a late label. With
+         * the clock's present scale this cannot trip (drv_audio.c). */
         if (end - in.captured_us > WINDOW_US) {
             out.audio_class = MOSAIC_AUDIO_UNKNOWN;
             state = (classifier_timing_state_t){0}; event = CLASSIFIER_TIMING_FAULT;

@@ -20,7 +20,8 @@ classifier_event_t classify_audio(classifier_timing_state_t *state,
     int32_t logits[3]; uint16_t p[3];   /* p: Q15 probabilities, sum 32768 */
     int best=dsp_int8_predict(in->features,logits);
     classifier_probabilities(logits,p);
-    /* Late or out-of-order: more than one 500 ms window since capture. */
+    /* Late or out-of-order: more than one 500 ms window since capture, in
+     * audio_clock_us() counts (see the scale note in subsystem1/drv_audio.c). */
     int fault=in->timing_fault || now<in->captured_us || now-in->captured_us>500000;
     /* A speech window below the configured threshold cannot start/extend
      * onset, but may use the timing gate's one-window hold. Keep raw scores. */

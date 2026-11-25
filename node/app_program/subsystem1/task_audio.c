@@ -20,7 +20,8 @@
 #include "audio_signal_quality.h"
 
 #define WINDOW_SAMPLES  8000    /* 500 ms at 16 kHz = AUDIO_DSP_WINDOW_SAMPLES */
-#define WINDOW_US       500000  /* features must be ready within one window */
+#define WINDOW_US       500000  /* deadline, in audio_clock_us() counts: see the
+                                   scale note in drv_audio.c */
 #define UNITY_GAIN_X256 256     /* Q8.8 gain of 1.0: samples stay untouched */
 #define ADC_MAX         4095    /* 12-bit ADC full scale */
 
@@ -72,7 +73,8 @@ void audio_task(INT stacd, void *exinf)
         msg.rms_q8 = q.ac_rms_q8; msg.clipped = q.clipped_samples;
         msg.adc_mean_q8 = q.mean_q8; msg.adc_min = q.minimum; msg.adc_max = q.maximum;
         /* Deadline check: the features were ready more than one window
-         * after the capture finished. Subsystem 2 then reports UNKNOWN. */
+         * after the capture finished. Subsystem 2 then reports UNKNOWN.
+         * With the clock's present scale this cannot trip (drv_audio.c). */
         msg.timing_fault = end - msg.captured_us > WINDOW_US;
         msg.threshold_pct = config.audio_conf_threshold_pct;
         /* Full queue drops the new observation. S2 sees the sequence gap
