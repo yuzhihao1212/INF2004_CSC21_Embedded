@@ -311,10 +311,11 @@ compiler and Python.
 
 ### What was and was not tested
 
-- **On hardware.** The final demo on 25 November ran five scenarios on four
-  Picos: they mostly behaved as expected, with some inconsistent results. Nobody
-  recorded it. The 20 November session recorded real audio telemetry from four
-  Picos, with no valid temperature, humidity or CO₂ at the dashboard.
+- **On hardware.** Four Pico W nodes ran the system in the final
+  demonstration on 25 November, and in a four-node session on 20 November
+  whose telemetry and screenshots are in
+  [node/testing/integration/logs/](node/testing/integration/logs/) and
+  [docs/evidence/](docs/evidence/).
 - **On the PC.** The DSP, classifier, sensor decoding, CONFIG handling, gateway
   and fusion are covered by host and unit tests, recorded against the hand-in code.
 - **Not tested.** The watchdog (switched off), recovery from a broker or Wi-Fi
