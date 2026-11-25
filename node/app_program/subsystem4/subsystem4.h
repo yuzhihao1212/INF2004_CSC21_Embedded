@@ -18,6 +18,7 @@
 #include "../app.h"
 
 #define S4_PRI_MONITOR		18	/* priority band 18-19 (TEAM.md) */
+#define S4_PRI_HEALTH		19
 #define S4_ALARM_MS		2000	/* report anyway if nothing for 2 s */
 #define S4_LED_TOGGLE_REPORTS	6	/* pause/resume the LED every N reports */
 

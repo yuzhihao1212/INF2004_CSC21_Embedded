@@ -10,12 +10,15 @@
 static mqtt_client_t *client;
 static ip_addr_t broker_addr;
 static u8_t connecting, subscribed;
+static bool announced;
 static char rx_topic[64];
 static u8_t rx_data[MOSAIC_MAX_DATAGRAM];
 static unsigned rx_len, rx_expected;
 static int rx_invalid;
 static u8_t pending[S5_TX_MAX];
 static INT pending_len;
+static uint64_t connected_at_ms;
+static bool boot_report_pending;
 static char client_id[32];
 
 static void pump(void *arg);
@@ -54,6 +57,11 @@ static void pump(void *arg)
 {
     (void)arg;
     if(client && mqtt_client_is_connected(client)) {
+        if (!announced) {
+            announced = mqtt_publish(client, s4_mqtt_status_topic(), "online",
+                                     6, 1, 1, publish_cb, NULL) == ERR_OK;
+            if (!announced) goto schedule;
+        }
         if(!subscribed)
             (void)mqtt_subscribe(client,s4_mqtt_config_topic(),1,subscribed_cb,NULL);
         /* Bound work to keep the single radio task responsive. Retain a
@@ -64,12 +72,28 @@ static void pump(void *arg)
                 if(len<=0) break;
                 pending_len=len;
             }
+            mosaic_header_t header;
+            __builtin_memcpy(&header, pending, sizeof header);
+            if (header.msg_type == MOSAIC_MSG_TELEMETRY) {
+                boot_report_pending |= (header.flags & MOSAIC_FLAG_FIRST_SINCE_BOOT) != 0;
+                if (!s4_mqtt_report_is_fresh(header.sender_time_ms, connected_at_ms,
+                                            s4_mqtt_report_clock_ms())) {
+                    pending_len = 0;
+                    continue;
+                }
+                if (boot_report_pending) {
+                    header.flags |= MOSAIC_FLAG_FIRST_SINCE_BOOT;
+                    __builtin_memcpy(pending, &header, sizeof header);
+                }
+            }
             err_t er=mqtt_publish(client,s4_mqtt_telemetry_topic(),pending,
                                   (u16_t)pending_len,0,0,publish_cb,NULL);
             if(er!=ERR_OK) break;
+            if (header.msg_type == MOSAIC_MSG_TELEMETRY) boot_report_pending = false;
             pending_len=0;
         }
     }
+schedule:
     sys_timeout(50,pump,NULL);
 }
 static void connection_cb(mqtt_client_t *c,void *arg,mqtt_connection_status_t status)
@@ -77,11 +101,10 @@ static void connection_cb(mqtt_client_t *c,void *arg,mqtt_connection_status_t st
     (void)c; (void)arg;
     connecting=0; subscribed=0;
     if(status==MQTT_CONNECT_ACCEPTED) {
+        announced = false;
+        connected_at_ms = s4_mqtt_report_clock_ms();
         mqtt_set_inpub_callback(client,incoming_publish,incoming_data,NULL);
-        (void)mqtt_publish(client,s4_mqtt_status_topic(),"online",6,1,1,publish_cb,NULL);
         tm_printf((UB*)"mqtt: node %u connected\n",MOSAIC_NODE_ID);
-        sys_untimeout(pump,NULL);
-        sys_timeout(1,pump,NULL);
     } else {
         tm_printf((UB*)"mqtt: connection status=%d\n",status);
     }
@@ -91,10 +114,21 @@ int mqtt_utk_is_connected(void)
     return client != NULL && mqtt_client_is_connected(client);
 }
 
-void mqtt_utk_start(void)
+void mqtt_utk_poll(int wifi_up)
 {
     static u32_t next_attempt;
+    static bool pump_started;
+    if (!wifi_up) {
+        /* An old TCP session can remain connected after association drops. */
+        if (connecting || mqtt_utk_is_connected()) mqtt_disconnect(client);
+        connecting = 0;
+        return;
+    }
     u32_t now=sys_now();
+    if (!pump_started) {
+        pump_started = true;
+        sys_timeout(1, pump, NULL);
+    }
     if(connecting || (client && mqtt_client_is_connected(client))) return;
     if((s32_t)(now-next_attempt)<0) return;
     next_attempt=now+3000;

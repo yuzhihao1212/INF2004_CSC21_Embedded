@@ -10,7 +10,7 @@ import unittest
 
 from mosaic import mqtt as m
 from mosaic import protocol as p
-from mosaic.gateway import ConfigState, GatewayServer
+from mosaic.gateway import ConfigState, GatewayServer, NodeStatus
 from mosaic.simulator import MqttLink, Simulator
 from tests.mqtt_broker import TestBroker, topic_matches
 
@@ -218,6 +218,30 @@ class GatewayOverMqtt(unittest.TestCase):
         link = [json.loads(line) for line in self.events.getvalue().splitlines()
                 if '"event":"link"' in line]
         self.assertEqual((link[-1]["node"], link[-1]["state"]), (3, "offline"))
+
+    def test_reconnect_waits_for_fresh_telemetry(self):
+        gateway = self.server.gateway
+        self.send(p.ConfigAck(1, p.AckStatus.OK), p.MsgType.CONFIG_ACK)
+        wait_for(lambda: 3 in gateway.nodes, step=lambda: self.server.poll(0.05))
+        node = gateway.nodes[3]
+        self.assertEqual(node.status(time.monotonic()), NodeStatus.OFFLINE)
+
+        self.send(p.Telemetry(co2_ppm=650))
+        wait_for(lambda: node.status(time.monotonic()) == NodeStatus.ONLINE,
+                 step=lambda: self.server.poll(0.05))
+
+        self.node.publish(m.status_topic(3), b"offline", qos=1, retain=True)
+        wait_for(lambda: node.mqtt_link_offline, step=lambda: self.server.poll(0.05))
+        self.node.publish(m.status_topic(3), b"online", qos=1, retain=True)
+        self.send(p.ConfigAck(1, p.AckStatus.OK), p.MsgType.CONFIG_ACK)
+        wait_for(lambda: not node.mqtt_link_offline and node.last_seq == 2,
+                 step=lambda: self.server.poll(0.05))
+        self.assertEqual(node.status(time.monotonic()), NodeStatus.OFFLINE)
+
+        self.send(p.Telemetry(co2_ppm=700))
+        wait_for(lambda: node.status(time.monotonic()) == NodeStatus.ONLINE,
+                 step=lambda: self.server.poll(0.05))
+        self.assertEqual(node.telemetry.co2_ppm, 700)
 
     def test_gateway_reconnects_after_the_broker_restarts(self):
         port = self.broker.port
