@@ -474,6 +474,11 @@ main.wrap { padding-top: var(--space-6); padding-bottom: var(--space-10); }  /* 
 .compact .plan-name { font-size: 12px; }
 .compact .plan-state { font-size: 13px; }
 .compact .plan-state .level-icon { width: 16px; height: 16px; }
+.plan[data-narrow="true"] .plan-zone { padding: 6px 4px; }
+.plan[data-narrow="true"] .plan-chip { padding: 4px 6px; }
+.plan[data-narrow="true"] .plan-name { font-size: 11px; }
+.plan[data-narrow="true"] .plan-state { font-size: 13px; }
+.plan[data-narrow="true"] .plan-detail { font-size: 11px; }
 /* Area card: one big word for sound, then three tiles whose effects show
    the state (haze = stuffy, heat lines = warm, footsteps = movement). */
 .zone-detail h2 { font-size: 13px; font-weight: 600; color: var(--muted); letter-spacing: .02em; }
