@@ -400,6 +400,9 @@ class MqttTransport:
         for m in messages:
             node_id = topic_node(m.topic, "telemetry")
             if node_id is not None:
+                if m.retain:
+                    self.dropped += 1
+                    continue
                 try:
                     header, _ = p.decode(m.payload)
                 except p.ProtocolError:

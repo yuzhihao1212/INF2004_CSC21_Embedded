@@ -6,6 +6,7 @@
  */
 
 #include "subsystem4.h"
+#include "s4_network.h"
 #include "../test_report.h"
 
 #if APP_TEST
@@ -22,6 +23,14 @@ EXPORT void subsystem4_test(void)
 		   tk_ref_mbf(mbf_summary, &rmbf) == E_OK &&
 		   rmbf.maxmsz == S4_SUMMARY_MAX,
 		   "message buffer max line = S4_SUMMARY_MAX");
+	const uint64_t wrap = UINT64_C(1) << 32;
+	TEST_CHECK("S4-U03",
+		   s4_mqtt_report_is_fresh(1, wrap - 2, wrap + 3) &&
+		   !s4_mqtt_report_is_fresh(UINT32_MAX - 2, wrap - 2, wrap + 3) &&
+		   !s4_mqtt_report_is_fresh(10, 10, 20) &&
+		   s4_mqtt_report_is_fresh(20, 10, 20 + S4_MQTT_REPORT_MAX_AGE_MS) &&
+		   !s4_mqtt_report_is_fresh(20, 10, 21 + S4_MQTT_REPORT_MAX_AGE_MS),
+		   "telemetry freshness rejects backlog and expiry, including clock wrap");
 
 	/* INT-02 (integration, IF-03): summary lines from subsystem 3 reach
 	   the monitor.  One line per 5 samples = one per 1.5 s. */

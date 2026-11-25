@@ -1,4 +1,5 @@
 #include "../subsystem5/subsystem5.h"
+#include "../subsystem4/s4_health.h"
 #include "subsystem3.h"
 #include "environment_service.h"
 #include "s3_time.h"
@@ -97,6 +98,7 @@ void environment_task(INT stacd, void *exinf)
             diagnostic_ms = now;
         }
 #endif
+        (void)s4_health_mark(S4_HEALTH_ENVIRONMENT);
         /* Kernel tick is 10 ms; this is cooperative polling, not a busy wait. */
         er = tk_dly_tsk(10);
         if (er != E_OK) { environment_exit(er, "S3 delay"); return; }

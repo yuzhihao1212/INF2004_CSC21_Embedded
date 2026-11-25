@@ -41,3 +41,17 @@ INT s4_mqtt_take_outbound(void *payload, UINT capacity)
     if (mbf_s5_tx <= 0) return E_OBJ;
     return tk_rcv_mbf(mbf_s5_tx, payload, TMO_POL);
 }
+
+uint64_t s4_mqtt_report_clock_ms(void)
+{
+    SYSTIM time;
+    tk_get_tim(&time); /* Same clock as S5's sender_time_ms. */
+    return ((uint64_t)(uint32_t)time.hi << 32) | time.lo;
+}
+
+bool s4_mqtt_report_is_fresh(uint32_t report_ms, uint64_t connected_ms,
+                             uint64_t now_ms)
+{
+    uint32_t age = (uint32_t)now_ms - report_ms;
+    return age <= S4_MQTT_REPORT_MAX_AGE_MS && age < now_ms - connected_ms;
+}
