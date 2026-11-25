@@ -5,6 +5,8 @@
 /* Init/wait called only by S1's core-0 task. Buffer valid until next wait. */
 ER audio_capture_start(void);
 ER audio_capture_wait(uint16_t **samples, uint64_t *timestamp);
+/* Microseconds since boot, safe from task and interrupt context. The raw
+ * timer count is scaled to real microseconds (see drv_audio.c). */
 uint64_t audio_clock_us(void);
 /* Elapsed hardware time for the most recently completed 8000-sample DMA. */
 uint32_t audio_capture_duration_us(void);
