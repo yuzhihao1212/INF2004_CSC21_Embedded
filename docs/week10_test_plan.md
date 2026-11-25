@@ -1,5 +1,7 @@
 # Week 10 Integration Test Plan
 
+> **Historical record (status at hand-in, 25 Nov 2026).** The Week 10 plan for the earlier firmware. What was run on the final node is in the [test logs](../node/testing/). For the system as submitted, start at the [main README](../README.md) and the [evidence index](README.md).
+
 **Goal for Week 10:** one real Pico W node sends sensor data, and audio windows if ready, over
 protocol v2 to the PC gateway. The PC reconfigures it and recovers from faults without anyone
 touching the node. A second node and real-time classification are *should* items. Four-node

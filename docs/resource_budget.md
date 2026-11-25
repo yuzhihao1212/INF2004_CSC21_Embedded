@@ -1,5 +1,7 @@
 # Firmware resource budget
 
+> **Historical record (status at hand-in, 25 Nov 2026).** The measurements below are mostly of the earlier CMake/FreeRTOS builds. For the submitted µT-Kernel node, CI's resource-budget step reports flash and RAM on every run. For the system as submitted, start at the [main README](../README.md) and the [evidence index](README.md).
+
 How much flash and RAM each firmware build uses, what fills it, and where our own code
 still calls floating-point code. Part of the Week 13 evidence (see
 `evidence_plan_week13.md`, section 2).

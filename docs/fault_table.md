@@ -1,5 +1,7 @@
 # Fault Table
 
+> **Historical record (status at hand-in, 25 Nov 2026).** The fault design, with statuses from when it was written. Where a status differs from the submitted code, the code and the [test logs](../node/testing/) are what count. For the system as submitted, start at the [main README](../README.md) and the [evidence index](README.md).
+
 Every fault MOSAIC is designed to survive: how it is detected, what the system does, what the
 PC shows, and how it recovers. **Status** is honest about the code on `main` (plus PR #6 for the
 node firmware):

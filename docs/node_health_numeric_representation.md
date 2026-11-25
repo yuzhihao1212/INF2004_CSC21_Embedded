@@ -1,5 +1,7 @@
 # Node-health numeric representation (Arif)
 
+> **Historical record (status at hand-in, 25 Nov 2026).** Written on 10 Nov for the earlier FreeRTOS firmware: FreeRTOS ticks and stack words below do not describe the submitted µT-Kernel node. On the submitted node, task progress is supervised by `s4_health_task` and the watchdog is built but switched off. For the system as submitted, start at the [main README](../README.md) and the [evidence index](README.md).
+
 Prepared 10 November 2026. This covers the node code, not DSP/model accuracy.
 
 | Quantity | Representation / units | Behaviour / evidence |
