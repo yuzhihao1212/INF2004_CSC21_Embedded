@@ -23,3 +23,10 @@ Add a new row for every run. Never edit or delete old rows.
 | Date | Test ID | Commit | Tester | Result | Log / evidence | Notes |
 |---|---|---|---|---|---|---|
 | YYYY-MM-DD | S2-U01 | `abc1234` | | PASS / FAIL | `logs/YYYY-MM-DD_….txt` | |
+
+## Status at hand-in (25 Nov 2026)
+
+No result for the tests above is recorded in this repository. The hardware was
+returned after the final demo on 25 Nov 2026, so they cannot be run now. If you
+have a saved console log from an earlier run, add it to `logs/` and add a row.
+Host results for the classifier are in `PORT_TEST_LOG.md` (S2-U03 to S2-U07).

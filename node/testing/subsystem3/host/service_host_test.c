@@ -26,6 +26,8 @@ ER tk_unl_mtx(ID id) { (void)id; return E_OK; }
 static uint32_t fake_time, delay_calls, task_exits, hw_stops;
 ER tk_get_otm(SYSTIM *t) { t->lo = fake_time; fake_time += 1000; return E_OK; }
 ER tk_dly_tsk(unsigned ms) { (void)ms; return ++delay_calls == 3 ? E_OBJ : E_OK; }
+/* S4 progress flag set once per environment_task pass; not under test here. */
+ER s4_health_mark(UINT bits) { (void)bits; return E_OK; }
 void tk_ext_tsk(void) { ++task_exits; }
 
 ER s5_get_config(mosaic_config_t *out) { *out = cfg; return cfg_error; }

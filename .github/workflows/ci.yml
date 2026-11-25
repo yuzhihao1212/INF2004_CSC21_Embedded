@@ -104,8 +104,9 @@ jobs:
       - name: Add toolchain to PATH
         run: echo "$GITHUB_WORKSPACE/arm-toolchain-15/bin" >> "$GITHUB_PATH"
 
+      # The MQTT images are the ones flashed onto the nodes (README, "Building the node").
       # Default image last, so the objects left on disk match it for the float check.
-      - name: Build (self-tests, lwIP, default)
+      - name: Build (self-tests, lwIP, MQTT, MQTT self-tests, default)
         working-directory: node/build_make
         env:
           PICO_SDK_PATH: ${{ github.workspace }}/pico-sdk
@@ -113,6 +114,8 @@ jobs:
           cp ../config/wifi_secrets.example.h ../config/wifi_secrets.h  # placeholder credentials for CI only
           make TEST=1 -j4
           make NET=lwip -j4
+          make NET=lwip MQTT=1 -j4
+          make NET=lwip MQTT=1 TEST=1 -j4
           make -j4
 
       - name: Resource budget

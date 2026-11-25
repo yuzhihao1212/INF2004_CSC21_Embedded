@@ -334,7 +334,7 @@ class ReferenceFusion:
                 return
             student.state = ReferenceState.CALIBRATING
             if ref.speech_pct < cfg.calibration_speech_pct or ref.rms_x16 < cfg.min_rms_x16:
-                student.reason = "Waiting for lecturer speech_pct"
+                student.reason = "Waiting for lecturer speech"
                 return
             if len(student.powers) < cfg.max_pairs:
                 student.powers.append((ref.rms_x16 ** 2, local.rms_x16 ** 2))
@@ -362,7 +362,7 @@ class ReferenceFusion:
             else:
                 student.positive = student.weak = 0
                 student.state, student.hold = ReferenceState.QUIET, False
-            student.reason = "Excess speech_pct" if strong else "Within baseline or insufficient speech_pct"
+            student.reason = "Excess speech" if strong else "Within baseline or insufficient speech"
 
     def _levels(self, student: _Student, ref: _Window, local: _Window) -> bool:
         expected = ((student.gain_q16 * ref.rms_x16 ** 2) >> 16) + student.background_power_x256

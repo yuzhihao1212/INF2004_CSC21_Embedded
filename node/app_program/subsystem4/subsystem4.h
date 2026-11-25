@@ -1,6 +1,14 @@
 /*
  *	subsystem4.h
- *	Subsystem 4 -- Monitor (reporting).  Student ID: <student ID>.
+ *	Subsystem 4 -- Networking and node health.
+ *	Owner: Arif (arifkareem).  Student ID: <student ID>.
+ *
+ *	The MQTT handoff is in s4_network.h (called only from the kernel's
+ *	cyw43_utk_task).  The progress supervisor, s4_health_task, and the
+ *	flags the other tasks set for it are in s4_health.h; the watchdog it
+ *	can feed is in drv_watchdog.h and is off by default.  This header
+ *	keeps the template's monitor example: IF-03 to IF-05 and tests
+ *	S4-U01, S4-U02 and INT-02 still use it.
  *
  *	Public interface of subsystem 4.  Other subsystems include it as
  *	"../subsystem4/subsystem4.h".
