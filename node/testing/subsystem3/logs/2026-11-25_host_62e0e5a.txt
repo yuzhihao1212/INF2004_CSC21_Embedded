@@ -1,0 +1,91 @@
+S3 host suite. Host only: register and SDK calls are test doubles.
+Date: 2026-11-25 21:42 +0800
+Commit: 62e0e5a (tracked files clean)
+Machine: Darwin arm64
+Compiler: Apple clang version 17.0.0 (clang-1700.0.13.5)
+Python: Python 3.14.0
+
+$ cc -std=c11 -Wall -Wextra -Werror -I node/app_program/subsystem3 -I node/app_program/subsystem5 node/app_program/subsystem3/environment.c node/testing/subsystem3/host/environment_host_test.c -o /var/folders/4p/85h90jj9327_cwwm4489hdcr0000gn/T/tmp.UXSyiYbGyW/t
+exit: 0
+
+$ /var/folders/4p/85h90jj9327_cwwm4489hdcr0000gn/T/tmp.UXSyiYbGyW/t
+PASS: DHT/CO2 decode, pulse validation, integer formatting, validity/status, acquisition freshness, future samples and wrap/stale boundaries
+exit: 0
+
+$ cc -std=c11 -Wall -Wextra -Werror -I node/app_program/subsystem3 -I node/app_program/subsystem5 node/app_program/subsystem3/environment.c node/app_program/subsystem3/acd1100_protocol.c node/testing/subsystem3/host/acd1100_host_test.c -o /var/folders/4p/85h90jj9327_cwwm4489hdcr0000gn/T/tmp.UXSyiYbGyW/t
+exit: 0
+
+$ /var/folders/4p/85h90jj9327_cwwm4489hdcr0000gn/T/tmp.UXSyiYbGyW/t
+PASS S3-U03: ACD warm-up, cadence, checksum, timeout and rollover
+exit: 0
+
+$ cc -std=c11 -Wall -Wextra -Werror -I node/app_program/subsystem3 -I node/app_program/subsystem5 node/app_program/subsystem3/environment.c node/app_program/subsystem3/s3_telemetry.c node/app_program/subsystem5/s5_protocol.c node/testing/subsystem3/host/s5_environment_host_test.c -o /var/folders/4p/85h90jj9327_cwwm4489hdcr0000gn/T/tmp.UXSyiYbGyW/t
+exit: 0
+
+$ /var/folders/4p/85h90jj9327_cwwm4489hdcr0000gn/T/tmp.UXSyiYbGyW/t
+PASS S3-U04: S3 flags and fixed-point values through S5 telemetry
+exit: 0
+
+$ cc -std=c11 -Wall -Wextra -Werror -I node/app_program/subsystem3 -I node/app_program/subsystem5 -include node/testing/subsystem3/host/utk_mock.h node/app_program/subsystem3/environment.c node/app_program/subsystem3/acd1100_protocol.c node/app_program/subsystem3/drv_acd1100.c node/app_program/subsystem3/drv_dht22.c node/app_program/subsystem3/s3_telemetry.c node/app_program/subsystem3/environment_service.c node/app_program/subsystem3/task_environment.c node/testing/subsystem3/host/service_host_test.c -o /var/folders/4p/85h90jj9327_cwwm4489hdcr0000gn/T/tmp.UXSyiYbGyW/t
+exit: 0
+
+$ /var/folders/4p/85h90jj9327_cwwm4489hdcr0000gn/T/tmp.UXSyiYbGyW/t
+PASS S3-U22: stuck DMA keeps buffer isolated while other service continues (simulated)
+PASS S3-U20: real task loop progresses through sensor error and stops active capture on exit (simulated)
+PASS S3-U06..U09: scheduling/config/S5 errors, UART transport, DHT recovery, rollover and bounded formatting
+exit: 0
+
+$ cc -std=c11 -Wall -Wextra -Werror -I node/app_program/subsystem3 -I node/app_program/subsystem5 -DAPP_TEST=1 -include node/testing/subsystem3/host/utk_mock.h node/app_program/subsystem3/environment.c node/app_program/subsystem3/acd1100_protocol.c node/app_program/subsystem3/drv_acd1100.c node/app_program/subsystem3/drv_dht22.c node/app_program/subsystem3/s3_telemetry.c node/app_program/subsystem3/environment_service.c node/app_program/subsystem3/task_environment.c node/testing/subsystem3/host/service_host_test.c -o /var/folders/4p/85h90jj9327_cwwm4489hdcr0000gn/T/tmp.UXSyiYbGyW/t
+exit: 0
+
+$ /var/folders/4p/85h90jj9327_cwwm4489hdcr0000gn/T/tmp.UXSyiYbGyW/t
+PASS S3-U22: stuck DMA keeps buffer isolated while other service continues (simulated)
+PASS S3-U20: real task loop progresses through sensor error and stops active capture on exit (simulated)
+PASS S3-U23: test-only diagnostic accounting (simulated hardware)
+PASS S3-U06..U09: scheduling/config/S5 errors, UART transport, DHT recovery, rollover and bounded formatting
+exit: 0
+
+$ cc -std=c11 -Wall -Wextra -Werror -DAPP_TEST=1 -I node/testing/subsystem3/host -I node/app_program/subsystem3 -I node/app_program/subsystem5 node/testing/subsystem3/host/observer_host_test.c -o /var/folders/4p/85h90jj9327_cwwm4489hdcr0000gn/T/tmp.UXSyiYbGyW/t
+exit: 0
+
+$ /var/folders/4p/85h90jj9327_cwwm4489hdcr0000gn/T/tmp.UXSyiYbGyW/t
+PASS S3-U32: observer startup, schedule, self-delete and failure cleanup (simulated)
+exit: 0
+
+$ cc -std=c11 -Wall -Wextra -Werror -include node/testing/subsystem3/host/utk_mock.h -I node/testing/subsystem3/host/registers -I node/app_program/subsystem3 node/app_program/subsystem3/drv_uart1.c node/testing/subsystem3/host/uart_register_host_test.c -o /var/folders/4p/85h90jj9327_cwwm4489hdcr0000gn/T/tmp.UXSyiYbGyW/t
+exit: 0
+
+$ /var/folders/4p/85h90jj9327_cwwm4489hdcr0000gn/T/tmp.UXSyiYbGyW/t
+PASS S3-U12: actual UART driver register accesses, divisor, FIFO and errors; no UART0 writes
+exit: 0
+
+$ cc -std=c11 -Wall -Wextra -Werror -include node/testing/subsystem3/host/startup_mock.h -I node/app_program/subsystem3 node/app_program/subsystem3/subsystem3.c node/testing/subsystem3/host/startup_host_test.c -o /var/folders/4p/85h90jj9327_cwwm4489hdcr0000gn/T/tmp.UXSyiYbGyW/t
+exit: 0
+
+$ /var/folders/4p/85h90jj9327_cwwm4489hdcr0000gn/T/tmp.UXSyiYbGyW/t success
+PASS S3-U19: startup retry/idempotence/exit (success, simulated)
+exit: 0
+
+$ /var/folders/4p/85h90jj9327_cwwm4489hdcr0000gn/T/tmp.UXSyiYbGyW/t consumer-create
+PASS S3-U19: startup retry/idempotence/exit (consumer-create, simulated)
+exit: 0
+
+$ /var/folders/4p/85h90jj9327_cwwm4489hdcr0000gn/T/tmp.UXSyiYbGyW/t consumer-start
+PASS S3-U19: startup retry/idempotence/exit (consumer-start, simulated)
+exit: 0
+
+$ /var/folders/4p/85h90jj9327_cwwm4489hdcr0000gn/T/tmp.UXSyiYbGyW/t environment-create
+PASS S3-U19: startup retry/idempotence/exit (environment-create, simulated)
+exit: 0
+
+$ /var/folders/4p/85h90jj9327_cwwm4489hdcr0000gn/T/tmp.UXSyiYbGyW/t environment-start
+PASS S3-U19: startup retry/idempotence/exit (environment-start, simulated)
+exit: 0
+
+$ cc -std=gnu11 -Wall -Wextra -Werror -DTM_WIFI_CYW43=1 -I node/testing/subsystem3/host/sdk_mock -I node/app_program/subsystem3 node/app_program/subsystem3/drv_dht22_hw.c node/testing/subsystem3/host/dht_hw_host_test.c -o /var/folders/4p/85h90jj9327_cwwm4489hdcr0000gn/T/tmp.UXSyiYbGyW/t
+exit: 0
+
+$ /var/folders/4p/85h90jj9327_cwwm4489hdcr0000gn/T/tmp.UXSyiYbGyW/t
+PASS S3-U21: actual hardware boundary waits for BUSY after ABORT clears (register double)
+exit: 0
+

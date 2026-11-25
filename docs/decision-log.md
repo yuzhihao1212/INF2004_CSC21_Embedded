@@ -5,6 +5,15 @@ ideas we dropped. Status lines get updated in place; a reversed decision gets a 
 that links back. Entries dated before 14 Nov 2026 were backfilled on 14 Nov from the chat
 where they were decided and the commits that built them.
 
+## 2026-11-25 · Host tests rerun on the hand-in commit; unrecorded board tests say so
+- **From → to:** host results were spread over several dates, all on uncommitted code, and S3's rows cited logs that aren't in the repo. The S1, S2 and S4 result tables held only the template's placeholder row. Now `node/testing/run_host_tests.sh` reruns every host test in one go; it was run on the clean commit `62e0e5a` and each subsystem's log has a row citing that commit and a saved log. The S1, S2 and S4 logs state that no on-target result was recorded.
+- **Why:** ZhiHao (chat, 25 Nov): the hardware is back with the professor, so only PC work is possible. The instructor's rule is that a test counts only with its commit, result and saved log.
+- **Problem it solves:** a marker opening `testing/subsystem1/TEST_LOG.md` saw `YYYY-MM-DD | S1-U01 | abc1234`, which reads as unfinished. A plain "not recorded, hardware returned" plus real host results on the exact hand-in code reads as honest.
+- **Why this way:** writing PASS rows for board tests from memory was ruled out: there is no log to cite. Old provisional rows are left untouched, as the testing rules require.
+- **Risks to watch:** a host PASS says nothing about timing or hardware; the rows say "host". If a teammate still has a saved console log from a board run, it should be added with its own row.
+- **Verified:** the script exits 0; S1-U04, S2-U03 to U05, S2-U07, the S3 host suite (U02 to U04, U06 to U09, U12, U19 to U23, U32) and S5-U01 to U11 pass; 305 PC tests pass.
+- **Status:** built, not committed.
+
 ## 2026-11-25 · The hand-in includes the demo branch
 - **From → to:** `main` did not have Arif's commit `b4008ec` (task-progress supervisor, watchdog driver, MQTT reconnect handling, gateway "awaiting a fresh report"); it lived only on `demo`. Now `demo` goes into `main` through PR #61, and PR #60 is merged with it so the tidy-up sits on top.
 - **Why:** ZhiHao (chat, 25 Nov): the four Picos ran the `demo` branch in the final demo, and the hardware has since been returned.
@@ -13,7 +22,7 @@ where they were decided and the commits that built them.
 - **Also changed:** `task_audio.c` and `task_classifier.c` conflicted between the tidy-up and Arif's commit; they keep his logic inside the tidied layout. `TEAM.md`, `app_main.c` and the S4 headers now describe the supervisor task. Arif's commit made `task_environment.c` include `s4_health.h`, which stopped Kendrick's S3 host test from building; the host mock gained the missing type and a stub.
 - **Risks to watch:** the watchdog stays off (`S4_WATCHDOG_TIMEOUT_MS` is 0) and its tests S4-U04 to U06 can no longer be run. Before PR #61, `b4008ec` had not been through CI or review.
 - **Verified:** every firmware file on the merged branch has the same C tokens as on `demo`; 305 PC tests pass; host tests pass on macOS: S1-U04, S2-U03 to U05, S2-U07, S5 host and the S3 host suite. Not verified: an Arm build of the merged branch, until CI runs.
-- **Status:** built, not committed. PR #61 (demo into main), PR #60 (this branch).
+- **Status:** committed `e196511` (merge) and `62e0e5a`, in PR #60. PR #61 brings `demo` into `main`.
 
 ## 2026-11-25 · Audio clock scale documented, not corrected
 - **From → to:** the clock fix built earlier today (entry "Node audio clock now reads real microseconds", commit `c78f27b` in PR #60) is taken out again by a follow-up commit, before the PR merges. `audio_clock_us()` is back to the code that ran in the final demo. The 42.67 µs scale is now written up as a known limitation above the function, in `drv_audio.h`, beside each deadline check and in `node/testing/subsystem1/PORT_TEST_LOG.md`.
