@@ -16,6 +16,12 @@ comfortable. No audio ever leaves a node.
 *The dashboard playing the scripted demo, one frame per phase. These are simulated
 nodes; real-node screenshots are [below](#real-nodes).*
 
+![Sensors page: node health and readings for each node](docs/media/sensors-page.png)
+
+*The Sensors page: each node's signal, lost messages, round trip, audio work per
+500 ms window and readings. Also simulated: on the real nodes, CPU load, free memory
+and signal are sent as 0, because no node task fills them yet.*
+
 ## Try it in two minutes, no hardware
 
 The dashboard, gateway, fusion engine and node simulator use only Python's standard
