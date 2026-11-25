@@ -5,14 +5,14 @@ ideas we dropped. Status lines get updated in place; a reversed decision gets a 
 that links back. Entries dated before 14 Nov 2026 were backfilled on 14 Nov from the chat
 where they were decided and the commits that built them.
 
-## 2026-11-25 · Guides and CSC21 tracker closed out; PR #60 merged by a second route
+## 2026-11-25 · Guides and CSC21 tracker closed out; Student IDs added
 - **From → to:** after PR #59, the ML guide said its scripts train the deployed model, the README and docs index ended by asking for more hardware evidence, and the CSC21 tracker showed "To do" on six rows. Now the ML guide says the scripts train the earlier random forest and that the int8 network's training code is not in the repo; the README has a "what was and was not tested" section; `docs/audio_numeric_representation.md` gives the DSP Q-formats and the int8 model's scales; the tracker has no "To do" rows (two Done, four Not done with what exists in their place). Student IDs are filled in.
 - **Why:** hand-in is 23:59 on 25 Nov and the team gave ZhiHao permission to review and merge for everyone (chat, 25 Nov).
 - **Problem it solves:** a marker following the evidence index landed on unfinished rows for the Tribunal 1 change requirement, and would have traced the TinyML model to a random-forest script.
-- **Why this way:** PR #60 would not merge on GitHub after #61 and #59 went in (reported as conflicting, though a local merge was clean), so its commits were merged into this branch locally and go in with it. Rows that need a board are marked Not done; writing them as done was not an option.
+- **Why this way:** rows that need a board are marked Not done; writing them as done was not an option. PR #60 showed as conflicting on GitHub after #61 and #59 went in; Moe resolved it there and merged it at 22:07. His resolution kept the older S4 row in `TEAM.md` ("watchdog supervision remains to be implemented"), so this change puts the corrected row back along with the Student IDs.
 - **Risks to watch:** the number-format doc was written from the code by reading it, on the last evening. It was spot-checked against the constants in the source, not reviewed by Moe or Darius.
 - **Verified:** every constant quoted in the new doc was found in the source; relative links resolve; host tests and PC tests pass on this branch. Not verified: the deployed model's provenance beyond `SOURCE.json`.
-- **Status:** built, not committed.
+- **Status:** committed on `docs/final-status`, in PR #62.
 
 ## 2026-11-25 · Final demo recorded as the only system test run
 - **From → to:** `node/testing/system/TEST_LOG.md` was the blank template with an example row. Now it defines SYS-01 to SYS-06 from the demo plan and records the final demo as one run: SYS-01 to 04 and SYS-06 "mostly as expected, with some inconsistent results", SYS-05 not run.
