@@ -1,13 +1,95 @@
 # MOSAIC — Classroom Monitoring System
 
-**INF2004 Embedded Systems | CSC21**
+**Multimodal Observation and Sensor-fusion Architecture for Intelligent Classrooms**
 
-MOSAIC monitors classroom activity, ventilation and comfort using four Raspberry Pi
-Pico W sensing nodes. Each node runs dual-core µT-Kernel 3.0 and sends processed
-sensor readings and audio classifications to a central PC over MQTT. The PC combines
-the zone readings and presents them on a web dashboard.
+INF2004 Embedded Systems · Team CSC21
 
-![Four real nodes on the dashboard](docs/evidence/four-real-nodes-online.png)
+Four Raspberry Pi Pico W nodes listen to a classroom and measure its air. Each node
+runs dual-core **µT-Kernel 3.0**, turns sound into features and a label **on the
+chip, with integer arithmetic only**, and sends 64-byte reports over **MQTT**. A PC
+compares the four zones with each other and shows the room on a live dashboard: who
+is talking and where, whether the air is getting stuffy, and whether it's
+comfortable. No audio ever leaves a node.
+
+![The dashboard playing the scripted demo with four simulated nodes](docs/media/dashboard-demo.gif)
+
+*The dashboard playing the scripted demo, one frame per phase. These are simulated
+nodes; real-node screenshots are [below](#real-nodes).*
+
+## Try it in two minutes, no hardware
+
+The dashboard, gateway, fusion engine and node simulator use only Python's standard
+library: there is nothing to install. You need Python 3.12 or newer (tested on 3.12
+and 3.14).
+
+```sh
+git clone https://github.com/yuzhihao1212/INF2004_CSC21_Embedded.git
+cd INF2004_CSC21_Embedded/pc
+python3 -m mosaic.dashboard --scenario demo
+```
+
+Open <http://localhost:8050>. Four simulated nodes play a scripted 20-minute lesson;
+the bar under the headline names each phase. Press **→** to skip to the next phase,
+**Space** to pause and **1**, **2** or **4** to change the speed. Each change takes
+10 to 60 seconds to show, because the system waits for a state to hold before
+announcing it.
+
+| Phase | What the dashboard should show |
+|---|---|
+| Empty classroom | Room is empty |
+| Lecturer teaching, students seated | Lecture in progress; only the lecturer's area shows the lecturer's voice |
+| Rear students start chatting | Getting noisy, then Ongoing chatter with an alert card |
+| Back rows get rowdy | Excessive noise in the middle and back rows, with an alert card |
+| Class settles down | Lecture in progress again |
+| Door and windows closed: CO₂ builds up | The air is stuffy, with an alert to open a door or window |
+| Window opened | Air: Fresh again |
+| Air-conditioning fails | Comfort: too warm, too humid |
+| Air-conditioning restored | Comfortable |
+
+Also worth a look:
+
+- **Setup** changes the class type: switch to *Group work* and the same chatter no
+  longer raises an alert.
+- **Sensors** shows each node's readings, signal, lost reports and response time.
+- `python3 -m mosaic.dashboard --scenario reference` shows the lecturer-reference
+  comparison: click **Calibrate** in Setup › Voice setup during the first phase.
+- `python3 -m unittest` in `pc/` runs the 305 PC tests, and
+  `node/testing/run_host_tests.sh` compiles and tests the node's C code on your
+  computer.
+
+Don't run `pip install -r requirements.txt` for this: those packages are only for
+retraining the audio model in `ml/`.
+
+## What's inside
+
+- **A real-time OS on both cores.** The node runs µT-Kernel 3.0 on both RP2040
+  cores: audio DSP on core 0, the classifier on core 1, sensors, reporting and a
+  progress supervisor beside them. Tasks share data only through kernel objects.
+- **Integer-only signal processing and TinyML.** Every 500 ms the node captures
+  8,000 samples by DMA, runs a Q15 FFT and MFCCs, and classifies the window with an
+  int8 neural network (368 bytes of weights). No floating point anywhere
+  ([number formats](docs/audio_numeric_representation.md)).
+- **A compact protocol.** Each report is 64 bytes, published on MQTT through the
+  kernel's own lwIP client. Settings go back to the nodes as retained messages and
+  are acknowledged once applied.
+- **Fusion that knows where the lecturer is.** One node sits at the lecturer's
+  desk. The PC learns how loud the lecturer sounds at every other node, so students
+  talking can be told apart from the lecturer's voice carrying.
+- **It fails per zone, not as a whole.** An invalid reading or a silent node shows
+  as missing in that zone only (*No signal*, *Not connected* or *No reading*), never
+  as an old value, while the other zones keep working.
+
+<a id="real-nodes"></a>
+
+## On real hardware
+
+| Four nodes online | Lecturer only | Student talking at Node 2 |
+|---|---|---|
+| ![Dashboard with four real nodes online](docs/evidence/four-real-nodes-online.png) | ![Only the lecturer's area shows the lecturer's voice](docs/evidence/lecturer-only-four-nodes.png) | ![Node 2's area shows Talking](docs/evidence/node2-talking.png) |
+
+Four Pico W nodes in a room, 20 November 2026. The final demonstration on
+25 November ran on the same set-up. What was tested on hardware, on the PC, and not
+at all is set out under [What was and was not tested](#what-was-and-was-not-tested).
 
 ## Architecture
 
