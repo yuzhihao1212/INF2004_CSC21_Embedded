@@ -49,5 +49,7 @@ EXPORT ER subsystem4_start(void)
 {
 	/* No affinity: the scheduler may run it on either core */
 	ID tid = app_start_task(monitor_task, S4_PRI_MONITOR, 0, "monitor_task");
+	if (tid < E_OK) return tid;
+	tid = app_start_task(s4_health_task, S4_PRI_HEALTH, 0, "s4_health_task");
 	return (tid < E_OK) ? tid : E_OK;
 }

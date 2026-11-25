@@ -1,5 +1,6 @@
 #include "../subsystem5/subsystem5.h"
 #include "../subsystem2/subsystem2.h"
+#include "../subsystem4/s4_health.h"
 #include "subsystem1.h"
 #include "drv_audio.h"
 #include "audio_dsp.h"
@@ -46,5 +47,6 @@ void audio_task(INT stacd,void *exinf)
         /* Full queue drops the new observation. S2 sees the sequence gap
          * and accounts for drops in order, avoiding races with old results. */
         (void)tk_snd_mbf(mbf_audio_features,&msg,sizeof msg,TMO_POL);
+        (void)s4_health_mark(S4_HEALTH_AUDIO);
     }
 }
