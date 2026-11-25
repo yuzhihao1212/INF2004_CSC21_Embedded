@@ -41,3 +41,24 @@ S1-U06/U07 are NOT RUN until real-board evidence is saved.
 
 Hardware remains NOT RUN. The historical float-initialisation implementation is
 loaded by Git blob only into a temporary host test executable, never a Pico target.
+
+## Comment clean-up and timer scale correction (25 Nov 2026)
+
+The S1 and S2 sources were tidied for hand-in (headers, comments, named
+constants). Each edited `.c` file has the same C tokens as before, apart from
+`audio_clock_us()` in `drv_audio.c`, which now converts the raw timer count
+to real microseconds. The kernel leaves the RP2040 tick generator at its
+reset setting, so the timer counts once every 512 cycles of the 12 MHz
+reference clock (42.67 us), not once per microsecond: see
+`../integration/logs/2026-11-20-audio-investigation.md`.
+
+| ID | Method | Expected result |
+|---|---|---|
+| S1-U09 | Hardware, manual: flash the `NET=lwip MQTT=1` image and save 60 s of console output | Every `audio input` line shows `capture_us` between 495000 and 505000 (it read 11719 before); `dsp_us` stays under 400000; no `event=TIMING_FAULT` while the node runs normally |
+
+| Date | ID | Commit | Result | Evidence |
+|---|---|---|---|---|
+| 2026-11-25 | S1-U04 / S2-U03..05 replay | working tree on `c36c37e` (not yet committed) | PASS | `logs/2026-11-25_cleanup-replay.txt`: features, logits, probabilities and gates unchanged after the clean-up |
+
+S1-U09 is NOT RUN: it needs a board. Until it passes, treat the corrected
+timing values and the now-active 500 ms deadline checks as untested on hardware.
