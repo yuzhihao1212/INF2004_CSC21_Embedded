@@ -5,6 +5,15 @@ ideas we dropped. Status lines get updated in place; a reversed decision gets a 
 that links back. Entries dated before 14 Nov 2026 were backfilled on 14 Nov from the chat
 where they were decided and the commits that built them.
 
+## 2026-11-25 · README opens with a showcase and a no-hardware quick start
+- **From → to:** the README opened with the architecture diagram, a code map and a three-step hardware build. Now it opens with what MOSAIC is, an animated recording of the dashboard, "Try it in two minutes, no hardware" (three commands, what each demo phase should show, keyboard controls), five "What's inside" points, and three real-node screenshots. Everything below is unchanged.
+- **Why:** ZhiHao (chat, 25 Nov) wanted the repo to read as a presentable project, with easy onboarding if the professor wants to try the system; he asked for a GIF too.
+- **Problem it solves:** the professor can't run the hardware build without our Picos, and the obvious first step, `pip install -r requirements.txt`, installs the ML training stack, which the dashboard never uses. The dashboard, gateway and simulator need only Python's standard library.
+- **Why this way:** README only, on the last evening: no code, no file moves, no broken links. The GIF is recorded from the simulated demo, because the hardware has been returned, and it says so in its caption; the real-node screenshots stay as the hardware evidence.
+- **Risks to watch:** the clone URL needs access to the private repo. The phase table describes what the scripted demo is designed to show; it was checked against `scenarios.py` and `feedback.py`, and the GIF frames show it.
+- **Verified:** `python3 -m mosaic.dashboard --scenario demo` started four simulated nodes on a clean run. The GIF (`docs/media/dashboard-demo.gif`, 960 × 600, nine frames, 549 KB) was recorded from it with headless Chrome, one screenshot per phase after its states had settled; each frame's phase label matches the state it shows. A first recording was thrown away because its screenshots lagged the phase label. README links and images resolve.
+- **Status:** built, not committed.
+
 ## 2026-11-25 · Guides and CSC21 tracker closed out; Student IDs added
 - **From → to:** after PR #59, the ML guide said its scripts train the deployed model, the README and docs index ended by asking for more hardware evidence, and the CSC21 tracker showed "To do" on six rows. Now the ML guide says the scripts train the earlier random forest and that the int8 network's training code is not in the repo; the README has a "what was and was not tested" section; `docs/audio_numeric_representation.md` gives the DSP Q-formats and the int8 model's scales; the tracker has no "To do" rows (two Done, four Not done with what exists in their place). Student IDs are filled in.
 - **Why:** hand-in is 23:59 on 25 Nov and the team gave ZhiHao permission to review and merge for everyone (chat, 25 Nov).
