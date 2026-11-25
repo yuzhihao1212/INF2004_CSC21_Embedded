@@ -10,8 +10,8 @@ node/              The sensing node: course template, micro T-Kernel 3.0 on both
   app_program/     Our code, one subsystemN/ folder per owner (see node/TEAM.md)
   testing/         Test logs per subsystem, integration and system tests
   kernel/ lib/ …   Template code shared with the instructor's repo: change only by agreement
-firmware/          Earlier CMake firmware (plain SDK and FreeRTOS). Reference while each
-                   owner moves their part into node/; no new features here
+firmware/          Earlier CMake firmware (plain SDK and FreeRTOS); reference and bring-up
+                   code, not the submitted micro T-Kernel node
   CMakeLists.txt   SDK import and project setup
   tests/           Standalone sensor / DSP bring-up targets, one .uf2 each
 ml/                Audio dataset preparation, feature extraction and model training
@@ -25,20 +25,58 @@ docs/              Project brief and team workflow
 
 ## Building the node (micro T-Kernel)
 
-The node must run micro T-Kernel 3.0 (see `AGENTS.md`). It builds with `make`, not CMake,
-against Pico SDK 2.2.0 or 2.3.0; on Windows, use WSL. Set up the SDK and compiler as in
-[node/README.md](node/README.md), then:
+The node runs micro T-Kernel 3.0 and builds with `make` against Pico SDK 2.2.0 or 2.3.0;
+on Windows, use WSL. Install the Arm compiler and set `PICO_SDK_PATH` as described in
+[node/README.md](node/README.md). The MQTT profile also needs the SDK's lwIP submodule:
 
+```sh
+git -C "$PICO_SDK_PATH" submodule update --init lib/tinyusb lib/cyw43-driver lib/lwip
 ```
+
+Copy `node/config/wifi_secrets.example.h` to the ignored `node/config/wifi_secrets.h`
+and set the Wi-Fi credentials, the PC broker's reachable IPv4 address in `MQTT_BROKER_IP`,
+and its port in `MQTT_BROKER_PORT`. Never commit credentials or credential-bearing images.
+For each Pico, copy `node/app_program/subsystem5/s5_node_id.example.h` to the ignored
+`s5_node_id.h` in the same folder and set a unique `MOSAIC_NODE_ID` from 1 to 8. The
+fallback is ID 1; duplicate IDs also share an MQTT client ID and topics.
+
+From the repository root, build the production MQTT image or the MQTT self-test image:
+
+```sh
 cd node/build_make
-make -j8            # build_make/mtk3pico_smp1_usb_cdc_wifi.uf2
-make TEST=1 -j8     # self-test image: runs every subsystem's tests at power-up
+make NET=lwip MQTT=1 -j8
+# mtk3pico_smp1_usb_cdc_wifi_lwip_mqtt.uf2
+make NET=lwip MQTT=1 TEST=1 -j8
+# mtk3pico_smp1_usb_cdc_wifi_lwip_mqtt_test.uf2
 ```
+
+Plain `make` defaults to `NET=none MQTT=0` and does not enable the MQTT bridge. For a
+different board ID, force a complete rebuild with `make -B NET=lwip MQTT=1 -j8` (add
+`TEST=1` for the test image), then flash and label that board before building the next.
+The output filename does not encode the node ID. Confirm the printed node ID and MQTT
+topic on each board; an existing dependency file may not notice a newly created optional
+ID header. These commands describe the intended build; they do not establish a hardware pass.
 
 Who owns which folder, pins, task priorities and the interfaces between subsystems are in
 [node/TEAM.md](node/TEAM.md); how to record tests is in
 [node/testing/README.md](node/testing/README.md). CI builds the default, `TEST=1` and
 `NET=lwip` images on every pull request.
+
+### Current node-to-PC path and validation status
+
+S1 captures audio and computes fixed-point features; S2 classifies them and posts audio
+windows to S5. S3 posts environmental readings and PIR counts to S5. S5 builds protocol v2
+telemetry and replies, which S4 hands to the MQTT service inside `cyw43_utk_task`. The
+service publishes them on `mosaic/node/<id>/telemetry` through Mosquitto; the PC gateway
+feeds received data to fusion and the dashboard. The PC sends retained QoS 1 CONFIG on
+`mosaic/node/<id>/config`; S4 passes it to S5, and S5's CONFIG_ACK returns via the
+telemetry topic. The status topic carries online/offline state and the broker last will.
+
+These paths are implemented in source. Hardware operation and recovery on the final
+revision still need recorded validation. The S4 progress primitives do not yet arm a
+hardware watchdog, and S5 health fields are not currently populated by a production
+health poster. See [node/testing/](node/testing/) for results and outstanding hardware
+work; historical host or four-node observations are not a final-revision system pass.
 
 ## Building the earlier CMake firmware (reference)
 
@@ -94,8 +132,12 @@ python -m mosaic.simulator --nodes 3 --mqtt localhost
 python -m mosaic.dashboard --simulate 3 --mqtt localhost
 ```
 
-Mosquitto 2 only accepts connections from the same computer by default. For real nodes,
-start it with a config file containing `listener 1883 0.0.0.0` and `allow_anonymous true`.
+For real nodes, the broker must listen on an address reachable by the Pico W and the PC
+firewall must allow its port. For an isolated demonstration network, a Mosquitto config
+can contain `listener 1883 0.0.0.0` and `allow_anonymous true`; start it with
+`mosquitto -c <path-to-config> -v`. Use the broker host's address in the node's private
+configuration. From `pc/`, run `python -m mosaic.dashboard --mqtt localhost` on the
+broker host, then open `http://localhost:8050`. Omit `--simulate` for live nodes.
 
 ### Live dashboard
 
@@ -214,8 +256,8 @@ longer reaches its state, for example after a threshold is changed.
 ## Running a real node
 
 > **Earlier firmware.** These steps are for the CMake node in `firmware/`, which talks UDP.
-> The micro T-Kernel node in `node/` replaces it once every subsystem is ported; it talks to
-> the PC through an MQTT broker (see *Over MQTT* above).
+> The current micro T-Kernel node in `node/` uses the MQTT build and broker above. The
+> steps below are retained as historical instructions for the earlier firmware.
 
 `firmware/node/` builds `mosaic_node.uf2`: DHT22, CO₂ and PIR readings sent as protocol v2
 TELEMETRY every second over Wi-Fi (audio not wired in yet).
