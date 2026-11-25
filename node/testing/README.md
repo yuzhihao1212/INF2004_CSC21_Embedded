@@ -1,5 +1,12 @@
 # Testing
 
+For the final MOSAIC system, use the [root setup](../../README.md) to
+configure the node ID and MQTT broker, then build with
+`make NET=lwip MQTT=1 TEST=1 -j8` in `node/build_make/` for integrated
+self-tests. The default test profile shown below exercises the template
+without the MQTT bridge. Keep each result tied to the actual profile and commit.
+See the [evidence index](../../docs/README.md) for existing tests and observations.
+
 All test records for the project live in this folder. A test only counts as
 done when it is **written down here with its result and a saved log**.
 
