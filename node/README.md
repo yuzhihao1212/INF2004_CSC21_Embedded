@@ -1,5 +1,11 @@
 # micro T-Kernel 3.0 project for Raspberry Pi Pico W
 
+> **MOSAIC final node:** follow the [root build and run guide](../README.md)
+> for per-node IDs, Wi-Fi configuration, Mosquitto and the dashboard. Build
+> the deployed image using `make NET=lwip MQTT=1 -j8`. Use the matching
+> `TEST=1` profile for self-tests. The instructions below retain the
+> course template's setup, options and ownership rules.
+
 A starting point for your project: micro T-Kernel 3.0 running on **both cores**
 of the Pico W's RP2040, with a USB serial console and the WiFi driver built in.
 
@@ -37,10 +43,10 @@ sudo apt update && sudo apt install -y git make g++
 mkdir -p ~/pico && cd ~/pico
 git clone --branch 2.2.0 https://github.com/raspberrypi/pico-sdk.git
 cd pico-sdk
-git submodule update --init lib/tinyusb lib/cyw43-driver
+git submodule update --init lib/tinyusb lib/cyw43-driver lib/lwip
 ```
 
-The `submodule` line is required: it downloads the USB and WiFi drivers.
+The `submodule` line is required: it downloads the USB and Wi-Fi drivers and the lwIP stack.
 (SDK 2.3.0 has also been tested and works.)
 
 **1.3 Install the Arm GNU Toolchain (the compiler)**
@@ -134,10 +140,9 @@ subfolders, is compiled automatically.
   every subsystem's `subsystemN_init()` (create kernel objects), then every
   `subsystemN_start()` (start tasks). Read its comments first.
 - **One folder per student:** `app_program/subsystem1/` … `subsystem5/`.
-  Subsystems 1–4 hold a working example, one task each (LED, producer,
-  consumer, monitor). Together they use the main micro T-Kernel APIs and
-  pass data between subsystems. Subsystem 5 is an empty template.
-  Replace the examples with your own subsystems.
+  The five MOSAIC subsystem folders contain the production tasks and drivers.
+  Some LED, producer, consumer and monitor examples remain for compatibility;
+  see the root code map and TEAM.md before changing their interfaces.
 - `subsystemN.h` is that subsystem's public interface: the object IDs and
   data formats the other subsystems may use.
 - `app.h` holds the definitions shared by the whole team.
@@ -249,7 +254,7 @@ Each option goes through the same steps:
 
 The makefile also has `NET=lwip` and `MQTT=1` (TCP/IP and MQTT over WiFi).
 They need the SDK's `lib/lwip` submodule and a `config/wifi_secrets.h`
-(copy `config/wifi_secrets.example.h`). This guide does not cover them.
+(copy `config/wifi_secrets.example.h`). See the [root setup](../README.md#build-and-run-the-real-system).
 
 ---
 
