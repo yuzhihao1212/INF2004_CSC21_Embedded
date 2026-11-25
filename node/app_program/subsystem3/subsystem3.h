@@ -1,6 +1,12 @@
 /*
  *	subsystem3.h
- *	Subsystem 3 -- Consumer (statistics).  Student ID: <student ID>.
+ *	Subsystem 3 -- Environment sensors: DHT22, ACD1100 CO2 and PIR.
+ *	Owner: Kendrick (kthgoat).  Student ID: <student ID>.
+ *
+ *	One task, environment_task, owns GP2 (DHT22 by PIO and DMA), UART1
+ *	(CO2) and GP16 (PIR), and posts validated readings to subsystem 5
+ *	(IF-08, IF-09).  The template's consumer example is kept: IF-01 to
+ *	IF-04 and tests S3-U01, INT-01 and INT-02 still use it.
  *
  *	Public interface of subsystem 3.  Other subsystems include it as
  *	"../subsystem3/subsystem3.h".

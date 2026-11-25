@@ -5,6 +5,34 @@ ideas we dropped. Status lines get updated in place; a reversed decision gets a 
 that links back. Entries dated before 14 Nov 2026 were backfilled on 14 Nov from the chat
 where they were decided and the commits that built them.
 
+## 2026-11-25 · Gateway drops the MQTT link on malformed broker data
+- **From → to:** `MqttClient.read()` let two errors escape: `MqttError` for a bad packet length and `UnicodeDecodeError` for a topic that isn't UTF-8. Now both close the connection and raise `ConnectionError`, which the transport already handles by reconnecting after 2 s.
+- **Why:** found in the hand-in review ZhiHao asked for (chat, 25 Nov).
+- **Problem it solves:** `MqttTransport.receive()` only catches `ConnectionError`, so either error would have ended the gateway's poll loop and left the dashboard showing its last state. It matches the Tribunal 2 requirement: invalid data gets a safe, predictable response.
+- **Why this way:** once a length is wrong the byte stream can't be re-synchronised, so skipping the one packet isn't safe. Catching it at the transport would leave a half-read buffer in the client.
+- **Risks to watch:** none expected: Mosquitto doesn't send malformed packets, so this path only runs on a faulty broker or a wrong port.
+- **Verified:** new test `test_malformed_data_drops_the_link_instead_of_raising` fails without the change and passes with it; all 304 PC tests pass. Also fixed in passing: three reference status texts that read "speech_pct" where "speech" was meant, and one docstring.
+- **Status:** built, not committed.
+
+## 2026-11-25 · Node audio clock now reads real microseconds
+- **From → to:** `audio_clock_us()` in `subsystem1/drv_audio.c` returned the raw RP2040 timer count as if it were microseconds. Now it scales the count by the tick generator's setting (`count × CYCLES ÷ 12`, with the reset value 0 meaning 512).
+- **Why:** ZhiHao asked for a hand-in review of all five subsystems (chat, 25 Nov). The 20 Nov audio investigation had already recorded that the clock's scale "needs verification and correction".
+- **Problem it solves:** the kernel never starts the tick generator, so the timer counts once per 512 cycles of the 12 MHz reference clock: 42.67 µs, not 1 µs. A 500 ms capture logged `capture_us=11719`, DSP read as 5.6 ms when it takes about 238 ms, and the 500 ms deadline checks in S1 and S2 needed 21 s to trip, so TIMING_FAULT could never happen.
+- **Why this way:** starting the tick generator in the kernel's timer start-up was tried on 20 Nov and gave the right numbers, but it changes shared template code (needs the instructor) and speeds up a timer the Wi-Fi driver also uses. Scaling inside S1's own driver touches nothing shared. Reading the setting on every call keeps it right if the watchdog on the `demo` branch later sets 12 cycles.
+- **Risks to watch:** the deadline checks are live for the first time. DSP takes about 238 ms of the 500 ms budget with Wi-Fi on, so they shouldn't trip, but this hasn't run on a board. If `event=TIMING_FAULT` shows up in normal running, revisit.
+- **Verified:** host arithmetic check with the logged counts (11719 → 500010 µs, 5581 → 238122 µs, 12 cycles → unchanged); clang syntax check for the Arm target in both Wi-Fi profiles; 303 PC tests pass. Not verified: a real build with the Arm toolchain (CI will do it) and test S1-U09 on hardware, defined in `node/testing/subsystem1/PORT_TEST_LOG.md`.
+- **Status:** built, not committed.
+
+## 2026-11-25 · Node sources tidied for hand-in; CI builds the MQTT image
+- **From → to:** the headers of subsystems 1 to 4 still read "LED heartbeat", "Producer", "Consumer" and "Monitor", and `app_main.c` described only the template's example. Now each says what the subsystem does and who owns it, and `app_main.c` lists the MOSAIC tasks, priorities, cores and interfaces. S1 and S2 files gained file headers, register and gate comments, and named constants in place of bare `8000`, `500000`, `15` and `4096`; stale comments from the dual-core reference firmware are gone. CI now also builds `NET=lwip MQTT=1` and its `TEST=1` image, which are the ones flashed onto the nodes.
+- **Why:** ZhiHao asked for the code to be hand-in ready and said to fix all subsystems (chat, 25 Nov).
+- **Problem it solves:** a marker opening `subsystem1.h` read "LED heartbeat", and `dsp_int8_candidate.h` said "No firmware replacement yet" about the classifier that runs on the node. CI built three images but never the production one.
+- **Why this way:** comments, spacing and named constants only, so the firmware can't change: every edited `.c` file was checked to have the same C tokens as before (the timer fix above is the one exception). Renaming files or variables, or reordering code, was left out because it would need a hardware re-test.
+- **Not done, on purpose:** the template's example tasks (LED, producer, consumer, monitor) stay, since tests S1-U01/02, S2-U01/02, S3-U01, S4-U01/02, INT-01 and INT-02 run on them; removing them is a behaviour change for the team to decide. `subsystem4/README.md` was left alone because the `demo` branch rewrites it.
+- **Risks to watch:** TEAM.md says only the owner edits a subsystem's folder, so this goes in as a pull request for Moe, Darius, Kendrick and Arif to review. The Student ID in each header and in TEAM.md is still a placeholder for each owner to fill in. The new CI step has not run yet.
+- **Verified:** token comparison against `origin/main` for 16 of the 19 edited C files and headers (the other three, `subsystem1.h`, `subsystem2.h` and `drv_audio.h`, only gained `#define`s, comments and a moved prototype); the S1/S2 host replay (S1-U04, S2-U03 to U05) still passes, log in `node/testing/subsystem1/logs/2026-11-25_cleanup-replay.txt`; clang syntax check; 303 PC tests pass.
+- **Status:** built, not committed.
+
 ## 2026-11-25 · Room map no longer collapses to the phone layout on short laptops
 - **From → to:** at 1366 × 768 and 1280 × 720 the Live room's map drew as a 160 px-wide portrait strip and Flat/3D/People disappeared. Now it draws the wide room (about 443 × 266 at 1366 × 768, 374 × 225 at 1280 × 720) with the view switch back. On a plan that small, the area text is smaller (13 px state, 11 px name and detail) so words don't break mid-word.
 - **Why:** found on 25 Nov while rechecking the room controls on `main`; ZhiHao picked A, "measure the stage", over B, A plus a taller map (chat, 25 Nov).

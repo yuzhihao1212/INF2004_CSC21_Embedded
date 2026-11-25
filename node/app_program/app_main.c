@@ -16,15 +16,32 @@
  *	and then puts the initial task to sleep forever.
  *	If usermain() RETURNS, the kernel shuts the whole system down.
  *
- *	The example system: one subsystem per folder, one task each
- *	------------------------------------------------------------
+ *	The MOSAIC sensing node: one subsystem per folder (owners in TEAM.md)
+ *	---------------------------------------------------------------------
+ *	  subsystem1/  audio_task        pri 13  core 0  microphone capture, DSP
+ *	  subsystem2/  classifier_task   pri 15  core 1  int8 network and gates
+ *	  subsystem3/  environment_task  pri 17  core 0  DHT22, CO2 and PIR
+ *	  subsystem4/  (no task of its own)             MQTT handoff, called
+ *	               from the kernel's cyw43_utk_task; task progress flags
+ *	  subsystem5/  report_task       pri 20  any     CONFIG and telemetry
+ *
+ *	How they talk to each other (the interfaces, see TEAM.md section 5):
+ *	  IF-13  S1 -> S2  message buffer mbf_audio_features  (owned by S2)
+ *	  IF-10  S2 -> S5  s5_post_audio_window(), s5_audio_dropped()
+ *	  IF-08  S3 -> S5  s5_post_environment()
+ *	  IF-09  S3 -> S5  s5_post_pir()
+ *	  IF-12  S5 -> S1, S3  s5_get_config()
+ *	  IF-06  S4 -> S5  message buffer mbf_s5_rx: CONFIG and PING from MQTT
+ *	  IF-07  S5 -> S4  message buffer mbf_s5_tx: packets for MQTT
+ *	The s5_ functions copy their arguments under subsystem 5's mutex, so
+ *	no task ever holds a pointer into another subsystem's data.
+ *
+ *	The template's example tasks still run beside them, because their
+ *	interfaces and on-target tests are kept:
  *	  subsystem1/  LED       blinks GP19, paced by a cyclic handler
  *	  subsystem2/  Producer  makes a "sample" every 300 ms     (core 1)
  *	  subsystem3/  Consumer  collects samples into statistics  (core 0)
  *	  subsystem4/  Monitor   prints reports, pauses/resumes the LED
- *	  subsystem5/  (empty template for the fifth student)
- *
- *	How they talk to each other (the interfaces, see TEAM.md section 5):
  *	  IF-01  S2 -> S3  mailbox mbx_samples      (owned by S3)
  *	  IF-02  S3 -> S2  semaphore sem_slots + memory pool mpf_samples
  *	                   (owned by S2: S3 hands slots and blocks back)
@@ -38,16 +55,17 @@
  *	micro T-Kernel APIs used, and where to find them:
  *	  tasks       tk_cre_tsk tk_sta_tsk tk_slp_tsk tk_wup_tsk tk_can_wup
  *	              tk_dly_tsk tk_sus_tsk tk_rsm_tsk tk_chg_pri tk_ref_tsk
- *	              tk_get_tid tk_get_prc                         app_main.c, S1-S4
- *	  semaphore   tk_cre_sem tk_wai_sem tk_sig_sem tk_ref_sem       S2, S3, S4
+ *	              tk_get_tid tk_get_prc tk_ext_tsk tk_exd_tsk   app_main.c, S1-S5
+ *	  semaphore   tk_cre_sem tk_wai_sem tk_sig_sem tk_ref_sem       S1-S4
  *	  mem. pool   tk_cre_mpf tk_get_mpf tk_rel_mpf tk_ref_mpf       S2, S3, S4
  *	  mailbox     tk_cre_mbx tk_snd_mbx tk_rcv_mbx                  S2, S3
- *	  mutex       tk_cre_mtx tk_loc_mtx tk_unl_mtx                  S3, S4
- *	  msg buffer  tk_cre_mbf tk_snd_mbf tk_rcv_mbf                  S3, S4
+ *	  mutex       tk_cre_mtx tk_loc_mtx tk_unl_mtx                  S3, S4, S5
+ *	  msg buffer  tk_cre_mbf tk_snd_mbf tk_rcv_mbf                  S1-S5
  *	  event flag  tk_cre_flg tk_set_flg tk_wai_flg                  S3, S4
  *	  cyclic      tk_cre_cyc tk_ref_cyc                             S1
  *	  alarm       tk_cre_alm tk_sta_alm tk_stp_alm                  S4
- *	  time        tk_get_tim                                        S2, S4
+ *	  interrupt   tk_def_int (DMA completion handler)               S1
+ *	  time        tk_get_tim tk_get_otm                             S2-S5
  *	  system      tk_ref_ver                                        app_main.c
  *
  *	Output appears on the USB serial port (115200 8N1 in any terminal).

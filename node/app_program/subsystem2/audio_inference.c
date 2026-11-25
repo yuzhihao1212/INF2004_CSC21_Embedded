@@ -1,3 +1,15 @@
+/*
+ *  audio_inference.c
+ *  Subsystem 2 -- turns one feature window into one protocol audio window.
+ *
+ *  Network -> integer softmax -> gates -> wire format. The label is only
+ *  set when the evidence is good enough; otherwise it stays UNKNOWN (0):
+ *    - speech needs the persistence rule in classifier_timing.c
+ *    - background and transient need the configured confidence threshold
+ *    - an invalid, clipped, too-quiet or late window is never labelled
+ *  The probabilities are sent unchanged either way, so the PC can still
+ *  see what the model scored.
+ */
 #include "audio_inference.h"
 #include "dsp_int8_candidate.h"
 #include "classifier_probabilities.h"
@@ -5,9 +17,10 @@ classifier_event_t classify_audio(classifier_timing_state_t *state,
     const audio_features_t *in,uint64_t now,mosaic_audio_window_t *out)
 {
     if (!state || !in || !out) return CLASSIFIER_INVALID;
-    int32_t logits[3]; uint16_t p[3];
+    int32_t logits[3]; uint16_t p[3];   /* p: Q15 probabilities, sum 32768 */
     int best=dsp_int8_predict(in->features,logits);
     classifier_probabilities(logits,p);
+    /* Late or out-of-order: more than one 500 ms window since capture. */
     int fault=in->timing_fault || now<in->captured_us || now-in->captured_us>500000;
     /* A speech window below the configured threshold cannot start/extend
      * onset, but may use the timing gate's one-window hold. Keep raw scores. */
@@ -20,6 +33,9 @@ classifier_event_t classify_audio(classifier_timing_state_t *state,
     /* Wire RMS is mean filtered frame RMS, Q8 -> Q4; raw AC RMS gates quality. */
     int32_t rms=in->features[0];
     out->rms_x16=(uint16_t)(rms<=0?0:rms>1048560?65535:(rms+8)/16);
+    /* Q15 -> percent. Wire slots are class ID - 1: background 0, speech 1,
+     * slot 2 is reserved (always 0), transient 3. Transient takes the
+     * remainder so the three always add up to exactly 100. */
     out->prob_pct[0]=(uint8_t)((uint32_t)p[0]*100/32768);
     out->prob_pct[1]=(uint8_t)((uint32_t)p[1]*100/32768);
     out->prob_pct[3]=(uint8_t)(100-out->prob_pct[0]-out->prob_pct[1]);

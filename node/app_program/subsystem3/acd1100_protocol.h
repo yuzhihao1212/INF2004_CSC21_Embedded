@@ -3,8 +3,8 @@
 
 #include "environment.h"
 
-/* Transport-independent state. The future UART owner must discard old RX
- * bytes before starting a request and must send the entire five-byte command
+/* Transport-independent state. The UART owner (drv_acd1100.c) discards old RX
+ * bytes before starting a request and sends the entire five-byte command
  * without interleaving. All times are monotonic modulo 2^32 milliseconds;
  * calls and deadlines must be less than 2^31 ms apart. */
 typedef struct {

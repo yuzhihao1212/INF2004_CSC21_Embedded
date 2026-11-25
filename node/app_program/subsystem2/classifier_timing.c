@@ -1,3 +1,10 @@
+/*
+ *  classifier_timing.c
+ *  Subsystem 2 -- window gates and speech persistence (rules in the header).
+ *
+ *  Pure logic with no kernel or hardware calls, so the same file is
+ *  compiled and tested on the host.
+ */
 #include "classifier_timing.h"
 #include <stddef.h>
 
@@ -16,8 +23,11 @@ classifier_event_t classifier_timing_step(classifier_timing_state_t *state,
         return clear(state,CLASSIFIER_INVALID);
     if (timing_fault || (state->have_previous && window_us<=state->last_window_us))
         return clear(state,CLASSIFIER_TIMING_FAULT);
+    /* Clipped: 80 of 8000 samples (1%) at an ADC rail. */
     if (clipped_samples>=80) return clear(state,CLASSIFIER_CLIPPED);
+    /* Too quiet to classify: AC RMS below 4 ADC counts (Q8). */
     if (rms_q8<4u*256u) return clear(state,CLASSIFIER_LOW_LEVEL);
+    /* More than 1.5 windows since the last one: not consecutive. */
     if (state->have_previous && window_us-state->last_window_us>750000)
         *state=(classifier_timing_state_t){0};
     state->have_previous=1;state->last_window_us=window_us;
@@ -25,12 +35,14 @@ classifier_event_t classifier_timing_step(classifier_timing_state_t *state,
         state->positive_windows=state->weak_windows=state->active=0;
         return CLASSIFIER_TRANSIENT;
     }
+    /* Speech wins with P(speech) >= 0.5 (16384 in Q15). */
     if (predicted_class==1 && p[1]>=16384) {
         state->weak_windows=0;
         if (state->positive_windows<2) ++state->positive_windows;
         if (state->positive_windows>=2) state->active=1;
         return state->active ? CLASSIFIER_TALKING : CLASSIFIER_PENDING;
     }
+    /* One weak window is held as talking; the second one ends the event. */
     if (state->active && ++state->weak_windows<2) return CLASSIFIER_TALKING;
     state->positive_windows=state->weak_windows=state->active=0;
     return CLASSIFIER_NO_SPEECH;
