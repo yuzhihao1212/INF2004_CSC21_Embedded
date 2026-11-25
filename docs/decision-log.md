@@ -5,6 +5,15 @@ ideas we dropped. Status lines get updated in place; a reversed decision gets a 
 that links back. Entries dated before 14 Nov 2026 were backfilled on 14 Nov from the chat
 where they were decided and the commits that built them.
 
+## 2026-11-25 · Final demo recorded as the only system test run
+- **From → to:** `node/testing/system/TEST_LOG.md` was the blank template with an example row. Now it defines SYS-01 to SYS-06 from the demo plan and records the final demo as one run: SYS-01 to 04 and SYS-06 "mostly as expected, with some inconsistent results", SYS-05 not run.
+- **Why:** ZhiHao (chat, 25 Nov) gave the facts: five of the six planned scenarios were shown, they mostly worked with some inconsistent results from the room and other factors outside the team's control, the class-type scenario was dropped before the demo started, and nobody recorded it.
+- **Problem it solves:** the hand-in had no system-level test record at all, and no more runs are possible now the hardware is returned.
+- **Why this way:** one combined row, not five PASS rows, because nobody wrote down which scenarios were inconsistent. The log says the cases were written after the run, that no evidence was saved, and what no scenario covers (environment sensors end to end, excessive noise, outage recovery).
+- **Risks to watch:** the row is a report from memory. If a teammate remembers which scenario misbehaved, add a new row with that detail; do not edit this one.
+- **Verified:** nothing new was run. The scenario texts match the demo deck's six demo slides.
+- **Status:** built, not committed.
+
 ## 2026-11-25 · Host tests rerun on the hand-in commit; unrecorded board tests say so
 - **From → to:** host results were spread over several dates, all on uncommitted code, and S3's rows cited logs that aren't in the repo. The S1, S2 and S4 result tables held only the template's placeholder row. Now `node/testing/run_host_tests.sh` reruns every host test in one go; it was run on the clean commit `62e0e5a` and each subsystem's log has a row citing that commit and a saved log. The S1, S2 and S4 logs state that no on-target result was recorded.
 - **Why:** ZhiHao (chat, 25 Nov): the hardware is back with the professor, so only PC work is possible. The instructor's rule is that a test counts only with its commit, result and saved log.
@@ -12,7 +21,7 @@ where they were decided and the commits that built them.
 - **Why this way:** writing PASS rows for board tests from memory was ruled out: there is no log to cite. Old provisional rows are left untouched, as the testing rules require.
 - **Risks to watch:** a host PASS says nothing about timing or hardware; the rows say "host". If a teammate still has a saved console log from a board run, it should be added with its own row.
 - **Verified:** the script exits 0; S1-U04, S2-U03 to U05, S2-U07, the S3 host suite (U02 to U04, U06 to U09, U12, U19 to U23, U32) and S5-U01 to U11 pass; 305 PC tests pass.
-- **Status:** built, not committed.
+- **Status:** committed `614599c`, in PR #60.
 
 ## 2026-11-25 · The hand-in includes the demo branch
 - **From → to:** `main` did not have Arif's commit `b4008ec` (task-progress supervisor, watchdog driver, MQTT reconnect handling, gateway "awaiting a fresh report"); it lived only on `demo`. Now `demo` goes into `main` through PR #61, and PR #60 is merged with it so the tidy-up sits on top.
