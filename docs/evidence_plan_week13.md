@@ -1,5 +1,7 @@
 # Week 13 evidence plan
 
+> **Historical record (status at hand-in, 25 Nov 2026).** The plan written before the final weeks. What was finally done and not done is in the [CSC21 tracker](change_requirement_csc21.md) and the [test logs](../node/testing/). For the system as submitted, start at the [main README](../README.md) and the [evidence index](README.md).
+
 What we still need to show the assessors, who owns it, and what "done" looks like.
 The CSC21 tracker in `change_requirement_csc21.md` lists *what* the brief asks for; this
 page is the plan to get it. Status on 16 Nov 2026: the PC side is done and tested, but the

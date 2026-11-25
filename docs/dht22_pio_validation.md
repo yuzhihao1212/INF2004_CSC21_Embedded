@@ -1,5 +1,7 @@
 # DHT22 PIO/DMA audit and validation
 
+> **Historical record (status at hand-in, 25 Nov 2026).** An audit from 13 Nov that includes the earlier FreeRTOS build of the DHT22 driver. The submitted driver is `node/app_program/subsystem3/drv_dht22_hw.c`; its current host results are in `node/testing/subsystem3/TEST_LOG.md`. For the system as submitted, start at the [main README](../README.md) and the [evidence index](README.md).
+
 Reviewed on 13 November 2026 against the current checkout, base `3501efe`, on
 `feat/dht22-pio-validation`. This is a source audit, host regression suite and
 hardware evidence collector. **No Pico was flashed and no hardware results were

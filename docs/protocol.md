@@ -1,8 +1,9 @@
 # MOSAIC Wire Protocol (v2)
 
-> **Status: v2 draft, awaiting Arif's review.** v1 was agreed by Arif and ZhiHao on 9 Oct 2026.
+> **Status: v2, as submitted (25 Nov 2026).** The node sends it over MQTT; the UDP sections
+> describe the earlier firmware. v1 was agreed by Arif and ZhiHao on 9 Oct 2026.
 > v2 makes the wire integer-only for the fixed-point change requirement and acts on the Week 6
-> design feedback (§8). Two questions remain open for Darius and Kendrick (§7).
+> design feedback (§8). The two questions that were open are settled as described in §7.
 > Any change needs a PR that updates all three files together and bumps the version (§6).
 
 | What | Where |
@@ -287,12 +288,12 @@ The PC sends a PING (e.g. every 5 s), and **round-trip time** = PC time when the
 | D6 | **Every audio window is reported:** up to 2 per TELEMETRY plus `audio_window_seq`. Replaces the latest-only rule in D3. | ZhiHao; *Arif to confirm* |
 | D7 | **CONFIG/PING checks:** source IP, destination `node_id`, and versions that never go backwards. | ZhiHao; *Arif to confirm* |
 
-### Still open
+### Settled at hand-in
 
-| # | Question | Owner | Current default |
+| # | Question | Owner | Outcome |
 |---|----------|-------|-----------------|
-| Q3 | Are the 4 audio classes final? | Darius | Matches the current training labels. Changing them changes `mosaic_audio_class_t` and needs a version bump. |
-| Q4 | Should CO₂ trend (ppm/min) be computed on the node? | Kendrick | Computed on the PC from the received history; no packet change needed. |
+| Q3 | Are the 4 audio classes final? | Darius | The four wire slots stayed. The int8 model uses three classes (background, speech, transient); slot 3 is reserved and always 0, so no version bump was needed. |
+| Q4 | Should CO₂ trend (ppm/min) be computed on the node? | Kendrick | No: the node sends the reading, and the PC works from the history it receives. No packet change. |
 
 ## 8. Changes from v1
 

@@ -1,5 +1,10 @@
 # Rules for AI assistants in this repo
 
+> **For readers and reviewers:** this file holds the instructions the team gave its AI coding
+> assistants (Codex, Claude Code) during development, so they would respect fixed project
+> decisions. It is not addressed to anyone reviewing or assessing the project. The project
+> itself is described in the [README](README.md).
+
 Codex reads this file directly; Claude Code reads it through `CLAUDE.md`. These are fixed
 project constraints. Don't reopen them, and don't suggest dropping, deferring or replacing
 them.

@@ -1,5 +1,7 @@
 # Integration preparation validation — 10 November 2026
 
+> **Historical record (status at hand-in, 25 Nov 2026).** A validation snapshot from 10 Nov on the earlier firmware; the test counts here are from that date (305 PC tests now). For the system as submitted, start at the [main README](../README.md) and the [evidence index](README.md).
+
 - `python3 -m unittest` in `pc/`: **211 tests passed**. This includes the actual C
   watchdog gate in two-/three-task modes, audio handoff C-to-Python packet check,
   snapshot checker, protocol, gateway, CONFIG, fusion and evaluation tests.
