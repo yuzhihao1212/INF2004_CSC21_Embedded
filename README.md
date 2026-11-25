@@ -37,7 +37,7 @@ classification, sensor readings, validity and timing information.
 | Moe (S1) | [task_audio.c](node/app_program/subsystem1/task_audio.c), [drv_audio.c](node/app_program/subsystem1/drv_audio.c), [audio_dsp.c](node/app_program/subsystem1/audio_dsp.c) | ADC/DMA capture at 16 kHz, 500 ms windows, integer-only feature extraction |
 | Darius (S2) | [task_classifier.c](node/app_program/subsystem2/task_classifier.c), [audio_inference.c](node/app_program/subsystem2/audio_inference.c) | Int8 inference, confidence and speech persistence |
 | Kendrick (S3) | [task_environment.c](node/app_program/subsystem3/task_environment.c), [environment_service.c](node/app_program/subsystem3/environment_service.c) | DHT22, ACD1100 CO₂, PIR, validity and recovery |
-| Arif (S4) | [s4_network.c](node/app_program/subsystem4/s4_network.c), [mqtt_utk.c](node/lib/liblwip/sysdepend/pico_rp2040/mqtt_utk.c) | Non-blocking queue bridge to MQTT inside the kernel Wi-Fi task |
+| Arif (S4) | [s4_network.c](node/app_program/subsystem4/s4_network.c), [mqtt_utk.c](node/lib/liblwip/sysdepend/pico_rp2040/mqtt_utk.c), [s4_health.c](node/app_program/subsystem4/s4_health.c) | Non-blocking queue bridge to MQTT inside the kernel Wi-Fi task; supervisor task that checks the other tasks keep making progress. The hardware watchdog it can feed is built but switched off |
 | ZhiHao (S5) | [task_report.c](node/app_program/subsystem5/task_report.c), [s5_protocol.c](node/app_program/subsystem5/s5_protocol.c) | CONFIG validation, telemetry and control messages |
 | PC gateway | [gateway.py](pc/mosaic/gateway.py), [mqtt.py](pc/mosaic/mqtt.py) | Packet reception, node tracking and configuration delivery |
 | PC fusion | [fusion.py](pc/mosaic/fusion.py), [reference.py](pc/mosaic/reference.py) | Classroom and zone states; lecturer-reference comparison |
@@ -159,13 +159,27 @@ See the [reference firmware guide](firmware/README.md) before removing any of it
 - [Audio investigation and timing limitations](node/testing/integration/logs/2026-11-20-audio-investigation.md)
 - [Sensor hardware procedure](node/testing/subsystem3/HARDWARE_EVIDENCE.md)
 - [Test record rules](node/testing/README.md)
+- [System tests: the final demo](node/testing/system/TEST_LOG.md)
+- [Audio and classifier number formats](docs/audio_numeric_representation.md)
 
-Run the PC tests from `pc/` using `python -m unittest -v`.
-Build the actual MQTT firmware profile before the demonstration. The 20 November
-session recorded real-node audio telemetry from four Picos; environmental values
-were unavailable in that session, and the recorded timer scale issue prevents
-claiming a verified real-board DSP deadline from those logs alone. Additional
-fault-recovery and sensor acceptance evidence must be recorded against the exact
-tested revision.
+Run the PC tests from `pc/` using `python -m unittest -v`. Rerun every host test
+of the node code with `node/testing/run_host_tests.sh`: it needs only a C
+compiler and Python.
+
+### What was and was not tested
+
+- **On hardware.** The final demo on 25 November ran five scenarios on four
+  Picos: they mostly behaved as expected, with some inconsistent results. Nobody
+  recorded it. The 20 November session recorded real audio telemetry from four
+  Picos, with no valid temperature, humidity or CO₂ at the dashboard.
+- **On the PC.** The DSP, classifier, sensor decoding, CONFIG handling, gateway
+  and fusion are covered by host and unit tests, recorded against the hand-in code.
+- **Not tested.** The watchdog (switched off), recovery from a broker or Wi-Fi
+  outage, the environment sensors end to end, and the DSP deadline on a board.
+  The node's audio clock counts once per 42.67 µs, not once per microsecond, so
+  its logged `_us` times are 42.67 times too small; this is documented in
+  `drv_audio.c` and was left as it ran in the demo.
+- The hardware was returned after the final demo, so no further board tests
+  are possible.
 
 Read [CONTRIBUTING.md](CONTRIBUTING.md) for the team PR workflow.

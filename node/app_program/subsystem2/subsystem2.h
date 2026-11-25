@@ -1,7 +1,7 @@
 /*
  *	subsystem2.h
  *	Subsystem 2 -- int8 audio classifier.
- *	Owner: Darius (Dkkan-dev).  Student ID: <student ID>.
+ *	Owner: Darius (Dkkan-dev).  Student ID: 2501046.
  *
  *	Receives each window's 20 Q8 features from subsystem 1 (IF-13), runs
  *	the integer-only 20-16-3 network on core 1 and posts the classified
