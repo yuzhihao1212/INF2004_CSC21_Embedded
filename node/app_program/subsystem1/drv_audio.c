@@ -30,8 +30,6 @@
 #define IRQ 12u /* DMA_IRQ_1; exclusively owned by S1. */
 #define TIMER_RAWH 0x40054024u  /* free-running 64-bit timer, high word */
 #define TIMER_RAWL 0x40054028u  /* low word */
-#define WATCHDOG_TICK 0x4005802cu   /* bits 8:0: clk_ref cycles per timer count */
-#define CLK_REF_MHZ 12u             /* clk_ref is the board's 12 MHz crystal */
 #define WINDOW_SAMPLES 8000     /* 500 ms at 16 kHz */
 
 static uint16_t buffers[2][WINDOW_SAMPLES];
@@ -47,20 +45,21 @@ static volatile uint32_t capture_us;
 uint32_t audio_capture_duration_us(void) { return capture_us; }
 
 /*
- * Microseconds since boot.
+ * Timer count since boot. Known limitation: on this kernel one count is
+ * 42.67 us, not 1 us.
  *
- * The RP2040 timer does not count microseconds by itself: it counts ticks
- * made by dividing clk_ref (12 MHz) by WATCHDOG_TICK.CYCLES. The Pico SDK
- * sets CYCLES to 12, one tick per microsecond. This kernel leaves the
- * register at its reset value of 0, and the hardware then divides by 512:
- * the nodes logged 11719 counts for a 500 ms capture, 42.67 us per count.
- * Read as microseconds, that made every duration 42.67 times too short, so
- * the 500 ms deadline checks in subsystems 1 and 2 could never fail.
+ * The RP2040 timer counts ticks made by dividing clk_ref (12 MHz) by
+ * WATCHDOG_TICK.CYCLES. The Pico SDK sets CYCLES to 12, one tick per
+ * microsecond. This kernel leaves the register at its reset value of 0, and
+ * the hardware then divides by 512: the nodes logged 11719 counts for a
+ * 500 ms capture (testing/integration/logs/2026-11-20-audio-investigation.md).
  *
- * The count is scaled here, so no shared kernel code changes. CYCLES is
- * read on every call: if another module starts the tick generator at
- * 12 cycles (as the SDK does), the result stays in microseconds, with one
- * step in the clock at the moment the rate changes.
+ * So every "_us" value taken from this clock is 42.67 times too small: a
+ * logged dsp_us of 5581 is about 238 ms. The 500 ms deadline checks in
+ * subsystems 1 and 2 compare against this clock too, so they cannot trip.
+ * The correction is to return count * 512 / 12. It is left out because the
+ * hardware was returned after the final demo and the change could not be
+ * tested on a board; this file is the code that ran in that demo.
  */
 uint64_t audio_clock_us(void)
 {
@@ -68,9 +67,7 @@ uint64_t audio_clock_us(void)
     /* Re-read if the low word carried into the high word between reads. */
     do { high = R(TIMER_RAWH); low = R(TIMER_RAWL); }
     while (high != R(TIMER_RAWH));
-    uint32_t cycles = R(WATCHDOG_TICK) & 0x1ffu;
-    if (!cycles) cycles = 512u;
-    return ((((uint64_t)high << 32) | low) * cycles) / CLK_REF_MHZ;
+    return ((uint64_t)high << 32) | low;
 }
 
 /* Start filling buffers[current]. Task context only. */
