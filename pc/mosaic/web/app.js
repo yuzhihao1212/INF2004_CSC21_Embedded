@@ -687,13 +687,19 @@
   function renderPlan(container, metric, compact = false) {
     const f = fb();
     if (!f) return;
-    const portrait = container.clientWidth > 0 && container.clientWidth < 560;
+    // Measure the space the map sits in, not the plan: in the one-screen layout the
+    // plan's width follows its own proportions, so a portrait plan would keep itself narrow.
+    const space = (container.closest(".map-stage") || container).clientWidth;
+    const portrait = space > 0 && space < 560;
     // Rebuild only when the room changes shape; otherwise update in place, so
     // keyboard focus and screen-reader position survive the 1 s refresh.
     const key = `${portrait}|${f.zones.map((z) => `${z.zone}:${z.layout}:${z.lecturer_area}`).join(",")}`;
     const rebuilt = container.dataset.key !== key;
     if (rebuilt) buildPlan(container, portrait, compact, f.zones, key);
     container.dataset.metric = metric;  // Footsteps only in the Movement view
+    // A wide room squeezed small (short laptops): smaller words so they don't break
+    // mid-word. Only the text changes, never the plan's proportions.
+    container.dataset.narrow = String(!portrait && container.clientWidth > 0 && container.clientWidth < 560);
     const view = portrait ? "flat" : mapView === "people" ? "3d" : mapView;
     if (container.dataset.view !== view) { container.dataset.view = view; labelBurst(); }
     $("#map-view").hidden = portrait;
