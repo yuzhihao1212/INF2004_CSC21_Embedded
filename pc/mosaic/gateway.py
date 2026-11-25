@@ -107,6 +107,8 @@ class NodeState:
     _seen: dict = field(default_factory=dict, repr=False)
     _missing: set = field(default_factory=set, repr=False)
     _awaiting_boot_telemetry: bool = False
+    awaiting_fresh_report: bool = False
+    mqtt_link_offline: bool = False
 
     @property
     def loss_pct(self) -> float:
@@ -115,7 +117,7 @@ class NodeState:
 
     def status(self, now: float) -> NodeStatus:
         age = now - self.last_seen
-        if age > OFFLINE_AFTER_S:
+        if self.awaiting_fresh_report or age > OFFLINE_AFTER_S:
             return NodeStatus.OFFLINE
         if age > STALE_AFTER_REPORTS * self.report_interval_ms / 1000:
             return NodeStatus.STALE
@@ -125,12 +127,13 @@ class NodeState:
 class Gateway:
     """Per-node bookkeeping. `now` is a monotonic time in seconds."""
 
-    def __init__(self) -> None:
+    def __init__(self, require_first_telemetry: bool = False) -> None:
         self.nodes: dict[int, NodeState] = {}
         self.dropped: Counter[str] = Counter()  # by source IP
         self.seq = 0  # The PC's own seq for datagrams it sends
         self._reported: dict[int, NodeStatus] = {}
         self.config_events: list[dict] = []
+        self.require_first_telemetry = require_first_telemetry
         self.messages: list[str] = []  # Config events for the console; caller drains it
 
     def handle(self, data: bytes, address: Address,
@@ -145,6 +148,9 @@ class Gateway:
             self.dropped[address[0]] += 1
             return None
 
+        previous = self.nodes.get(header.node_id)
+        if isinstance(payload, p.Telemetry) and previous and previous.mqtt_link_offline:
+            return None
         node = self.track_header(header, address, now)
         if not node._accepted:
             return None
@@ -169,6 +175,7 @@ class Gateway:
             node._seen[header.seq] = (header.sender_time_ms, now)
             node._sender_time_ms = header.sender_time_ms
             node._awaiting_boot_telemetry = header.msg_type != p.MsgType.TELEMETRY
+            node.awaiting_fresh_report = self.require_first_telemetry
             node._accepted = True
         else:
             node._accepted = self._track_seq(node, header, now)
@@ -181,6 +188,8 @@ class Gateway:
                 node.latest_telemetry_seq = header.seq
                 age_ms = (node._sender_time_ms - header.sender_time_ms) % _SEQ_MOD
                 node.last_seen = max(node.last_seen, now - age_ms / 1000)
+                if age_ms == 0:
+                    node.awaiting_fresh_report = False
         return node
 
     def _track_seq(self, node: NodeState, header: p.Header, now: float) -> bool:
@@ -489,7 +498,8 @@ class GatewayServer:
                  fusion_out: Optional[TextIO] = None,
                  events_file: Optional[TextIO] = None,
                  transport=None) -> None:
-        self.gateway = Gateway()
+        self._mqtt = isinstance(transport, MqttTransport)
+        self.gateway = Gateway(require_first_telemetry=self._mqtt)
         self.event_log = EventLog(events_file) if events_file is not None else None
         self._event_statuses = {}
         self._event_zones = {}
@@ -504,6 +514,7 @@ class GatewayServer:
         self.summary_interval = summary_interval
         self.out = out
         self.transport = transport if transport is not None else UdpTransport(bind)
+        self._mqtt_connected = self._mqtt and self.transport.fileno() >= 0
         self.sock = getattr(self.transport, "sock", None)  # The UDP socket, for tests
         self.csv = csv.writer(csv_file) if csv_file else None
         self._csv_file = csv_file
@@ -546,6 +557,12 @@ class GatewayServer:
                     self._link_status(item.node_id, item.status, time.monotonic())
             now = time.monotonic()
             self.transport.tick(now)
+            if self._mqtt:
+                connected = self.transport.fileno() >= 0
+                if self._mqtt_connected and not connected:
+                    for node in self.gateway.nodes.values():
+                        node.awaiting_fresh_report = True
+                self._mqtt_connected = connected
             for note in self.transport.notes:
                 self._print(note)
             self.transport.notes.clear()
@@ -598,7 +615,8 @@ class GatewayServer:
             if self.csv:
                 self.csv.writerow(csv_row(header, payload, pc_time))
                 self._csv_file.flush()
-            if header.seq != self.gateway.nodes[header.node_id].latest_telemetry_seq:
+            node = self.gateway.nodes[header.node_id]
+            if node.awaiting_fresh_report or header.seq != node.latest_telemetry_seq:
                 return  # Log recovered history, but never rewind live fusion/UI.
             if self.fusion:
                 reboots = self.gateway.nodes[header.node_id].reboots
@@ -616,9 +634,11 @@ class GatewayServer:
                         f"{payload.config_version}: {payload.status.name}")
 
     def _link_status(self, node_id: int, status: str, now: float) -> None:
-        """A node's MQTT last will or its 'online' announcement. Shown and
-        logged only: ONLINE/STALE/OFFLINE still comes from the node's own
-        reports, so both transports behave the same."""
+        """An MQTT announcement opens a session; telemetry makes it live."""
+        node = self.gateway.nodes.get(node_id)
+        if node is not None and status in ("online", "offline"):
+            node.mqtt_link_offline = status == "offline"
+            node.awaiting_fresh_report = True
         self._print(f"node {node_id} MQTT link: {status}")
         self._log("link", now, node=node_id, state=status)
 
