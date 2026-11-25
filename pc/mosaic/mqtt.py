@@ -290,18 +290,25 @@ class MqttClient:
         self._last_in = time.monotonic()
         self._buffer += chunk
         messages = []
-        for kind, flags, body in split_packets(self._buffer):
-            if kind == PUBLISH:
-                message, packet_id = parse_publish(flags, body)
-                if message.qos == 1:
-                    self._send(_packet(PUBACK << 4, packet_id.to_bytes(2, "big")))
-                messages.append(message)
-            elif kind == PUBACK:
-                self._inflight.pop(int.from_bytes(body[:2], "big"), None)
-            elif kind == SUBACK:
-                topic = self._pending_subs.pop(int.from_bytes(body[:2], "big"), "?")
-                if 0x80 in body[2:]:
-                    self.subscribe_failures.append(topic)
+        try:
+            for kind, flags, body in split_packets(self._buffer):
+                if kind == PUBLISH:
+                    message, packet_id = parse_publish(flags, body)
+                    if message.qos == 1:
+                        self._send(_packet(PUBACK << 4, packet_id.to_bytes(2, "big")))
+                    messages.append(message)
+                elif kind == PUBACK:
+                    self._inflight.pop(int.from_bytes(body[:2], "big"), None)
+                elif kind == SUBACK:
+                    topic = self._pending_subs.pop(int.from_bytes(body[:2], "big"), "?")
+                    if 0x80 in body[2:]:
+                        self.subscribe_failures.append(topic)
+        except (MqttError, ValueError) as e:
+            # Bytes that are not MQTT (bad length, or a topic that is not
+            # UTF-8): the stream can't be trusted any more, so drop the link
+            # and let the caller reconnect, the same as any other loss.
+            self._drop()
+            raise ConnectionError(f"malformed MQTT data from the broker: {e}") from e
         return messages
 
     def tick(self, now: Optional[float] = None) -> None:
