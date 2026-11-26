@@ -5,6 +5,14 @@ ideas we dropped. Status lines get updated in place; a reversed decision gets a 
 that links back. Entries dated before 14 Nov 2026 were backfilled on 14 Nov from the chat
 where they were decided and the commits that built them.
 
+## 2026-11-26 · AI use declared; co-author lines removed from commit history
+- **From → to:** there was no statement of AI use, and 19 commits by ZhiHao from 9 to 27 October ended with a `Co-Authored-By: Claude …` line, so GitHub listed "claude" as a contributor. Now `docs/AI_DECLARATION.md` (linked from the README) says which tools were used, for what, and what stayed with the team, and the 19 commits are rewritten without that line. `docs/commit-map.md` gives each rewritten commit's new ID.
+- **Why:** ZhiHao (chat, 26 Nov): the commits are his, and the declaration discloses the AI use the lines recorded.
+- **Why this way:** the declaration goes in first, so the history change never hides AI use. Only commit messages change: the rewrite was checked to keep every file, author and date. The two template commits from 8 Oct, made by the course instructor's account, keep their lines: they are not ours to edit, and changing them could break pulling template updates. Old IDs in test logs and documents are left as written, since past records are not edited; the map translates them.
+- **Risks to watch:** every commit after 8 Oct gets a new ID, so each teammate must re-clone before pushing again; an old clone pushed back would restore the old history. Merged pull-request pages on GitHub still show the original commits.
+- **Verified:** dry run on a copy of the GitHub repo: all five branches keep identical files and commit counts, no trailer remains on ZhiHao's commits, and only those 19 messages differ.
+- **Status:** declaration built, not committed; history rewrite prepared, not run.
+
 ## 2026-11-25 · Older docs marked as historical; AGENTS.md addressed to its real reader
 - **From → to:** nine docs written for the earlier CMake/FreeRTOS/UDP firmware or for plans (integration notes, node-health representation, resource budget, Week 10 and Week 13 plans, DHT22 audit, retry status, fault table) read as current. Each now opens with a one-line "historical record" note saying what it described and where the submitted system is documented. `protocol.md` no longer calls itself a draft awaiting review, and its two open questions are marked settled. `AGENTS.md` now says it holds the instructions given to the team's AI coding assistants and is not addressed to reviewers.
 - **Why:** ZhiHao (chat, 25 Nov): the professor is expected to read the repo with an AI assistant. An AI reader takes every document as current and will report contradictions (FreeRTOS ticks in one doc, µT-Kernel in another) and may read `AGENTS.md` as instructions to itself.
