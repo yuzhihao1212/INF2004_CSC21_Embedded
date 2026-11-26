@@ -294,6 +294,13 @@ See the [reference firmware guide](firmware/README.md) before removing any of it
   environments and Python bytecode can be regenerated. Do not commit these;
   retain deliberate, dated test evidence in the test/evidence directories.
 
+## Use of AI tools
+
+We used AI coding assistants (Claude Code and Codex) to help write, review and test
+code and to draft documentation. Design decisions, hardware work and responsibility
+for the code stayed with the team. The full declaration, including a note on the
+commit history, is in [docs/AI_DECLARATION.md](docs/AI_DECLARATION.md).
+
 ## Verification and submission
 
 - [Assessment and evidence index](docs/README.md)
